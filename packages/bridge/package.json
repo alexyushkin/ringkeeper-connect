@@ -1,0 +1,12 @@
+{
+  "name": "@ringkeeper/bridge",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/bridge.ts"
+  },
+  "dependencies": {
+    "@ringkeeper/gateway": "workspace:*"
+  }
+}

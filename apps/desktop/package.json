@@ -1,0 +1,25 @@
+{
+  "name": "@ringkeeper/desktop",
+  "productName": "Ringkeeper Connect",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Connect each client's tools once and never switch again.",
+  "author": "Alexey Yushkin",
+  "license": "MIT",
+  "main": "dist/main.cjs",
+  "devDependencies": {
+    "@ringkeeper/bridge": "workspace:*",
+    "@ringkeeper/catalog": "workspace:*",
+    "@ringkeeper/gateway": "workspace:*",
+    "@ringkeeper/hostconfig": "workspace:*",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "6.3.0",
+    "electron": "45.3.3",
+    "electron-builder": "26.18.0",
+    "electron-updater": "6.8.11",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "vite": "8.3.8"
+  }
+}

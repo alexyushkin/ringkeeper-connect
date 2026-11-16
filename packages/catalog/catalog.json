@@ -1,0 +1,180 @@
+{
+  "version": 1,
+  "checked": "2026-11-16",
+  "services": [
+    {
+      "id": "n8n",
+      "name": "n8n",
+      "description": "Run and build the client's n8n workflows.",
+      "notes": [
+        "In n8n, an owner or admin turns on MCP access under Settings > Instance-level MCP, then switches on each workflow the AI may use. Workflows that aren't switched on stay invisible."
+      ],
+      "options": [
+        {
+          "id": "token",
+          "label": "Use n8n's MCP access token",
+          "recommended": true,
+          "kind": "remote",
+          "url": "{{N8N_URL}}",
+          "headers": { "Authorization": "Bearer {{N8N_MCP_TOKEN}}" },
+          "fields": [
+            {
+              "id": "N8N_URL",
+              "label": "The client's n8n address",
+              "placeholder": "https://yourname.app.n8n.cloud",
+              "help": "The address you open n8n at. You can also paste the full MCP address from n8n's Settings > Instance-level MCP > Connect a client.",
+              "transform": "n8n-mcp-url",
+              "required": true
+            },
+            {
+              "id": "N8N_MCP_TOKEN",
+              "label": "MCP access token",
+              "secret": true,
+              "required": true,
+              "help": "In n8n: Settings > Instance-level MCP > Connect a client > API key. Making a new token replaces the old one.",
+              "where": { "label": "How to get it (n8n guide)", "url": "https://docs.n8n.io/advanced-ai/accessing-n8n-mcp-server/" }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "supabase",
+      "name": "Supabase",
+      "description": "Query and manage the client's Supabase projects.",
+      "notes": ["When signing in, pick the client's organization, the one that owns their project."],
+      "options": [
+        {
+          "id": "oauth",
+          "label": "Sign in with Supabase",
+          "recommended": true,
+          "kind": "remote",
+          "auth": "oauth",
+          "url": "https://mcp.supabase.com/mcp",
+          "query": { "project_ref": "{{PROJECT_REF}}" },
+          "fields": [
+            {
+              "id": "PROJECT_REF",
+              "label": "Project ID (optional)",
+              "placeholder": "abcdefghijklmnopqrst",
+              "help": "Keeps the AI to one project. In Supabase: Project Settings > General > Project ID. Leave empty to allow all the client's projects."
+            }
+          ]
+        },
+        {
+          "id": "token",
+          "label": "Use an access token",
+          "kind": "remote",
+          "url": "https://mcp.supabase.com/mcp",
+          "query": { "project_ref": "{{PROJECT_REF}}" },
+          "headers": { "Authorization": "Bearer {{SUPABASE_ACCESS_TOKEN}}" },
+          "fields": [
+            {
+              "id": "SUPABASE_ACCESS_TOKEN",
+              "label": "Access token",
+              "secret": true,
+              "required": true,
+              "help": "Create one while signed in as the client's Supabase account.",
+              "where": { "label": "Open Supabase access tokens", "url": "https://supabase.com/dashboard/account/tokens" }
+            },
+            {
+              "id": "PROJECT_REF",
+              "label": "Project ID (optional)",
+              "help": "Keeps the AI to one project. In Supabase: Project Settings > General > Project ID."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "airtable",
+      "name": "Airtable",
+      "description": "Read and update the client's Airtable bases.",
+      "options": [
+        {
+          "id": "oauth",
+          "label": "Sign in with Airtable",
+          "recommended": true,
+          "kind": "remote",
+          "auth": "oauth",
+          "url": "https://mcp.airtable.com/mcp",
+          "fields": []
+        },
+        {
+          "id": "token",
+          "label": "Use a personal access token",
+          "kind": "remote",
+          "url": "https://mcp.airtable.com/mcp",
+          "headers": { "Authorization": "Bearer {{AIRTABLE_PAT}}" },
+          "fields": [
+            {
+              "id": "AIRTABLE_PAT",
+              "label": "Personal access token",
+              "secret": true,
+              "required": true,
+              "help": "The link opens Airtable with the right permissions ticked. Choose which of the client's bases the AI may use, then create the token.",
+              "where": {
+                "label": "Create a token in Airtable",
+                "url": "https://airtable.com/create/tokens/new?scopes=data.records:read,data.records:write,schema.bases:read,schema.bases:write,data.recordComments:read,data.recordComments:write,workspacesAndBases:read"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "notion",
+      "name": "Notion",
+      "description": "Search, read and write the client's Notion pages.",
+      "notes": ["Sign in with the client's Notion account and choose their workspace. Guests can't connect, and a workspace admin can turn this off."],
+      "options": [
+        {
+          "id": "oauth",
+          "label": "Sign in with Notion",
+          "recommended": true,
+          "kind": "remote",
+          "auth": "oauth",
+          "url": "https://mcp.notion.com/mcp",
+          "fields": []
+        }
+      ]
+    },
+    {
+      "id": "stripe",
+      "name": "Stripe",
+      "description": "Look up and manage the client's Stripe customers, payments and invoices.",
+      "notes": [
+        "Some actions, like refunds, wait for a person to approve them in the Stripe Dashboard. After approving, ask the AI to try again."
+      ],
+      "options": [
+        {
+          "id": "agent-key",
+          "label": "Use a restricted key with agent access",
+          "recommended": true,
+          "kind": "remote",
+          "url": "https://mcp.stripe.com",
+          "headers": { "Authorization": "Bearer {{STRIPE_AGENT_KEY}}" },
+          "fields": [
+            {
+              "id": "STRIPE_AGENT_KEY",
+              "label": "Restricted key with agent access",
+              "secret": true,
+              "required": true,
+              "help": "In the client's Stripe Dashboard: Developers > API keys > Create restricted key, and choose \"Authorizing agent access to your account\". It starts with rk_live_ (or rk_test_ for a sandbox).",
+              "pattern": "^rk_(live|test)_[A-Za-z0-9]+$",
+              "patternHint": "That doesn't look like a restricted key. It should start with rk_live_ or rk_test_.",
+              "reject": [
+                {
+                  "pattern": "^sk_",
+                  "message": "That's a secret key. Stripe no longer accepts those for AI tools. Create a restricted key with agent access instead (it starts with rk_live_)."
+                },
+                { "pattern": "^pk_", "message": "That's a publishable key, which can't do anything here. Create a restricted key with agent access instead (it starts with rk_live_)." }
+              ],
+              "where": { "label": "Open Stripe API keys", "url": "https://dashboard.stripe.com/apikeys" }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
