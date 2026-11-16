@@ -5,7 +5,7 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import { homedir } from "node:os";
 import { join, sep } from "node:path";
-import type { ClientStore } from "@ringkeeper/gateway";
+import { runtimesPresent, type BundledRuntimes, type ClientStore } from "@ringkeeper/gateway";
 import {
   HOST_LABELS,
   HostManager,
@@ -29,11 +29,33 @@ export class AppsError extends Error {}
  * How AI apps start the bridge. A packaged build ships its own Node (M4);
  * a development run uses the Node on this computer.
  */
-export function bridgeLaunch(opts: { packaged: boolean; resourcesPath: string; distDir: string; dataDirOverride?: string }): LaunchCommand {
+/**
+ * The Node and uv shipped with the app: resources/runtimes in a packaged
+ * build, apps/desktop/runtimes/<platform>-<arch> in development (fetched by
+ * scripts/fetch-runtimes.mjs). Missing folders are simply left out.
+ */
+export function bundledRuntimes(opts: { packaged: boolean; resourcesPath: string; appDir: string }): BundledRuntimes {
+  const base = opts.packaged ? join(opts.resourcesPath, "runtimes") : join(opts.appDir, "runtimes", `${process.platform}-${process.arch}`);
+  const rt: BundledRuntimes = { nodeDir: join(base, "node"), uvDir: join(base, "uv") };
+  const present = runtimesPresent(rt);
+  return { nodeDir: present.node ? rt.nodeDir : undefined, uvDir: present.uv ? rt.uvDir : undefined };
+}
+
+export function bridgeLaunch(opts: {
+  packaged: boolean;
+  resourcesPath: string;
+  distDir: string;
+  dataDirOverride?: string;
+  runtimes?: BundledRuntimes;
+}): LaunchCommand {
   const env = opts.dataDirOverride ? { RINGKEEPER_DATA_DIR: opts.dataDirOverride } : undefined;
+  const bridge = opts.packaged ? join(opts.resourcesPath, "bridge.mjs") : join(opts.distDir, "bridge.mjs");
+  if (opts.runtimes?.nodeDir) {
+    const node = process.platform === "win32" ? join(opts.runtimes.nodeDir, "node.exe") : join(opts.runtimes.nodeDir, "bin", "node");
+    return { command: node, args: [bridge], env };
+  }
   if (opts.packaged) {
-    const node = join(opts.resourcesPath, "node", process.platform === "win32" ? "node.exe" : "bin/node");
-    return { command: node, args: [join(opts.resourcesPath, "bridge.mjs")], env };
+    throw new AppsError("Ringkeeper Connect is missing a part it needs to connect your AI apps. Reinstall Ringkeeper Connect.");
   }
   let node = "";
   try {

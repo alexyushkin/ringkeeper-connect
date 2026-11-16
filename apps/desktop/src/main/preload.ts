@@ -25,6 +25,16 @@ const api: RingkeeperApi = {
   moveFound: call("moveFound") as RingkeeperApi["moveFound"],
   leaveFound: call("leaveFound") as RingkeeperApi["leaveFound"],
   restoreApps: call("restoreApps") as RingkeeperApi["restoreApps"],
+  catalogServices: call("catalogServices") as RingkeeperApi["catalogServices"],
+  addFromCatalog: call("addFromCatalog") as RingkeeperApi["addFromCatalog"],
+  signIn: call("signIn") as RingkeeperApi["signIn"],
+  cancelSignIn: call("cancelSignIn") as RingkeeperApi["cancelSignIn"],
+  openLink: call("openLink") as RingkeeperApi["openLink"],
+  onSignInLink: (listener) => {
+    const handler = (_e: unknown, url: string) => listener(url);
+    ipcRenderer.on(IPC.signInLink, handler);
+    return () => ipcRenderer.removeListener(IPC.signInLink, handler);
+  },
   onStateChanged: (listener) => {
     const handler = (_e: unknown, state: AppState) => listener(state);
     ipcRenderer.on(IPC.state, handler);

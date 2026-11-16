@@ -5,6 +5,7 @@ import { readJson, writeJsonAtomic } from "../runtime.js";
 import type { ConnectionConfig, GatewayConfig } from "../config.js";
 import { DEFAULT_DYNAMIC_HOSTS } from "../meta-tools.js";
 import type { SecretStore } from "./secrets.js";
+import type { OAuthState, OAuthStateStore } from "../oauth.js";
 
 // ---------- stored shapes ----------
 
@@ -26,6 +27,8 @@ export interface StoredRemoteConnection extends StoredBase {
   url: string;
   /** "sse" for older servers; Streamable HTTP otherwise. */
   transport?: "sse";
+  /** Signs in with OAuth instead of (or as well as) keys. */
+  auth?: "oauth";
   headers: Record<string, StoredValue>;
 }
 export type StoredConnection = StoredLocalConnection | StoredRemoteConnection;
@@ -65,7 +68,7 @@ export interface FieldInput {
 
 export type ConnectionInput =
   | { kind: "local"; name: string; command: string; args: string[]; fields: FieldInput[] }
-  | { kind: "remote"; name: string; url: string; transport?: "sse"; fields: FieldInput[] };
+  | { kind: "remote"; name: string; url: string; transport?: "sse"; auth?: "oauth"; fields: FieldInput[] };
 
 /** Secret values are never included; `isSet` says whether one is saved. */
 export interface FieldView {
@@ -77,7 +80,18 @@ export interface FieldView {
 
 export type ConnectionView =
   | { kind: "local"; id: string; name: string; command: string; args: string[]; fields: FieldView[]; missingKeys: string[] }
-  | { kind: "remote"; id: string; name: string; url: string; transport?: "sse"; fields: FieldView[]; missingKeys: string[] };
+  | {
+      kind: "remote";
+      id: string;
+      name: string;
+      url: string;
+      transport?: "sse";
+      auth?: "oauth";
+      /** For OAuth connections: a sign-in is saved. */
+      signedIn?: boolean;
+      fields: FieldView[];
+      missingKeys: string[];
+    };
 
 export interface ClientView {
   id: string;
@@ -87,6 +101,22 @@ export interface ClientView {
 }
 
 export class StoreError extends Error {}
+
+/** Where a connection's OAuth sign-in is kept in the SecretStore. Deleted with the connection. */
+export function oauthKey(clientId: string, connectionId: string): string {
+  return `${clientId}/${connectionId}/~oauth`;
+}
+
+/** OAuth sign-ins stored encrypted, next to the keys. */
+export function secretOAuthStore(secrets: SecretStore): OAuthStateStore {
+  return {
+    load: (key) => {
+      const raw = secrets.get(key);
+      return raw ? (JSON.parse(raw) as OAuthState) : undefined;
+    },
+    save: (key, state) => secrets.set(key, JSON.stringify(state)),
+  };
+}
 
 /** Names that are almost always secrets; used to default the "keep secret" box. */
 export function looksSecret(fieldName: string): boolean {
@@ -168,6 +198,11 @@ export class ClientStore {
     }));
   }
 
+  private oauthKeyFor(conn: StoredConnection): string {
+    const owner = this.data.clients.find((c) => c.connections.includes(conn));
+    return oauthKey(owner?.id ?? "", conn.id);
+  }
+
   private viewConnection(conn: StoredConnection): ConnectionView {
     const fields: FieldView[] = Object.entries(fieldsOf(conn)).map(([name, v]) =>
       "secret" in v ? { name, secret: true, isSet: this.secrets.has(v.secret) } : { name, secret: false, value: v.value, isSet: true },
@@ -175,7 +210,16 @@ export class ClientStore {
     const missingKeys = fields.filter((f) => !f.isSet).map((f) => f.name);
     return conn.kind === "local"
       ? { kind: "local", id: conn.id, name: conn.name, command: conn.command, args: [...conn.args], fields, missingKeys }
-      : { kind: "remote", id: conn.id, name: conn.name, url: conn.url, ...(conn.transport ? { transport: conn.transport } : {}), fields, missingKeys };
+      : {
+          kind: "remote",
+          id: conn.id,
+          name: conn.name,
+          url: conn.url,
+          ...(conn.transport ? { transport: conn.transport } : {}),
+          ...(conn.auth ? { auth: conn.auth, signedIn: this.secrets.has(this.oauthKeyFor(conn)) } : {}),
+          fields,
+          missingKeys,
+        };
   }
 
   /**
@@ -203,7 +247,14 @@ export class ClientStore {
           const base = { id: conn.id, name: conn.name, ...(missing.length ? { missingKeys: missing } : {}) };
           return conn.kind === "local"
             ? { ...base, kind: "local", command: conn.command, args: [...conn.args], env: resolved }
-            : { ...base, kind: "remote", url: conn.url, ...(conn.transport ? { transport: conn.transport } : {}), headers: resolved };
+            : {
+                ...base,
+                kind: "remote",
+                url: conn.url,
+                ...(conn.transport ? { transport: conn.transport } : {}),
+                ...(conn.auth === "oauth" ? { oauth: { key: oauthKey(c.id, conn.id) }, needsSignIn: !this.secrets.has(oauthKey(c.id, conn.id)) } : {}),
+                headers: resolved,
+              };
         }),
       })),
     };
@@ -334,7 +385,7 @@ export class ClientStore {
     const conn: StoredConnection =
       input.kind === "local"
         ? { kind: "local", id, name, command: input.command.trim(), args: input.args, env: fields }
-        : { kind: "remote", id, name, url: input.url.trim(), ...(input.transport ? { transport: input.transport } : {}), headers: fields };
+        : { kind: "remote", id, name, url: input.url.trim(), ...(input.transport ? { transport: input.transport } : {}), ...(input.auth ? { auth: input.auth } : {}), headers: fields };
     client.connections.push(conn);
     this.commit();
     return this.viewConnection(conn);
@@ -350,7 +401,11 @@ export class ClientStore {
     const conn: StoredConnection =
       input.kind === "local"
         ? { kind: "local", id: connId, name, command: input.command.trim(), args: input.args, env: fields }
-        : { kind: "remote", id: connId, name, url: input.url.trim(), ...(input.transport ? { transport: input.transport } : {}), headers: fields };
+        : { kind: "remote", id: connId, name, url: input.url.trim(), ...(input.transport ? { transport: input.transport } : {}), ...(input.auth ? { auth: input.auth } : {}), headers: fields };
+    // A sign-in belongs to one address; a new address (or no more sign-in) needs a new one.
+    if (prev.kind === "remote" && (conn.kind !== "remote" || conn.url !== prev.url || conn.auth !== prev.auth)) {
+      this.secrets.delete(oauthKey(clientId, connId));
+    }
     client.connections[idx] = conn;
     this.commit();
     return this.viewConnection(conn);
@@ -382,7 +437,7 @@ export class ClientStore {
     const input: ConnectionInput =
       src.kind === "local"
         ? { kind: "local", name, command: src.command, args: [...src.args], fields }
-        : { kind: "remote", name, url: src.url, ...(src.transport ? { transport: src.transport } : {}), fields };
+        : { kind: "remote", name, url: src.url, ...(src.transport ? { transport: src.transport } : {}), ...(src.auth ? { auth: src.auth } : {}), fields };
     return this.addConnection(to.id, input);
   }
 }

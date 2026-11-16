@@ -1,0 +1,14 @@
+{
+  "name": "@ringkeeper/catalog",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "Known services and how to connect them, as data.",
+  "exports": {
+    ".": "./src/index.ts",
+    "./catalog.json": "./catalog.json"
+  },
+  "dependencies": {
+    "@ringkeeper/gateway": "workspace:*"
+  }
+}

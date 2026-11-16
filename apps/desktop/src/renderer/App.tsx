@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import logo from "./assets/logo.png";
 import { AppsSection, FoundBanner, Setup } from "./Setup";
+import { AddFromCatalog, SignIn } from "./Catalog";
 import type { AppState, ClientView, ConnectionInput, ConnectionView, RingkeeperApi, Result } from "../shared/api";
 
 declare global {
@@ -19,6 +20,7 @@ const STATUS: Record<string, { word: string; tone: "ok" | "muted" | "warn" | "ba
   starting: { word: "Starting…", tone: "muted" },
   stopped: { word: "Stopped", tone: "muted" },
   needs_key: { word: "Needs a key", tone: "warn" },
+  needs_signin: { word: "Needs sign-in", tone: "warn" },
   error: { word: "Not working", tone: "bad" },
 };
 
@@ -147,7 +149,8 @@ export function App() {
             onActivate={() => void run(api.setActiveClient(selected.id))}
             onRename={() => setDialog({ kind: "rename-client", client: selected })}
             onDelete={() => setDialog({ kind: "delete-client", client: selected })}
-            onAddConnection={() => setDialog({ kind: "connection", client: selected })}
+            onAddConnection={() => setDialog({ kind: "add", client: selected })}
+            onSignIn={(conn) => setDialog({ kind: "signin", client: selected, conn })}
             onEditConnection={(conn) => setDialog({ kind: "connection", client: selected, conn })}
             onCopyConnection={(conn) => setDialog({ kind: "copy", client: selected, conn })}
             onRemoveConnection={(conn) => setDialog({ kind: "remove-connection", client: selected, conn })}
@@ -163,6 +166,7 @@ export function App() {
           run={run}
           onClientAdded={(id) => setSelectedId(id)}
           onHint={setHint}
+          onAdvanced={(client) => setDialog({ kind: "connection", client })}
         />
       )}
     </div>
@@ -195,6 +199,7 @@ function ClientPanel(props: {
   onEditConnection: (c: ConnectionView) => void;
   onCopyConnection: (c: ConnectionView) => void;
   onRemoveConnection: (c: ConnectionView) => void;
+  onSignIn: (c: ConnectionView) => void;
 }) {
   const { client } = props;
   return (
@@ -234,11 +239,14 @@ function ClientPanel(props: {
         <ul className="connections">
           {client.connections.map((conn) => {
             const s = props.statuses.find((x) => x.clientId === client.id && x.connectionId === conn.id);
-            const status = STATUS[conn.missingKeys.length ? "needs_key" : (s?.status ?? "idle")] ?? STATUS.idle!;
+            const notSignedIn = conn.kind === "remote" && conn.auth === "oauth" && !conn.signedIn;
+            const status = STATUS[conn.missingKeys.length ? "needs_key" : notSignedIn ? "needs_signin" : (s?.status ?? "idle")] ?? STATUS.idle!;
             // Inside the app, say what to do here rather than repeating "in Ringkeeper Connect".
             const problem = conn.missingKeys.length
               ? `Add ${conn.missingKeys.join(" and ")} with Edit to use it.`
-              : s?.problem;
+              : notSignedIn || s?.status === "needs_signin"
+                ? `Sign in with ${client.name}'s account to use it.`
+                : s?.problem;
             return (
               <li key={conn.id} className="connection">
                 <div className="connection-main">
@@ -248,6 +256,11 @@ function ClientPanel(props: {
                 </div>
                 <span className={`status ${status.tone}`}>{status.word}</span>
                 <div className="connection-actions">
+                  {conn.kind === "remote" && conn.auth === "oauth" && (s?.status === "needs_signin" || !conn.signedIn) && (
+                    <button className="primary" onClick={() => props.onSignIn(conn)}>
+                      Sign in
+                    </button>
+                  )}
                   <button onClick={() => props.onEditConnection(conn)}>Edit</button>
                   {props.clients.length > 1 && <button onClick={() => props.onCopyConnection(conn)}>Copy to…</button>}
                   <button className="danger-quiet" onClick={() => props.onRemoveConnection(conn)}>
@@ -276,7 +289,9 @@ type DialogState =
   | { kind: "connection"; client: ClientView; conn?: ConnectionView }
   | { kind: "copy"; client: ClientView; conn: ConnectionView }
   | { kind: "remove-connection"; client: ClientView; conn: ConnectionView }
-  | { kind: "restore" };
+  | { kind: "restore" }
+  | { kind: "add"; client: ClientView }
+  | { kind: "signin"; client: ClientView; conn: ConnectionView };
 
 function Dialogs(props: {
   dialog: DialogState;
@@ -285,6 +300,7 @@ function Dialogs(props: {
   run: Run;
   onClientAdded: (id: string) => void;
   onHint: (text: string) => void;
+  onAdvanced: (client: ClientView) => void;
 }) {
   const { dialog, close, run } = props;
   switch (dialog.kind) {
@@ -344,6 +360,17 @@ function Dialogs(props: {
           }}
         />
       );
+    case "add":
+      return (
+        <AddFromCatalog
+          client={dialog.client}
+          run={run}
+          onClose={close}
+          onAdvanced={() => props.onAdvanced(dialog.client)}
+        />
+      );
+    case "signin":
+      return <SignIn client={dialog.client} connectionId={dialog.conn.id} name={dialog.conn.name} run={run} onClose={close} />;
     case "restore":
       return (
         <Confirm

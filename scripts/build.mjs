@@ -7,6 +7,7 @@ const entries = {
   bridge: "packages/bridge/src/main.ts",
   "fixture-server": "spike/fixture-server.ts",
   "spike-tools": "spike/tools.ts",
+  "fake-vendor": "spike/fake-vendor.ts",
 };
 
 await build({

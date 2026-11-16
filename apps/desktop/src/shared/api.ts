@@ -2,6 +2,9 @@
 // ever travel window → main (when the user types a key), never back.
 import type { ClientView, ConnectionInput, ConnectionView, Settings } from "@ringkeeper/gateway/store";
 import type { ConnectionStatus } from "@ringkeeper/gateway";
+import type { CatalogService } from "@ringkeeper/catalog";
+
+export type { CatalogService };
 
 export type { ClientView, ConnectionInput, ConnectionView, Settings, ConnectionStatus };
 
@@ -86,12 +89,26 @@ export interface RingkeeperApi {
   moveFound(host: HostId, name: string, clientId: string): Promise<Result>;
   leaveFound(host: HostId, name: string): Promise<Result>;
   restoreApps(): Promise<Result<{ restored: string[]; problems: string[] }>>;
+  catalogServices(): Promise<Result<CatalogService[]>>;
+  addFromCatalog(
+    clientId: string,
+    serviceId: string,
+    optionId: string,
+    answers: Record<string, string>,
+    name?: string,
+  ): Promise<Result<{ connectionId: string; needsSignIn: boolean }>>;
+  signIn(clientId: string, connectionId: string): Promise<Result>;
+  cancelSignIn(): Promise<Result>;
+  openLink(url: string): Promise<Result>;
+  /** The sign-in address, sent while a sign-in waits, for a "copy link" fallback. */
+  onSignInLink(listener: (url: string) => void): () => void;
   onStateChanged(listener: (state: AppState) => void): () => void;
 }
 
 export const IPC = {
   call: "ringkeeper:call",
   state: "ringkeeper:state",
+  signInLink: "ringkeeper:signin-link",
 } as const;
 
-export type ApiMethod = Exclude<keyof RingkeeperApi, "onStateChanged" | "getState">;
+export type ApiMethod = Exclude<keyof RingkeeperApi, "onStateChanged" | "getState" | "onSignInLink">;

@@ -30,6 +30,9 @@ importers:
       '@ringkeeper/bridge':
         specifier: workspace:*
         version: link:../../packages/bridge
+      '@ringkeeper/catalog':
+        specifier: workspace:*
+        version: link:../../packages/catalog
       '@ringkeeper/gateway':
         specifier: workspace:*
         version: link:../../packages/gateway
@@ -60,6 +63,12 @@ importers:
         version: 8.3.8(@types/node@24.19.2)(esbuild@0.28.2)
 
   packages/bridge:
+    dependencies:
+      '@ringkeeper/gateway':
+        specifier: workspace:*
+        version: link:../gateway
+
+  packages/catalog:
     dependencies:
       '@ringkeeper/gateway':
         specifier: workspace:*

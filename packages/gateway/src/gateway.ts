@@ -20,7 +20,7 @@ import {
   type ClientConfig,
   type GatewayConfig,
 } from "./config.js";
-import { Upstream, type UpstreamStatus } from "./upstream.js";
+import { Upstream, type UpstreamEnv, type UpstreamStatus } from "./upstream.js";
 import { nullLogger, type Logger } from "./log.js";
 import {
   META_CALL_TOOL,
@@ -72,6 +72,8 @@ export interface GatewayOptions {
   onActiveClientChanged?: (clientId: string, source: SwitchSource) => void;
   onStatusChanged?: () => void;
   timings?: Partial<GatewayTimings>;
+  /** Bundled Node/uv and the OAuth sign-in store, for upstream connections. */
+  upstreamEnv?: UpstreamEnv;
 }
 
 interface Session {
@@ -189,12 +191,24 @@ export class Gateway {
           keep.add(existing);
           next.push(existing);
         } else {
-          next.push(new Upstream({ ...client }, conn, (u) => this.onUpstreamChanged(u), this.log));
+          next.push(new Upstream({ ...client }, conn, (u) => this.onUpstreamChanged(u), this.log, this.opts.upstreamEnv));
         }
       }
     }
     for (const u of this.upstreams) if (!keep.has(u)) void u.stop();
     this.upstreams = next;
+  }
+
+  /** Start one connection afresh (after the user signs in again, say). */
+  restartConnection(clientId: string, connectionId: string): void {
+    const i = this.upstreams.findIndex((u) => u.owner.id === clientId && u.conn.id === connectionId);
+    const old = this.upstreams[i];
+    if (!old) return;
+    const fresh = new Upstream(old.owner, old.conn, (u) => this.onUpstreamChanged(u), this.log, this.opts.upstreamEnv);
+    this.upstreams[i] = fresh;
+    void old.stop();
+    if (clientId === this.activeClientId) void fresh.ensureStarted();
+    this.opts.onStatusChanged?.();
   }
 
   private prewarmActive(): void {
@@ -276,7 +290,7 @@ export class Gateway {
       clientId: u.owner.id,
       connectionId: u.conn.id,
       status: u.status,
-      problem: u.status === "error" || u.status === "needs_key" ? u.error : undefined,
+      problem: u.status === "error" || u.status === "needs_key" || u.status === "needs_signin" ? u.error : undefined,
       tools: u.tools.length,
     }));
   }
@@ -345,7 +359,7 @@ export class Gateway {
   /** Plain lines about connections of the active client that aren't working. */
   private activeProblems(): string[] {
     return this.activeUpstreams()
-      .filter((u) => (u.status === "error" || u.status === "needs_key") && u.error)
+      .filter((u) => (u.status === "error" || u.status === "needs_key" || u.status === "needs_signin") && u.error)
       .map((u) => u.error!);
   }
 
@@ -437,7 +451,7 @@ export class Gateway {
     // A host may call a tool it remembers before that connection finished starting.
     if (upstream) await upstream.whenSettled(UPSTREAM_WAIT_MS);
 
-    if (upstream && (upstream.status === "error" || upstream.status === "needs_key")) {
+    if (upstream && (upstream.status === "error" || upstream.status === "needs_key" || upstream.status === "needs_signin")) {
       this.log({ ev: "refused_connection_not_working", tool: name, client: active.id, status: upstream.status });
       throw new UserFacingError(`${upstream.error} Nothing was run. Don't use another connector for ${active.name}'s data instead.`);
     }
@@ -479,7 +493,7 @@ export class Gateway {
   private listClientsResult(): CallToolResult {
     if (!this.config.clients.length) return text("No clients are set up yet. Add one in Ringkeeper Connect.");
     const statusWord = (s: UpstreamStatus) =>
-      s === "needs_key" ? "needs a key" : s === "error" ? "not working" : s === "ready" ? "ready" : "starts when needed";
+      s === "needs_key" ? "needs a key" : s === "needs_signin" ? "needs sign-in" : s === "error" ? "not working" : s === "ready" ? "ready" : "starts when needed";
     const lines = this.config.clients.map((c) => {
       const isActive = c.id === this.activeClientId;
       const conns =

@@ -204,3 +204,41 @@ describe("safety", () => {
     expect(slug("!!!", "client")).toBe("client");
   });
 });
+
+describe("connections that sign in", () => {
+  const notion: ConnectionInput = { kind: "remote", name: "Notion", url: "https://mcp.notion.com/mcp", auth: "oauth", fields: [] };
+
+  it("need a sign-in until one is saved, and the gateway is told where it lives", () => {
+    const { store, secrets } = setup();
+    store.addClient("Acme");
+    const view = store.addConnection("acme", notion);
+    expect(view).toMatchObject({ auth: "oauth", signedIn: false });
+    expect(store.toGatewayConfig().clients[0]!.connections[0]).toMatchObject({ oauth: { key: "acme/notion/~oauth" }, needsSignIn: true });
+    secrets.set("acme/notion/~oauth", JSON.stringify({ tokens: { access_token: "a", token_type: "Bearer" } }));
+    expect(store.list()[0]!.connections[0]).toMatchObject({ signedIn: true });
+    expect(store.toGatewayConfig().clients[0]!.connections[0]).toMatchObject({ needsSignIn: false });
+  });
+
+  it("a copy for another client needs that client's own sign-in", () => {
+    const { store, secrets } = setup();
+    store.addClient("Acme");
+    store.addClient("Globex");
+    store.addConnection("acme", notion);
+    secrets.set("acme/notion/~oauth", "{}");
+    expect(store.cloneConnection("acme", "notion", "globex", {})).toMatchObject({ auth: "oauth", signedIn: false });
+  });
+
+  it("changing the address forgets the sign-in; removing the connection deletes it", () => {
+    const { store, secrets } = setup();
+    store.addClient("Acme");
+    store.addConnection("acme", notion);
+    secrets.set("acme/notion/~oauth", "{}");
+    store.updateConnection("acme", "notion", { ...notion, fields: [] });
+    expect(secrets.has("acme/notion/~oauth")).toBe(true);
+    store.updateConnection("acme", "notion", { ...notion, url: "https://mcp.notion.com/mcp?x=1" });
+    expect(secrets.has("acme/notion/~oauth")).toBe(false);
+    secrets.set("acme/notion/~oauth", "{}");
+    store.removeConnection("acme", "notion");
+    expect(secrets.keys()).toEqual([]);
+  });
+});

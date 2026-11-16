@@ -25,6 +25,10 @@ export interface RemoteConnectionConfig extends ConnectionBase {
   /** "sse" for older servers; Streamable HTTP otherwise. */
   transport?: "sse";
   headers?: Record<string, string>;
+  /** Signs in with OAuth; tokens live in the OAuth state store under this key. */
+  oauth?: { key: string };
+  /** OAuth connection with no saved sign-in yet. */
+  needsSignIn?: boolean;
 }
 
 export type ConnectionConfig = LocalConnectionConfig | RemoteConnectionConfig;
@@ -63,5 +67,5 @@ export function findClient(config: GatewayConfig, idOrName: string): ClientConfi
 
 /** Changes when anything that affects how the connection runs changes (including keys). In memory only. */
 export function connectionFingerprint(c: ConnectionConfig): string {
-  return JSON.stringify(c.kind === "remote" ? [c.kind, c.url, c.transport, c.headers, c.missingKeys] : ["local", c.command, c.args, c.env, c.missingKeys]);
+  return JSON.stringify(c.kind === "remote" ? [c.kind, c.url, c.transport, c.headers, c.missingKeys, c.oauth?.key, c.needsSignIn] : ["local", c.command, c.args, c.env, c.missingKeys]);
 }

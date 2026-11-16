@@ -28,3 +28,9 @@ This code can break Claude Desktop, Cursor or Claude Code, so:
 
 - Work milestone by milestone (see the spec) and report results before moving on.
 - Verify host config paths and behaviour against current docs before relying on them.
+
+## Development
+
+- `pnpm install`, then `node scripts/fetch-runtimes.mjs` once (downloads the pinned Node and uv for this computer into `apps/desktop/runtimes/`, checksum-verified).
+- `pnpm test` builds and runs everything; `pnpm desktop` starts the app.
+- Never try the setup or Restore against your own AI apps while developing: start the app with `RINGKEEPER_FAKE_HOME` and `RINGKEEPER_DATA_DIR` (see `spike/README.md`).

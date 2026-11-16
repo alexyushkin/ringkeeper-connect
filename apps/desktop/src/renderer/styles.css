@@ -576,3 +576,58 @@ p.muted {
 .pad {
   padding: 0 8px;
 }
+
+/* ---------- catalog ---------- */
+.service-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 8px;
+  margin: 12px 0;
+}
+.service {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  text-align: left;
+  padding: 12px;
+  border-radius: 8px;
+}
+.service:hover {
+  border-color: var(--accent);
+}
+.service.other {
+  border-style: dashed;
+}
+.service-name {
+  font-weight: 600;
+}
+.hint {
+  font-size: 12px;
+  color: var(--muted);
+}
+.left {
+  align-self: flex-start;
+  padding-left: 0;
+}
+.notice.info {
+  background: var(--accent-soft);
+  color: var(--text);
+}
+.copy-row {
+  display: flex;
+  gap: 8px;
+  margin: 8px 0;
+}
+.waiting::before {
+  content: "◌ ";
+}
+.choice .badge {
+  margin-left: 6px;
+}
+
+.field > label > span {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}

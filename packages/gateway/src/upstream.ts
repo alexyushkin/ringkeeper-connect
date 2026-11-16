@@ -6,10 +6,20 @@ import { StreamableHTTPClientTransport, StreamableHTTPError } from "@modelcontex
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { ToolListChangedNotificationSchema, type CallToolResult, type Tool } from "@modelcontextprotocol/sdk/types.js";
+import { UnauthorizedError } from "@modelcontextprotocol/sdk/client/auth.js";
+import { OAuthError } from "@modelcontextprotocol/sdk/server/auth/errors.js";
 import type { ClientConfig, ConnectionConfig } from "./config.js";
+import { StoredOAuthProvider, type OAuthStateStore } from "./oauth.js";
+import { resolveLaunch, type BundledRuntimes } from "./runtimes.js";
 import type { Logger } from "./log.js";
 
-export type UpstreamStatus = "idle" | "starting" | "ready" | "error" | "needs_key" | "stopped";
+export type UpstreamStatus = "idle" | "starting" | "ready" | "error" | "needs_key" | "needs_signin" | "stopped";
+
+/** What upstreams need from the app around them. */
+export interface UpstreamEnv {
+  runtimes?: BundledRuntimes;
+  oauthStore?: OAuthStateStore;
+}
 
 /** After a failed start, wait this long before trying again on the next request. */
 const RETRY_AFTER_MS = 30_000;
@@ -24,19 +34,30 @@ export class Upstream {
   private starting?: Promise<void>;
   private failedAt = 0;
   private readonly secretsToRedact: string[];
+  private oauth?: StoredOAuthProvider;
+  /** Last lines the program printed, to explain a failed start (e.g. an offline download). */
+  private stderrTail = "";
 
   constructor(
     readonly owner: ClientConfig,
     readonly conn: ConnectionConfig,
     private readonly onToolsChanged: (u: Upstream) => void,
     private readonly log: Logger,
+    private readonly env: UpstreamEnv = {},
   ) {
     const values = conn.kind === "remote" ? Object.values(conn.headers ?? {}) : Object.values(conn.env ?? {});
     this.secretsToRedact = values.filter((v) => v.length >= 6);
     if (conn.missingKeys?.length) {
       this.status = "needs_key";
       this.error = `${conn.name} for ${owner.name} needs ${conn.missingKeys.join(" and ")}. Add it in Ringkeeper Connect under ${owner.name} > ${conn.name}.`;
+    } else if (conn.kind === "remote" && conn.needsSignIn) {
+      this.status = "needs_signin";
+      this.error = this.signInMessage(false);
     }
+  }
+
+  private signInMessage(again: boolean): string {
+    return `${this.conn.name} for ${this.owner.name} needs you to sign in${again ? " again" : ""}. Choose Sign in under ${this.owner.name} > ${this.conn.name} in Ringkeeper Connect.`;
   }
 
   private redact(text: string): string {
@@ -48,7 +69,7 @@ export class Upstream {
   /** Start if not started (or retry a failed start after a pause). Resolves when settled. */
   ensureStarted(): Promise<void> {
     this.lastUsed = Date.now();
-    if (this.status === "needs_key" || this.status === "ready") return Promise.resolve();
+    if (this.status === "needs_key" || this.status === "needs_signin" || this.status === "ready") return Promise.resolve();
     if (this.starting) return this.starting;
     if (this.status === "error" && Date.now() - this.failedAt < RETRY_AFTER_MS) return Promise.resolve();
     this.starting = this.start().finally(() => (this.starting = undefined));
@@ -67,17 +88,18 @@ export class Upstream {
       if (c.transport === "sse") {
         return new SSEClientTransport(new URL(c.url), { requestInit: { headers }, eventSourceInit: { fetch: (u, init) => fetch(u, { ...init, headers: { ...(init?.headers as Record<string, string>), ...headers } }) } });
       }
-      return new StreamableHTTPClientTransport(new URL(c.url), { requestInit: { headers } });
+      this.oauth = c.oauth && this.env.oauthStore ? new StoredOAuthProvider(this.env.oauthStore, c.oauth.key) : undefined;
+      return new StreamableHTTPClientTransport(new URL(c.url), { requestInit: { headers }, ...(this.oauth ? { authProvider: this.oauth } : {}) });
     }
-    const t = new StdioClientTransport({
-      command: c.command,
-      args: c.args ?? [],
-      env: { ...getDefaultEnvironment(), ...(c.env ?? {}) },
-      stderr: "pipe",
-    });
+    // npx / node / uvx run on the copies bundled with Ringkeeper Connect when present.
+    const launch = resolveLaunch(c.command, c.args ?? [], { ...getDefaultEnvironment(), ...(c.env ?? {}) }, this.env.runtimes ?? {});
+    const t = new StdioClientTransport({ command: launch.command, args: launch.args, env: launch.env, stderr: "pipe" });
+    this.stderrTail = "";
     // Must drain stderr or a chatty server blocks once the pipe buffer fills.
     t.stderr?.on("data", (chunk: Buffer) => {
-      this.log({ ev: "upstream_stderr", client: this.owner.id, conn: this.conn.id, text: this.redact(chunk.toString()).slice(0, 500) });
+      const text = this.redact(chunk.toString());
+      this.stderrTail = (this.stderrTail + text).slice(-2000);
+      this.log({ ev: "upstream_stderr", client: this.owner.id, conn: this.conn.id, text: text.slice(0, 500) });
     });
     return t;
   }
@@ -109,9 +131,15 @@ export class Upstream {
     } catch (err) {
       await client.close().catch(() => {});
       this.client = undefined;
-      this.status = "error";
-      this.failedAt = Date.now();
-      this.error = this.explain(err);
+      // Any refusal from the vendor's sign-in service (expired, revoked, unknown app) means: sign in again.
+      if (err instanceof UnauthorizedError || (this.oauth && err instanceof OAuthError) || this.oauth?.needsSignIn) {
+        this.status = "needs_signin";
+        this.error = this.signInMessage(true);
+      } else {
+        this.status = "error";
+        this.failedAt = Date.now();
+        this.error = this.explain(err);
+      }
       this.log({ ev: "upstream_error", client: this.owner.id, conn: this.conn.id, error: this.redact(String(err)).slice(0, 500) });
     } finally {
       this.onToolsChanged(this);
@@ -135,6 +163,9 @@ export class Upstream {
     }
     if (this.conn.kind === "remote" && /fetch failed|ECONNREFUSED|ENOTFOUND|ETIMEDOUT|network/i.test(String(err))) {
       return `Couldn't reach ${who}. Check your internet connection and the web address under ${where}.`;
+    }
+    if (this.conn.kind !== "remote" && /ENOTFOUND|EAI_AGAIN|ECONNREFUSED|ETIMEDOUT|getaddrinfo|network|registry\.npmjs|Failed to fetch|failed to download/i.test(this.stderrTail)) {
+      return `Couldn't download what ${who} needs to start. Check your internet connection, then try again.`;
     }
     if (/Connection closed/i.test(String(err))) {
       return `${who} stopped right after starting. Check its settings under ${where}.`;

@@ -10,7 +10,8 @@
   "dependencies": {
     "@ringkeeper/bridge": "workspace:*",
     "@ringkeeper/gateway": "workspace:*",
-    "@ringkeeper/hostconfig": "workspace:*"
+    "@ringkeeper/hostconfig": "workspace:*",
+    "@ringkeeper/catalog": "workspace:*"
   },
   "devDependencies": {
     "@types/react": "^19.3.0",

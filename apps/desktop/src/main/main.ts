@@ -2,13 +2,14 @@
 // gateway that AI apps connect to, and keeps a tray menu for switching clients.
 import fs from "node:fs";
 import { join } from "node:path";
-import { BrowserWindow, Menu, Notification, Tray, app, dialog, ipcMain, nativeImage, safeStorage } from "electron";
+import { BrowserWindow, Menu, Notification, Tray, app, dialog, ipcMain, nativeImage, safeStorage, shell } from "electron";
 import {
   ClientStore,
   Gateway,
   SecretStorageUnavailableError,
   SecretStore,
   StoreError,
+  secretOAuthStore,
   dataFiles,
   fileLogger,
   loadOrCreateInstallSettings,
@@ -22,7 +23,8 @@ import {
 } from "@ringkeeper/gateway";
 import { HostConfigError } from "@ringkeeper/hostconfig";
 import { IPC, type ApiMethod, type AppState, type Result } from "../shared/api.js";
-import { AppsError, AppsService, bridgeLaunch } from "./apps.js";
+import { AppsError, AppsService, bridgeLaunch, bundledRuntimes } from "./apps.js";
+import { CatalogActionError, CatalogActions } from "./catalog.js";
 
 const dataDir = resolveDataDir();
 const files = dataFiles(dataDir);
@@ -38,6 +40,7 @@ const log = fileLogger(files.log);
 
 let store: ClientStore;
 let apps: AppsService;
+let catalogActions: CatalogActions;
 let gateway: Gateway;
 let tray: Tray | undefined;
 let window: BrowserWindow | undefined;
@@ -78,7 +81,18 @@ function notify(title: string, body: string): void {
 }
 
 async function start(): Promise<void> {
-  store = new ClientStore(files.clients, new SecretStore(files.secrets, cipher));
+  const secrets = new SecretStore(files.secrets, cipher);
+  store = new ClientStore(files.clients, secrets);
+  const runtimes = bundledRuntimes({ packaged: app.isPackaged, resourcesPath: process.resourcesPath, appDir: join(__dirname, "..") });
+  const oauthStore = secretOAuthStore(secrets);
+  catalogActions = new CatalogActions({
+    store,
+    gateway: () => gateway,
+    oauthStore,
+    openExternal: (url) => void shell.openExternal(url),
+    showSignInLink: (url) => window?.webContents.send(IPC.signInLink, url),
+    onChange: () => scheduleRefresh(),
+  });
   apps = new AppsService({
     dataDir,
     cipher,
@@ -89,6 +103,7 @@ async function start(): Promise<void> {
         resourcesPath: process.resourcesPath,
         distDir: __dirname,
         dataDirOverride: process.env.RINGKEEPER_DATA_DIR,
+        runtimes,
       }),
     onChange: () => scheduleRefresh(),
     notify,
@@ -111,7 +126,9 @@ async function start(): Promise<void> {
     log,
     onActiveClientChanged: onSwitched,
     onStatusChanged: () => scheduleRefresh(),
+    upstreamEnv: { runtimes, oauthStore },
   });
+  log({ ev: "runtimes", node: !!runtimes.nodeDir, uv: !!runtimes.uvDir });
   const port = await gateway.start();
 
   writeJsonAtomic(files.runtime, {
@@ -220,6 +237,7 @@ const STATUS_WORDS: Record<string, string> = {
   idle: "starts when needed",
   starting: "starting…",
   needs_key: "needs a key",
+  needs_signin: "needs sign-in",
   error: "not working",
   stopped: "stopped",
 };
@@ -297,18 +315,28 @@ function registerIpc(): void {
     moveFound: (host, name: string, clientId: string) => apps.moveFound(host, name, clientId),
     leaveFound: (host, name: string) => apps.leaveFound(host, name),
     restoreApps: () => apps.restore(),
+    catalogServices: () => catalogActions.services(),
+    addFromCatalog: (clientId: string, serviceId: string, optionId: string, answers: Record<string, string>, name?: string) =>
+      catalogActions.add(clientId, serviceId, optionId, answers, name),
+    signIn: (clientId: string, connectionId: string) => catalogActions.signIn(clientId, connectionId),
+    cancelSignIn: () => catalogActions.cancelSignIn(),
+    openLink: (url: string) => catalogActions.openLink(url),
   };
 
   ipcMain.handle(IPC.state, () => appState());
-  ipcMain.handle(IPC.call, (_e, method: ApiMethod, args: unknown[]): Result<unknown> => {
+  ipcMain.handle(IPC.call, async (_e, method: ApiMethod, args: unknown[]): Promise<Result<unknown>> => {
     const fn = handlers[method] as ((...a: unknown[]) => unknown) | undefined;
     if (!fn) return { ok: false, error: "Ringkeeper Connect didn't understand that request." };
     try {
-      return { ok: true, value: fn(...args) ?? undefined };
+      return { ok: true, value: (await fn(...args)) ?? undefined };
     } catch (err) {
       // Store and secret errors are already written for people; anything else gets a generic line.
       const plain =
-        err instanceof StoreError || err instanceof SecretStorageUnavailableError || err instanceof AppsError || err instanceof HostConfigError
+        err instanceof StoreError ||
+        err instanceof SecretStorageUnavailableError ||
+        err instanceof AppsError ||
+        err instanceof HostConfigError ||
+        err instanceof CatalogActionError
           ? err.message
           : "Something went wrong saving that. Try again, and if it keeps happening, restart Ringkeeper Connect.";
       log({ ev: "ipc_error", method, error: String(err).slice(0, 300) });
