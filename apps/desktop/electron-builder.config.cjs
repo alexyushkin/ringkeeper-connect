@@ -22,6 +22,10 @@ module.exports = {
   appId: "com.ringkeeper.connect",
   productName: "Ringkeeper Connect",
   copyright: "Copyright © 2026 Alexey Yushkin",
+  // The workspace package is "@ringkeeper/desktop"; installed, the app is
+  // "ringkeeper-connect" (per-user install folder %LOCALAPPDATA%/Programs/ringkeeper-connect,
+  // separate from the Ringkeeper app's own folder).
+  extraMetadata: { name: "ringkeeper-connect" },
   directories: { output: "release", buildResources: "build" },
   // Everything is bundled into dist/ by scripts/build-desktop.mjs, so no node_modules ship.
   files: ["dist/**/*", "!dist/**/*.map", "!dist/bridge.mjs", "assets/**/*", "package.json", "!node_modules/**/*"],
