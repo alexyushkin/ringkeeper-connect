@@ -147,3 +147,7 @@ vite.config.ts.timestamp-*
 
 # Turbo Repo
 .turbo
+
+# Ringkeeper spike data and generated host configs (contain the local token)
+spike/.data/
+spike/out/
