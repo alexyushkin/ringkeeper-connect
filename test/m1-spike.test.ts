@@ -145,7 +145,7 @@ describe("gateway over HTTP", () => {
     const { gateway, token } = await startGateway();
     const c = await httpClient(gateway.port, token);
     const changed = waitForListChanged(c);
-    gateway.setOptions({ requireClientArg: true });
+    gateway.applyConfig({ ...spikeDefaultConfig(join(dist, "fixture-server.mjs")), options: { requireClientArg: true } });
     await changed;
     const tool = (await c.listTools()).tools.find((t) => t.name === "n8n_main__list_workflows")!;
     expect(tool.inputSchema.required).toContain(CLIENT_ARG);

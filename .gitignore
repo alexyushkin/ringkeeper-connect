@@ -151,3 +151,4 @@ vite.config.ts.timestamp-*
 # Ringkeeper spike data and generated host configs (contain the local token)
 spike/.data/
 spike/out/
+apps/desktop/.dev-data/

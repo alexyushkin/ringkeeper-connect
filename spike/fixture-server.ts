@@ -13,6 +13,9 @@ function arg(name: string, fallback: string): string {
 
 const service = arg("service", "n8n");
 const account = arg("account", "Acme");
+// Tests: print an env var to stderr, like a careless server might, to check the gateway redacts it.
+const echo = arg("echo-env", "");
+if (echo) process.stderr.write(`starting with ${echo}=${process.env[echo] ?? "(unset)"}\n`);
 
 const toolsByService: Record<string, Tool[]> = {
   n8n: [

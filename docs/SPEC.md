@@ -9,7 +9,7 @@ A desktop app for Windows and macOS that sits between AI apps (Claude Desktop, C
 ## Stack (decided)
 
 - Electron + TypeScript, electron-builder, electron-updater on GitHub Releases
-- Official MCP TypeScript SDK
+- Official MCP TypeScript SDK: **v1** (`@modelcontextprotocol/sdk` 1.x) for v1.0; revisit v2 before M5 once its Node HTTP adapter catches up (decided in M2)
 - Secrets encrypted with Electron safeStorage, never in plain JSON
 - pnpm monorepo: `apps/desktop`, `packages/gateway`, `packages/bridge`, `packages/catalog`
 
@@ -22,7 +22,7 @@ A desktop app for Windows and macOS that sits between AI apps (Claude Desktop, C
    - **Dynamic** (Claude Code, Cursor: verified in M1 to honour `tools/list_changed`): only the active client's tools, swapped via `tools/list_changed`, plus `ringkeeper_list_clients` and `ringkeeper_use_client`.
    - **Fixed** (default for **Claude Desktop** and any host not verified): a tool list that never changes: `ringkeeper_list_clients`, `ringkeeper_use_client`, `ringkeeper_search_tools`, and `ringkeeper_call_tool` (client + tool + arguments; the client must be the active one). Claude Desktop loads its tool list only at startup, so dynamic mode leaves it with stale tools.
    - The list of dynamic hosts is a setting, so a host that starts honouring `list_changed` can be moved without a code change.
-5. **Active client is app-wide, not per chat.** Claude Desktop shares one connection across all its chats, so switching (from the tray or with `ringkeeper_use_client`) switches every open chat; the UI must say so. Safeguards: every tool result is labeled with the client it ran against, and the gateway refuses calls to tools that aren't in the active client, with a plain message. A required client argument (`ringkeeper_client` on proxied tools in dynamic mode; `client` on `ringkeeper_call_tool` in fixed mode) is checked against the active client. In M1 it caught a real wrong-client call, so the recommendation is to have it **on by default** (to confirm in M2).
+5. **Active client is app-wide, not per chat.** Claude Desktop shares one connection across all its chats, so switching (from the tray or with `ringkeeper_use_client`) switches every open chat; the UI must say so. Safeguards: every tool result is labeled with the client it ran against, and the gateway refuses calls to tools that aren't in the active client, with a plain message. A required client argument (`ringkeeper_client` on proxied tools in dynamic mode; `client` on `ringkeeper_call_tool` in fixed mode) is checked against the active client. In M1 it caught a real wrong-client call, so it is **on by default** (decided in M2; can be turned off in settings). **When an AI app switches the client** with `ringkeeper_use_client`, the switch happens immediately and Ringkeeper shows a system notification ("Claude Desktop switched to Globex. Every chat now uses Globex."), and the tray updates.
 6. **Keep client work inside Ringkeeper.** When a Ringkeeper tool was missing, Claude Desktop used the user's own built-in Airtable connector and searched the wrong account. Every model-facing text (server instructions, meta tool descriptions, proxied tool descriptions, "no such tool" errors) therefore states that all work on the user's clients goes through Ringkeeper Connect, names the clients, and says never to use another connector for a client's data, even one for the same service.
 
 ## v1 features

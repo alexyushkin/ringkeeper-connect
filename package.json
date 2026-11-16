@@ -8,9 +8,11 @@
   },
   "scripts": {
     "build": "node scripts/build.mjs",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p apps/desktop/tsconfig.json --noEmit",
     "test": "vitest run",
-    "spike": "node dist/spike-tools.mjs"
+    "spike": "node dist/spike-tools.mjs",
+    "build:desktop": "node scripts/build-desktop.mjs",
+    "desktop": "node scripts/build-desktop.mjs && electron apps/desktop"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.32.2"

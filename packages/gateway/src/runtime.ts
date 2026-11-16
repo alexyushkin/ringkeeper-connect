@@ -25,8 +25,21 @@ export function dataFiles(dataDir: string) {
     runtime: join(dataDir, "runtime.json"),
     clients: join(dataDir, "clients.json"),
     state: join(dataDir, "state.json"),
+    secrets: join(dataDir, "secrets.json"),
+    launcher: join(dataDir, "launcher.json"),
     log: join(dataDir, "gateway.log"),
   };
+}
+
+/** How the bridge starts Ringkeeper Connect when it isn't running. Written by the app on every start. */
+export interface LaunchInfo {
+  command: string;
+  args: string[];
+}
+
+export function readLaunchInfo(dataDir: string): LaunchInfo | null {
+  const info = readJson<LaunchInfo>(dataFiles(dataDir).launcher);
+  return info && typeof info.command === "string" && Array.isArray(info.args) ? info : null;
 }
 
 /** Picked once per install and kept, so direct-HTTP host configs stay valid. */

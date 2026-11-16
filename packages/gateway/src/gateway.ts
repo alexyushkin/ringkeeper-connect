@@ -13,8 +13,14 @@ import {
   type JSONRPCMessage,
   type Tool,
 } from "@modelcontextprotocol/sdk/types.js";
-import { TOOL_PREFIX_SEPARATOR, findClient, type ClientConfig, type GatewayConfig } from "./config.js";
-import { Upstream } from "./upstream.js";
+import {
+  TOOL_PREFIX_SEPARATOR,
+  connectionFingerprint,
+  findClient,
+  type ClientConfig,
+  type GatewayConfig,
+} from "./config.js";
+import { Upstream, type UpstreamStatus } from "./upstream.js";
 import { nullLogger, type Logger } from "./log.js";
 import {
   META_CALL_TOOL,
@@ -29,75 +35,114 @@ import {
 } from "./meta-tools.js";
 
 export const CLIENT_ARG = "ringkeeper_client";
-const VERSION = "0.0.1";
+const VERSION = "0.1.0";
 const UPSTREAM_WAIT_MS = 10_000;
+const MAX_TOOL_NAME = 64;
+
+export interface GatewayTimings {
+  /** Stop a non-active client's connections after this long unused. */
+  upstreamIdleMs: number;
+  /** Forget a host session with no open stream after this long without requests. */
+  sessionIdleMs: number;
+  /** How often to check for both. */
+  sweepMs: number;
+}
+
+const DEFAULT_TIMINGS: GatewayTimings = { upstreamIdleMs: 10 * 60_000, sessionIdleMs: 30 * 60_000, sweepMs: 60_000 };
+
+/** Who changed the active client. */
+export type SwitchSource = { by: "app" } | { by: "ai"; host: string };
+
+export interface ConnectionStatus {
+  clientId: string;
+  connectionId: string;
+  status: UpstreamStatus;
+  /** Plain-language problem, if any. */
+  problem?: string;
+  tools: number;
+}
 
 export interface GatewayOptions {
   config: GatewayConfig;
-  activeClientId: string;
+  activeClientId: string | null;
   token: string;
   /** Preferred port (picked once at install). Falls back to a free one if taken. */
   port: number;
   log?: Logger;
-  onActiveClientChanged?: (clientId: string) => void;
+  onActiveClientChanged?: (clientId: string, source: SwitchSource) => void;
+  onStatusChanged?: () => void;
+  timings?: Partial<GatewayTimings>;
 }
 
 interface Session {
   id: string;
   server: Server;
   transport: StreamableHTTPServerTransport;
+  hostName?: string;
   host?: string;
   mode: ToolMode;
   /** Whether the host currently holds its listening (GET) stream open. */
   streamOpen: boolean;
   /** A tools-changed notice the host hasn't received yet. */
   pendingListChanged: boolean;
+  lastSeen: number;
 }
 
 const LIST_CHANGED = { method: "notifications/tools/list_changed" as const };
 
+/** The name people know each AI app by. */
+export function hostLabel(hostName: string | undefined): string {
+  if (!hostName) return "An AI app";
+  if (hostName === "claude-code") return "Claude Code";
+  if (hostName.startsWith("cursor")) return "Cursor";
+  if (hostName === "claude-ai" || hostName.startsWith("local-agent-mode-")) return "Claude Desktop";
+  return hostName;
+}
+
 export class Gateway {
-  private readonly upstreams: Upstream[] = [];
+  private upstreams: Upstream[] = [];
   private readonly sessions = new Map<string, Session>();
   private httpServer?: http.Server;
-  private activeClientId: string;
+  private activeClientId: string | null;
+  private config: GatewayConfig;
   private readonly log: Logger;
+  private readonly timings: GatewayTimings;
+  private sweepTimer?: NodeJS.Timeout;
   port = 0;
   usedFallbackPort = false;
 
   constructor(private readonly opts: GatewayOptions) {
     this.log = opts.log ?? nullLogger;
-    if (!findClient(opts.config, opts.activeClientId)) {
-      const first = opts.config.clients[0];
-      if (!first) throw new Error("Add at least one client before starting.");
-      this.activeClientId = first.id;
-    } else {
-      this.activeClientId = findClient(opts.config, opts.activeClientId)!.id;
-    }
+    this.config = opts.config;
+    this.timings = { ...DEFAULT_TIMINGS, ...(opts.timings ?? {}) };
+    this.activeClientId = this.pickActive(opts.activeClientId);
   }
 
-  get activeClient(): ClientConfig {
-    return this.opts.config.clients.find((c) => c.id === this.activeClientId)!;
+  private pickActive(wanted: string | null): string | null {
+    if (wanted && findClient(this.config, wanted)) return findClient(this.config, wanted)!.id;
+    return this.config.clients[0]?.id ?? null;
+  }
+
+  get activeClient(): ClientConfig | undefined {
+    return this.config.clients.find((c) => c.id === this.activeClientId);
   }
 
   get options() {
-    return this.opts.config.options;
+    return this.config.options;
   }
 
   async start(): Promise<number> {
-    for (const client of this.opts.config.clients) {
-      for (const conn of client.connections) {
-        const u = new Upstream(client, conn, (changed) => this.onUpstreamToolsChanged(changed), this.log);
-        this.upstreams.push(u);
-        void u.start();
-      }
-    }
+    this.syncUpstreams();
+    this.prewarmActive();
     this.port = await this.listen(this.opts.port);
+    this.sweepTimer = setInterval(() => this.sweep(), this.timings.sweepMs);
+    this.sweepTimer.unref();
     this.log({ ev: "gateway_started", port: this.port, fallback: this.usedFallbackPort, active: this.activeClientId });
     return this.port;
   }
 
   async stop(): Promise<void> {
+    if (this.sweepTimer) clearInterval(this.sweepTimer);
     for (const s of this.sessions.values()) await s.transport.close().catch(() => {});
     this.sessions.clear();
     await Promise.all(this.upstreams.map((u) => u.stop()));
@@ -105,32 +150,83 @@ export class Gateway {
     this.httpServer?.closeAllConnections?.();
   }
 
+  // ---------- config ----------
+
+  /**
+   * Take a new config (clients, connections, keys or settings changed).
+   * Connections whose settings didn't change keep running.
+   */
+  applyConfig(config: GatewayConfig, activeClientId?: string | null): void {
+    this.config = config;
+    const wanted = activeClientId === undefined ? this.activeClientId : activeClientId;
+    const before = this.activeClientId;
+    this.activeClientId = this.pickActive(wanted);
+    this.syncUpstreams();
+    this.prewarmActive();
+    this.log({ ev: "config_applied", clients: config.clients.length, active: this.activeClientId });
+    if (before !== this.activeClientId && this.activeClientId) {
+      this.opts.onActiveClientChanged?.(this.activeClientId, { by: "app" });
+    }
+    this.notifyToolsChanged("config_changed");
+    this.opts.onStatusChanged?.();
+  }
+
+  private syncUpstreams(): void {
+    const next: Upstream[] = [];
+    const keep = new Set<Upstream>();
+    for (const client of this.config.clients) {
+      for (const conn of client.connections) {
+        const existing = this.upstreams.find(
+          (u) =>
+            u.owner.id === client.id &&
+            u.conn.id === conn.id &&
+            connectionFingerprint(u.conn) === connectionFingerprint(conn),
+        );
+        if (existing) {
+          // Same settings: keep it running, but pick up renamed client/connection.
+          Object.assign(existing.owner, { name: client.name });
+          Object.assign(existing.conn, { name: conn.name });
+          keep.add(existing);
+          next.push(existing);
+        } else {
+          next.push(new Upstream({ ...client }, conn, (u) => this.onUpstreamChanged(u), this.log));
+        }
+      }
+    }
+    for (const u of this.upstreams) if (!keep.has(u)) void u.stop();
+    this.upstreams = next;
+  }
+
+  private prewarmActive(): void {
+    for (const u of this.upstreams) if (u.owner.id === this.activeClientId) void u.ensureStarted();
+  }
+
   // ---------- active client ----------
 
-  /** `from` is the session that asked for the switch; it gets the notice inline with its reply. */
+  /** `from` is the session that asked for the switch (an AI app); it gets the notice inline with its reply. */
   setActiveClient(idOrName: string, from?: Session): ClientConfig {
-    const client = findClient(this.opts.config, idOrName);
+    const client = findClient(this.config, idOrName);
     if (!client) {
-      const names = this.opts.config.clients.map((c) => c.name).join(", ");
-      throw new UserFacingError(`There's no client called "${idOrName}". Your clients are: ${names}.`);
+      const names = this.config.clients.map((c) => c.name).join(", ");
+      throw new UserFacingError(
+        names ? `There's no client called "${idOrName}". The clients are: ${names}.` : "No clients are set up yet. Add one in Ringkeeper Connect.",
+      );
     }
     if (client.id !== this.activeClientId) {
       this.activeClientId = client.id;
-      this.log({ ev: "active_client_changed", active: client.id });
-      this.opts.onActiveClientChanged?.(client.id);
+      const source: SwitchSource = from ? { by: "ai", host: hostLabel(from.hostName) } : { by: "app" };
+      this.log({ ev: "active_client_changed", active: client.id, by: source.by, host: from?.hostName });
+      this.prewarmActive();
+      this.opts.onActiveClientChanged?.(client.id, source);
       this.notifyToolsChanged("active_client_changed", from);
+      this.opts.onStatusChanged?.();
     }
     return client;
   }
 
-  setOptions(patch: Partial<GatewayConfig["options"]>): void {
-    Object.assign(this.opts.config.options, patch);
-    this.log({ ev: "options_changed", options: this.opts.config.options });
-    this.notifyToolsChanged("options_changed");
-  }
-
-  private onUpstreamToolsChanged(u: Upstream): void {
+  private onUpstreamChanged(u: Upstream): void {
     if (u.owner.id === this.activeClientId) this.notifyToolsChanged(`upstream:${u.conn.id}`);
+    this.opts.onStatusChanged?.();
   }
 
   // Notices sent while a host has no listening stream open are dropped by the
@@ -157,10 +253,38 @@ export class Gateway {
     });
   }
 
+  // ---------- housekeeping ----------
+
+  /** Park idle connections of other clients and forget abandoned host sessions. */
+  sweep(now = Date.now()): void {
+    for (const u of this.upstreams) {
+      if (u.owner.id !== this.activeClientId && u.status === "ready" && now - u.lastUsed > this.timings.upstreamIdleMs) {
+        void u.park().then(() => this.opts.onStatusChanged?.());
+      }
+    }
+    for (const s of [...this.sessions.values()]) {
+      if (!s.streamOpen && now - s.lastSeen > this.timings.sessionIdleMs) {
+        this.log({ ev: "session_expired", session: short(s.id), host: s.hostName });
+        this.sessions.delete(s.id);
+        void s.transport.close().catch(() => {});
+      }
+    }
+  }
+
+  connectionStatuses(): ConnectionStatus[] {
+    return this.upstreams.map((u) => ({
+      clientId: u.owner.id,
+      connectionId: u.conn.id,
+      status: u.status,
+      problem: u.status === "error" || u.status === "needs_key" ? u.error : undefined,
+      tools: u.tools.length,
+    }));
+  }
+
   // ---------- tools ----------
 
   private get clientNames(): string[] {
-    return this.opts.config.clients.map((c) => c.name);
+    return this.config.clients.map((c) => c.name);
   }
 
   modeForHost(hostName: string | undefined): ToolMode {
@@ -172,22 +296,34 @@ export class Gateway {
     return [...metaTools(this.clientNames), ...(await this.activeClientTools())];
   }
 
+  private activeUpstreams(): Upstream[] {
+    return this.upstreams.filter((u) => u.owner.id === this.activeClientId);
+  }
+
   /** The active client's tools, prefixed and labelled, as a dynamic-mode host sees them. */
-  private async activeClientTools(): Promise<Tool[]> {
+  private async activeClientTools(withClientArg = this.options.requireClientArg): Promise<Tool[]> {
     const client = this.activeClient;
-    const mine = this.upstreams.filter((u) => u.owner.id === client.id);
+    if (!client) return [];
+    const mine = this.activeUpstreams();
     await Promise.all(mine.map((u) => u.whenSettled(UPSTREAM_WAIT_MS)));
     const tools: Tool[] = [];
     for (const u of mine) {
       if (u.status !== "ready") continue;
-      for (const t of u.tools) tools.push(this.exposeTool(client, u, t));
+      for (const t of u.tools) {
+        const exposed = this.exposeTool(client, u, t, withClientArg);
+        if (exposed.name.length > MAX_TOOL_NAME) {
+          this.log({ ev: "tool_name_too_long", tool: exposed.name });
+          continue;
+        }
+        tools.push(exposed);
+      }
     }
     return tools;
   }
 
-  private exposeTool(client: ClientConfig, u: Upstream, t: Tool): Tool {
+  private exposeTool(client: ClientConfig, u: Upstream, t: Tool, withClientArg: boolean): Tool {
     const inputSchema = structuredClone(t.inputSchema ?? { type: "object" }) as Tool["inputSchema"];
-    if (this.options.requireClientArg) {
+    if (withClientArg) {
       inputSchema.properties = {
         ...(inputSchema.properties ?? {}),
         [CLIENT_ARG]: {
@@ -206,16 +342,25 @@ export class Gateway {
     };
   }
 
+  /** Plain lines about connections of the active client that aren't working. */
+  private activeProblems(): string[] {
+    return this.activeUpstreams()
+      .filter((u) => (u.status === "error" || u.status === "needs_key") && u.error)
+      .map((u) => u.error!);
+  }
+
   async callTool(name: string, args: Record<string, unknown>, from?: Session): Promise<CallToolResult> {
     try {
       if (name === META_LIST_CLIENTS) return this.listClientsResult();
       if (name === META_USE_CLIENT) {
         const wanted = typeof args.client === "string" ? args.client : "";
         const client = this.setActiveClient(wanted, from);
-        const toolNames = (await this.activeClientTools()).map((t) => t.name);
+        const toolNames = (await this.activeClientTools(false)).map((t) => t.name);
         const how = from?.mode === "fixed" ? ` Find and run them with ${META_SEARCH_TOOLS} and ${META_CALL_TOOL}.` : "";
+        const problems = this.activeProblems();
         return text(
-          `Now working with ${client.name}, in every chat of this app. Its tools: ${toolNames.join(", ") || "none yet"}.${how}`,
+          `Now working with ${client.name}, in every chat of this app. Its tools: ${toolNames.join(", ") || "none yet"}.${how}` +
+            (problems.length ? `\nNot working right now: ${problems.join(" ")}` : ""),
         );
       }
       if (name === META_SEARCH_TOOLS) return await this.searchTools(typeof args.query === "string" ? args.query : "");
@@ -230,24 +375,30 @@ export class Gateway {
       return await this.callProxied(name, forwarded, { required: this.options.requireClientArg, value: claimed });
     } catch (err) {
       if (err instanceof UserFacingError) return errorResult(err.message);
-      this.log({ ev: "call_failed", tool: name, error: String(err) });
+      this.log({ ev: "call_failed", tool: name, error: String(err).slice(0, 300) });
       return errorResult(`Something went wrong running ${name}: ${err instanceof Error ? err.message : String(err)}`);
     }
+  }
+
+  private requireActive(): ClientConfig {
+    const active = this.activeClient;
+    if (!active) throw new UserFacingError("No clients are set up yet. Add one in Ringkeeper Connect, then try again.");
+    return active;
   }
 
   /** Accept "list_bases" as well as "airtable_main__list_bases" when it's unambiguous in the active client. */
   private async resolveToolName(tool: string): Promise<string> {
     if (tool.includes(TOOL_PREFIX_SEPARATOR)) return tool;
-    const mine = this.upstreams.filter((u) => u.owner.id === this.activeClientId);
+    const mine = this.activeUpstreams();
     await Promise.all(mine.map((u) => u.whenSettled(UPSTREAM_WAIT_MS)));
     const matches = mine.filter((u) => u.tools.some((t) => t.name === tool));
     return matches.length === 1 ? `${matches[0]!.conn.id}${TOOL_PREFIX_SEPARATOR}${tool}` : tool;
   }
 
   private async searchTools(query: string): Promise<CallToolResult> {
-    const client = this.activeClient;
+    const client = this.requireActive();
     const words = query.toLowerCase().split(/\s+/).filter(Boolean);
-    const all = await this.activeClientTools();
+    const all = await this.activeClientTools(false);
     const hits = all.filter((t) => {
       const hay = `${t.name} ${t.description ?? ""}`.toLowerCase();
       return words.every((w) => hay.includes(w));
@@ -258,12 +409,15 @@ export class Gateway {
         ? `Tools for ${client.name} (the active client):`
         : `No ${client.name} tool matched "${query}", so here are all of them:`;
     const list = shown.map((t) => ({ name: t.name, description: t.description, arguments: t.inputSchema }));
+    const problems = this.activeProblems();
     return {
       content: [
         { type: "text", text: `[Client: ${client.name}]` },
         {
           type: "text",
-          text: `${header}\n${JSON.stringify(list, null, 1)}\n\nRun one with ${META_CALL_TOOL} (client: "${client.name}").`,
+          text:
+            `${header}\n${JSON.stringify(list, null, 1)}\n\nRun one with ${META_CALL_TOOL} (client: "${client.name}").` +
+            (problems.length ? `\nNot working right now (tell the user; don't use another connector instead): ${problems.join(" ")}` : ""),
         },
       ],
       _meta: { "ringkeeper/client": client.id },
@@ -275,35 +429,40 @@ export class Gateway {
     args: Record<string, unknown>,
     claim: { required: boolean; value: unknown },
   ): Promise<CallToolResult> {
+    const active = this.requireActive();
     const sep = name.indexOf(TOOL_PREFIX_SEPARATOR);
     const connId = sep > 0 ? name.slice(0, sep) : "";
     const toolName = sep > 0 ? name.slice(sep + TOOL_PREFIX_SEPARATOR.length) : name;
-    const active = this.activeClient;
+    const upstream = this.activeUpstreams().find((u) => u.conn.id === connId);
     // A host may call a tool it remembers before that connection finished starting.
-    await Promise.all(this.upstreams.filter((u) => u.conn.id === connId).map((u) => u.whenSettled(UPSTREAM_WAIT_MS)));
-    const upstream = this.upstreams.find((u) => u.owner.id === active.id && u.conn.id === connId);
+    if (upstream) await upstream.whenSettled(UPSTREAM_WAIT_MS);
+
+    if (upstream && (upstream.status === "error" || upstream.status === "needs_key")) {
+      this.log({ ev: "refused_connection_not_working", tool: name, client: active.id, status: upstream.status });
+      throw new UserFacingError(`${upstream.error} Nothing was run. Don't use another connector for ${active.name}'s data instead.`);
+    }
 
     if (!upstream || !upstream.tools.some((t) => t.name === toolName)) {
-      const elsewhere = this.upstreams.find(
-        (u) => u.owner.id !== active.id && u.conn.id === connId && u.tools.some((t) => t.name === toolName),
-      );
+      // Don't start other clients' connections just to explain; their names are enough.
+      const elsewhere = this.upstreams.find((u) => u.owner.id !== active.id && u.conn.id === connId);
       this.log({ ev: "refused_not_in_active_client", tool: name, active: active.id, owner: elsewhere?.owner.id });
       if (elsewhere) {
         throw new UserFacingError(
           `${name} belongs to ${elsewhere.owner.name}, but the active client is ${active.name}. Call ringkeeper_use_client with "${elsewhere.owner.name}" first.`,
         );
       }
-      throw new UserFacingError(`${active.name} has no tool called ${name || "that"}. Call ${META_SEARCH_TOOLS} or ${META_LIST_CLIENTS} to see what's available, and don't use another connector instead.`);
+      throw new UserFacingError(
+        `${active.name} has no tool called ${name || "that"}. Call ${META_SEARCH_TOOLS} or ${META_LIST_CLIENTS} to see what's available, and don't use another connector instead.`,
+      );
     }
 
-    const forwarded = args;
     if (claim.required) {
       const claimed = claim.value;
       if (typeof claimed !== "string" || claimed.trim() === "") {
         this.log({ ev: "refused_client_arg_missing", tool: name, active: active.id });
         throw new UserFacingError(`Say which client this is for (the active client is ${active.name}).`);
       }
-      const claimedClient = findClient(this.opts.config, claimed);
+      const claimedClient = findClient(this.config, claimed);
       if (!claimedClient || claimedClient.id !== active.id) {
         this.log({ ev: "refused_client_arg_mismatch", tool: name, active: active.id, claimed });
         throw new UserFacingError(
@@ -313,16 +472,30 @@ export class Gateway {
     }
 
     this.log({ ev: "call_proxied", tool: name, client: active.id });
-    const result = await upstream.callTool(toolName, forwarded);
+    const result = await upstream.callTool(toolName, args);
     return labelResult(result, active, upstream.conn.name);
   }
 
   private listClientsResult(): CallToolResult {
-    const lines = this.opts.config.clients.map((c) => {
-      const conns = c.connections.map((x) => x.name).join(", ") || "no connections yet";
-      return `${c.id === this.activeClientId ? "* " : "  "}${c.name} (${conns})${c.id === this.activeClientId ? " ← active" : ""}`;
+    if (!this.config.clients.length) return text("No clients are set up yet. Add one in Ringkeeper Connect.");
+    const statusWord = (s: UpstreamStatus) =>
+      s === "needs_key" ? "needs a key" : s === "error" ? "not working" : s === "ready" ? "ready" : "starts when needed";
+    const lines = this.config.clients.map((c) => {
+      const isActive = c.id === this.activeClientId;
+      const conns =
+        c.connections
+          .map((x) => {
+            const u = this.upstreams.find((up) => up.owner.id === c.id && up.conn.id === x.id);
+            return isActive && u ? `${x.name}: ${statusWord(u.status)}` : x.name;
+          })
+          .join(", ") || "no connections yet";
+      return `${isActive ? "* " : "  "}${c.name} (${conns})${isActive ? " ← active" : ""}`;
     });
-    return text(`Clients in Ringkeeper Connect:\n${lines.join("\n")}\n\nSwitch with ringkeeper_use_client. Switching applies to every chat in this app.`);
+    const problems = this.activeProblems();
+    return text(
+      `Clients in Ringkeeper Connect:\n${lines.join("\n")}\n\nSwitch with ringkeeper_use_client. Switching applies to every chat in this app.` +
+        (problems.length ? `\n\n${problems.join("\n")}` : ""),
+    );
   }
 
   // ---------- HTTP ----------
@@ -380,6 +553,7 @@ export class Gateway {
 
     const sessionId = header(req, "mcp-session-id");
     const session = sessionId ? this.sessions.get(sessionId) : undefined;
+    if (session) session.lastSeen = Date.now();
     this.log({ ev: "http", method: req.method, session: sessionId ? short(sessionId) : undefined, known: !!session });
 
     if (req.method === "POST") {
@@ -396,6 +570,7 @@ export class Gateway {
         session.streamOpen = true;
         res.on("close", () => {
           session.streamOpen = false;
+          session.lastSeen = Date.now();
           this.log({ ev: "stream_closed", session: short(session.id) });
         });
         // Let the transport register the stream before flushing a held notice.
@@ -410,7 +585,14 @@ export class Gateway {
   private async createSession(req: http.IncomingMessage, res: http.ServerResponse, body: unknown): Promise<void> {
     const hostName = (body as { params?: { clientInfo?: { name?: string } } }).params?.clientInfo?.name;
     const mode = this.modeForHost(hostName);
-    const session = { id: "", host: undefined, mode, streamOpen: false, pendingListChanged: false } as unknown as Session;
+    const session = {
+      id: "",
+      hostName,
+      mode,
+      streamOpen: false,
+      pendingListChanged: false,
+      lastSeen: Date.now(),
+    } as unknown as Session;
     const server = this.createSessionServer(session);
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: () => randomUUID(),
@@ -422,7 +604,7 @@ export class Gateway {
       },
     });
     transport.onclose = () => {
-      if (transport.sessionId) {
+      if (transport.sessionId && this.sessions.get(transport.sessionId) === session) {
         this.sessions.delete(transport.sessionId);
         this.log({ ev: "session_closed", session: short(transport.sessionId) });
       }
@@ -495,9 +677,11 @@ export class Gateway {
     }
     if (path === "/admin/options" && req.method === "POST") {
       const body = (await readBody(req)) as Partial<GatewayConfig["options"]> | undefined;
-      if (body && typeof body.requireClientArg === "boolean") this.setOptions({ requireClientArg: body.requireClientArg });
+      const options = { ...this.options };
+      if (body && typeof body.requireClientArg === "boolean") options.requireClientArg = body.requireClientArg;
       // Applies to sessions that start after the change.
-      if (body && Array.isArray(body.dynamicHosts)) this.setOptions({ dynamicHosts: body.dynamicHosts.map(String) });
+      if (body && Array.isArray(body.dynamicHosts)) options.dynamicHosts = body.dynamicHosts.map(String);
+      this.applyConfig({ ...this.config, options });
       return sendJson(res, 200, this.options);
     }
     if (path === "/admin/shutdown" && req.method === "POST") {
@@ -513,8 +697,8 @@ export class Gateway {
       port: this.port,
       active: this.activeClientId,
       options: this.options,
-      sessions: [...this.sessions.values()].map((s) => ({ id: short(s.id), host: s.host, mode: s.mode })),
-      upstreams: this.upstreams.map((u) => ({ client: u.owner.id, conn: u.conn.id, status: u.status, tools: u.tools.length, error: u.error })),
+      sessions: [...this.sessions.values()].map((s) => ({ id: short(s.id), host: s.host, mode: s.mode, streamOpen: s.streamOpen })),
+      upstreams: this.connectionStatuses(),
     };
   }
 }
