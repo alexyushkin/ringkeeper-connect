@@ -24,6 +24,8 @@ export interface StoredLocalConnection extends StoredBase {
 export interface StoredRemoteConnection extends StoredBase {
   kind: "remote";
   url: string;
+  /** "sse" for older servers; Streamable HTTP otherwise. */
+  transport?: "sse";
   headers: Record<string, StoredValue>;
 }
 export type StoredConnection = StoredLocalConnection | StoredRemoteConnection;
@@ -39,6 +41,8 @@ export interface Settings {
   requireClientArg: boolean;
   /** Hosts that honour tools/list_changed; everything else gets fixed mode. */
   dynamicHosts: string[];
+  /** The first-run setup (connecting AI apps) was completed or skipped. */
+  setupDone: boolean;
 }
 
 interface StoreFile {
@@ -48,7 +52,7 @@ interface StoreFile {
   settings: Settings;
 }
 
-export const DEFAULT_SETTINGS: Settings = { requireClientArg: true, dynamicHosts: [...DEFAULT_DYNAMIC_HOSTS] };
+export const DEFAULT_SETTINGS: Settings = { requireClientArg: true, dynamicHosts: [...DEFAULT_DYNAMIC_HOSTS], setupDone: false };
 
 // ---------- inputs and views (what the UI sends and sees) ----------
 
@@ -61,7 +65,7 @@ export interface FieldInput {
 
 export type ConnectionInput =
   | { kind: "local"; name: string; command: string; args: string[]; fields: FieldInput[] }
-  | { kind: "remote"; name: string; url: string; fields: FieldInput[] };
+  | { kind: "remote"; name: string; url: string; transport?: "sse"; fields: FieldInput[] };
 
 /** Secret values are never included; `isSet` says whether one is saved. */
 export interface FieldView {
@@ -73,7 +77,7 @@ export interface FieldView {
 
 export type ConnectionView =
   | { kind: "local"; id: string; name: string; command: string; args: string[]; fields: FieldView[]; missingKeys: string[] }
-  | { kind: "remote"; id: string; name: string; url: string; fields: FieldView[]; missingKeys: string[] };
+  | { kind: "remote"; id: string; name: string; url: string; transport?: "sse"; fields: FieldView[]; missingKeys: string[] };
 
 export interface ClientView {
   id: string;
@@ -171,7 +175,7 @@ export class ClientStore {
     const missingKeys = fields.filter((f) => !f.isSet).map((f) => f.name);
     return conn.kind === "local"
       ? { kind: "local", id: conn.id, name: conn.name, command: conn.command, args: [...conn.args], fields, missingKeys }
-      : { kind: "remote", id: conn.id, name: conn.name, url: conn.url, fields, missingKeys };
+      : { kind: "remote", id: conn.id, name: conn.name, url: conn.url, ...(conn.transport ? { transport: conn.transport } : {}), fields, missingKeys };
   }
 
   /**
@@ -199,7 +203,7 @@ export class ClientStore {
           const base = { id: conn.id, name: conn.name, ...(missing.length ? { missingKeys: missing } : {}) };
           return conn.kind === "local"
             ? { ...base, kind: "local", command: conn.command, args: [...conn.args], env: resolved }
-            : { ...base, kind: "remote", url: conn.url, headers: resolved };
+            : { ...base, kind: "remote", url: conn.url, ...(conn.transport ? { transport: conn.transport } : {}), headers: resolved };
         }),
       })),
     };
@@ -330,7 +334,7 @@ export class ClientStore {
     const conn: StoredConnection =
       input.kind === "local"
         ? { kind: "local", id, name, command: input.command.trim(), args: input.args, env: fields }
-        : { kind: "remote", id, name, url: input.url.trim(), headers: fields };
+        : { kind: "remote", id, name, url: input.url.trim(), ...(input.transport ? { transport: input.transport } : {}), headers: fields };
     client.connections.push(conn);
     this.commit();
     return this.viewConnection(conn);
@@ -346,7 +350,7 @@ export class ClientStore {
     const conn: StoredConnection =
       input.kind === "local"
         ? { kind: "local", id: connId, name, command: input.command.trim(), args: input.args, env: fields }
-        : { kind: "remote", id: connId, name, url: input.url.trim(), headers: fields };
+        : { kind: "remote", id: connId, name, url: input.url.trim(), ...(input.transport ? { transport: input.transport } : {}), headers: fields };
     client.connections[idx] = conn;
     this.commit();
     return this.viewConnection(conn);
@@ -378,7 +382,7 @@ export class ClientStore {
     const input: ConnectionInput =
       src.kind === "local"
         ? { kind: "local", name, command: src.command, args: [...src.args], fields }
-        : { kind: "remote", name, url: src.url, fields };
+        : { kind: "remote", name, url: src.url, ...(src.transport ? { transport: src.transport } : {}), fields };
     return this.addConnection(to.id, input);
   }
 }

@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
+import logo from "./assets/logo.png";
+import { AppsSection, FoundBanner, Setup } from "./Setup";
 import type { AppState, ClientView, ConnectionInput, ConnectionView, RingkeeperApi, Result } from "../shared/api";
 
 declare global {
@@ -25,9 +27,15 @@ export function App() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [dialog, setDialog] = useState<DialogState | null>(null);
+  // Setup stays on screen until the user leaves it, even after it marks itself done.
+  const [showSetup, setShowSetup] = useState(false);
+  const [hint, setHint] = useState<string | null>(null);
 
   useEffect(() => {
-    void api.getState().then(setState);
+    void api.getState().then((s) => {
+      setState(s);
+      if (!s.setupDone) setShowSetup(true);
+    });
     return api.onStateChanged(setState);
   }, []);
 
@@ -48,10 +56,36 @@ export function App() {
 
   if (!state) return <div className="loading">Loading…</div>;
 
+  if (showSetup) {
+    return (
+      <div className="setup-page">
+        {error && (
+          <div className="banner" role="alert">
+            <span>{error}</span>
+            <button className="link" onClick={() => setError(null)}>
+              Dismiss
+            </button>
+          </div>
+        )}
+        <Setup
+          clients={clients}
+          run={run}
+          onDone={() => {
+            setShowSetup(false);
+            void api.getState().then(setState);
+          }}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="app">
       <aside className="sidebar">
-        <div className="brand">Ringkeeper Connect</div>
+        <div className="brand">
+          <img src={logo} alt="" width={24} height={24} />
+          Ringkeeper Connect
+        </div>
         <div className="sidebar-label">Clients</div>
         <ul className="client-list">
           {clients.map((c) => (
@@ -66,6 +100,13 @@ export function App() {
         <button className="add-client" onClick={() => setDialog({ kind: "add-client" })}>
           + Add client
         </button>
+        <AppsSection
+          state={state}
+          run={run}
+          onSetup={() => setShowSetup(true)}
+          onRestore={() => setDialog({ kind: "restore" })}
+          onHint={setHint}
+        />
         <label className="setting">
           <input
             type="checkbox"
@@ -85,6 +126,16 @@ export function App() {
             </button>
           </div>
         )}
+
+        {hint && (
+          <div className="banner info" role="status">
+            <span>{hint}</span>
+            <button className="link" onClick={() => setHint(null)}>
+              OK
+            </button>
+          </div>
+        )}
+        <FoundBanner state={state} run={run} />
 
         {!selected ? (
           <Empty onAdd={() => setDialog({ kind: "add-client" })} />
@@ -111,6 +162,7 @@ export function App() {
           close={() => setDialog(null)}
           run={run}
           onClientAdded={(id) => setSelectedId(id)}
+          onHint={setHint}
         />
       )}
     </div>
@@ -223,7 +275,8 @@ type DialogState =
   | { kind: "delete-client"; client: ClientView }
   | { kind: "connection"; client: ClientView; conn?: ConnectionView }
   | { kind: "copy"; client: ClientView; conn: ConnectionView }
-  | { kind: "remove-connection"; client: ClientView; conn: ConnectionView };
+  | { kind: "remove-connection"; client: ClientView; conn: ConnectionView }
+  | { kind: "restore" };
 
 function Dialogs(props: {
   dialog: DialogState;
@@ -231,6 +284,7 @@ function Dialogs(props: {
   close: () => void;
   run: Run;
   onClientAdded: (id: string) => void;
+  onHint: (text: string) => void;
 }) {
   const { dialog, close, run } = props;
   switch (dialog.kind) {
@@ -287,6 +341,29 @@ function Dialogs(props: {
           onClose={close}
           onConfirm={async () => {
             if (await run(api.removeConnection(dialog.client.id, dialog.conn.id))) close();
+          }}
+        />
+      );
+    case "restore":
+      return (
+        <Confirm
+          title="Restore your AI apps' original settings?"
+          body="This puts Claude Desktop, Cursor and Claude Code back the way they were before Ringkeeper Connect, including the connections it took over. Your clients stay in Ringkeeper Connect. Restart those apps afterwards."
+          confirm="Restore"
+          danger
+          onClose={close}
+          onConfirm={async () => {
+            const r = await run(api.restoreApps());
+            if (r) {
+              props.onHint(
+                r.value.problems.length
+                  ? r.value.problems.join(" ")
+                  : r.value.restored.length
+                    ? `Restored ${r.value.restored.join(", ")}. Restart them to finish.`
+                    : "There was nothing to restore.",
+              );
+              close();
+            }
           }}
         />
       );

@@ -152,3 +152,4 @@ vite.config.ts.timestamp-*
 spike/.data/
 spike/out/
 apps/desktop/.dev-data/
+apps/desktop/.dev-home/

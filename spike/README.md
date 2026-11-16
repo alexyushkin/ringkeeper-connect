@@ -79,3 +79,15 @@ or removed.
 5. Run `pnpm spike desktop-remove`, then quit and reopen Claude Desktop.
 
 Then tell Claude "Desktop done".
+
+## Trying the setup wizard safely (M3)
+
+To try the wizard without touching your real AI apps, point the app at a
+fake user folder:
+
+```bash
+node spike/make-fake-home.mjs apps/desktop/.dev-home
+```
+
+Then start the app with `RINGKEEPER_FAKE_HOME` set to that folder and
+`RINGKEEPER_DATA_DIR` set to `apps/desktop/.dev-data`.

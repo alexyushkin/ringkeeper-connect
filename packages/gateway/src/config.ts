@@ -22,6 +22,8 @@ export interface LocalConnectionConfig extends ConnectionBase {
 export interface RemoteConnectionConfig extends ConnectionBase {
   kind: "remote";
   url: string;
+  /** "sse" for older servers; Streamable HTTP otherwise. */
+  transport?: "sse";
   headers?: Record<string, string>;
 }
 
@@ -61,5 +63,5 @@ export function findClient(config: GatewayConfig, idOrName: string): ClientConfi
 
 /** Changes when anything that affects how the connection runs changes (including keys). In memory only. */
 export function connectionFingerprint(c: ConnectionConfig): string {
-  return JSON.stringify(c.kind === "remote" ? [c.kind, c.url, c.headers, c.missingKeys] : ["local", c.command, c.args, c.env, c.missingKeys]);
+  return JSON.stringify(c.kind === "remote" ? [c.kind, c.url, c.transport, c.headers, c.missingKeys] : ["local", c.command, c.args, c.env, c.missingKeys]);
 }

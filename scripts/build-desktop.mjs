@@ -12,7 +12,8 @@ const root = resolve("apps/desktop");
 const out = resolve(root, "dist");
 fs.rmSync(out, { recursive: true, force: true });
 
-const common = { bundle: true, platform: "node", target: "node22", format: "cjs", sourcemap: true, logLevel: "info" };
+// Prefer ES module builds: some packages (jsonc-parser) ship a UMD "main" that loads files at runtime, which a bundle can't follow.
+const common = { bundle: true, platform: "node", target: "node22", format: "cjs", sourcemap: true, logLevel: "info", mainFields: ["module", "main"] };
 
 await build({ ...common, entryPoints: { main: resolve(root, "src/main/main.ts") }, outdir: out, outExtension: { ".js": ".cjs" }, external: ["electron"] });
 await build({ ...common, entryPoints: { preload: resolve(root, "src/main/preload.ts") }, outdir: out, outExtension: { ".js": ".cjs" }, external: ["electron"] });

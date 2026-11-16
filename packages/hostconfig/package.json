@@ -1,0 +1,14 @@
+{
+  "name": "@ringkeeper/hostconfig",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "Reads and safely edits the MCP sections of Claude Desktop, Cursor and Claude Code configs.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@ringkeeper/gateway": "workspace:*",
+    "jsonc-parser": "3.3.1"
+  }
+}

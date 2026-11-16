@@ -18,6 +18,13 @@ const api: RingkeeperApi = {
   removeConnection: call("removeConnection") as RingkeeperApi["removeConnection"],
   cloneConnection: call("cloneConnection") as RingkeeperApi["cloneConnection"],
   updateSettings: call("updateSettings") as RingkeeperApi["updateSettings"],
+  scanApps: call("scanApps") as RingkeeperApi["scanApps"],
+  runSetup: call("runSetup") as RingkeeperApi["runSetup"],
+  skipSetup: call("skipSetup") as RingkeeperApi["skipSetup"],
+  connectApp: call("connectApp") as RingkeeperApi["connectApp"],
+  moveFound: call("moveFound") as RingkeeperApi["moveFound"],
+  leaveFound: call("leaveFound") as RingkeeperApi["leaveFound"],
+  restoreApps: call("restoreApps") as RingkeeperApi["restoreApps"],
   onStateChanged: (listener) => {
     const handler = (_e: unknown, state: AppState) => listener(state);
     ipcRenderer.on(IPC.state, handler);

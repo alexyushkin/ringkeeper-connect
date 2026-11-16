@@ -20,7 +20,9 @@ import {
   type RuntimeInfo,
   type SwitchSource,
 } from "@ringkeeper/gateway";
+import { HostConfigError } from "@ringkeeper/hostconfig";
 import { IPC, type ApiMethod, type AppState, type Result } from "../shared/api.js";
+import { AppsError, AppsService, bridgeLaunch } from "./apps.js";
 
 const dataDir = resolveDataDir();
 const files = dataFiles(dataDir);
@@ -35,6 +37,7 @@ const startedInBackground = process.argv.includes("--background");
 const log = fileLogger(files.log);
 
 let store: ClientStore;
+let apps: AppsService;
 let gateway: Gateway;
 let tray: Tray | undefined;
 let window: BrowserWindow | undefined;
@@ -50,6 +53,12 @@ if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
   app.on("second-instance", (_e, argv) => {
+    // The uninstaller asks the running app to restore the AI apps' settings.
+    if (argv.includes("--restore")) {
+      const r = apps?.restore();
+      log({ ev: "restore_requested", restored: r?.restored, problems: r?.problems?.length });
+      return;
+    }
     if (!argv.includes("--background")) showWindow();
   });
   app.whenReady().then(start).catch((err) => fatal(err));
@@ -62,8 +71,36 @@ function fatal(err: unknown): void {
   app.exit(1);
 }
 
+function notify(title: string, body: string): void {
+  const note = new Notification({ title, body });
+  note.on("click", () => showWindow());
+  if (Notification.isSupported()) note.show();
+}
+
 async function start(): Promise<void> {
   store = new ClientStore(files.clients, new SecretStore(files.secrets, cipher));
+  apps = new AppsService({
+    dataDir,
+    cipher,
+    store,
+    launch: () =>
+      bridgeLaunch({
+        packaged: app.isPackaged,
+        resourcesPath: process.resourcesPath,
+        distDir: __dirname,
+        dataDirOverride: process.env.RINGKEEPER_DATA_DIR,
+      }),
+    onChange: () => scheduleRefresh(),
+    notify,
+  });
+
+  // Run by the uninstaller (M5): put the AI apps back and exit.
+  if (process.argv.includes("--restore")) {
+    const r = apps.restore();
+    log({ ev: "restore_on_uninstall", restored: r.restored, problems: r.problems });
+    app.exit(r.problems.length ? 1 : 0);
+    return;
+  }
   const install = loadOrCreateInstallSettings(dataDir);
 
   gateway = new Gateway({
@@ -97,7 +134,8 @@ async function start(): Promise<void> {
 
   registerIpc();
   createTray();
-  if (!startedInBackground || store.list().length === 0) showWindow();
+  apps.start();
+  if (!startedInBackground || !store.settings.setupDone) showWindow();
   log({ ev: "app_started", port, background: startedInBackground });
 }
 
@@ -162,10 +200,11 @@ function showWindow(): void {
 
 // ---------- tray ----------
 
+/** The Ringkeeper keyring, 16 px with a sharp 32 px version for high-DPI screens. */
 function trayIcon(): Electron.NativeImage {
-  const name = process.platform === "darwin" ? "trayTemplate.png" : "tray.png";
-  const img = nativeImage.createFromPath(join(__dirname, "..", "assets", name));
-  if (process.platform === "darwin") img.setTemplateImage(true);
+  const big = nativeImage.createFromPath(join(__dirname, "..", "assets", "tray@2x.png"));
+  const img = big.resize({ width: 16, height: 16, quality: "best" });
+  img.addRepresentation({ scaleFactor: 2, buffer: big.toPNG() });
   return img;
 }
 
@@ -229,7 +268,14 @@ function scheduleRefresh(): void {
 // ---------- IPC ----------
 
 function appState(): AppState {
-  return { clients: store.list(), statuses: gateway.connectionStatuses(), settings: store.settings };
+  return {
+    clients: store.list(),
+    statuses: gateway.connectionStatuses(),
+    settings: store.settings,
+    hosts: apps.hosts(),
+    found: apps.pendingFound(),
+    setupDone: store.settings.setupDone,
+  };
 }
 
 function registerIpc(): void {
@@ -244,6 +290,13 @@ function registerIpc(): void {
     cloneConnection: (from: string, connId: string, to: string, keys: Record<string, string>) =>
       store.cloneConnection(from, connId, to, keys),
     updateSettings: (patch) => store.updateSettings(patch),
+    scanApps: () => apps.scan(),
+    runSetup: (req) => apps.setup(req),
+    skipSetup: () => apps.skipSetup(),
+    connectApp: (host) => apps.connectApp(host),
+    moveFound: (host, name: string, clientId: string) => apps.moveFound(host, name, clientId),
+    leaveFound: (host, name: string) => apps.leaveFound(host, name),
+    restoreApps: () => apps.restore(),
   };
 
   ipcMain.handle(IPC.state, () => appState());
@@ -255,7 +308,7 @@ function registerIpc(): void {
     } catch (err) {
       // Store and secret errors are already written for people; anything else gets a generic line.
       const plain =
-        err instanceof StoreError || err instanceof SecretStorageUnavailableError
+        err instanceof StoreError || err instanceof SecretStorageUnavailableError || err instanceof AppsError || err instanceof HostConfigError
           ? err.message
           : "Something went wrong saving that. Try again, and if it keeps happening, restart Ringkeeper Connect.";
       log({ ev: "ipc_error", method, error: String(err).slice(0, 300) });
@@ -276,6 +329,7 @@ app.on("before-quit", () => {
 });
 
 app.on("will-quit", (e) => {
+  apps?.stop();
   if (!gateway) return;
   e.preventDefault();
   const current = readRuntimeInfo(dataDir);

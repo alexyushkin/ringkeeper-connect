@@ -3,6 +3,7 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport, getDefaultEnvironment } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { StreamableHTTPClientTransport, StreamableHTTPError } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { ToolListChangedNotificationSchema, type CallToolResult, type Tool } from "@modelcontextprotocol/sdk/types.js";
 import type { ClientConfig, ConnectionConfig } from "./config.js";
@@ -62,7 +63,11 @@ export class Upstream {
   private makeTransport(): Transport {
     const c = this.conn;
     if (c.kind === "remote") {
-      return new StreamableHTTPClientTransport(new URL(c.url), { requestInit: { headers: c.headers ?? {} } });
+      const headers = c.headers ?? {};
+      if (c.transport === "sse") {
+        return new SSEClientTransport(new URL(c.url), { requestInit: { headers }, eventSourceInit: { fetch: (u, init) => fetch(u, { ...init, headers: { ...(init?.headers as Record<string, string>), ...headers } }) } });
+      }
+      return new StreamableHTTPClientTransport(new URL(c.url), { requestInit: { headers } });
     }
     const t = new StdioClientTransport({
       command: c.command,
