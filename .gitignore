@@ -154,3 +154,6 @@ spike/out/
 apps/desktop/.dev-data/
 apps/desktop/.dev-home/
 apps/desktop/runtimes/
+apps/desktop/release/
+apps/desktop/.pkg-data/
+apps/desktop/.pkg-home/

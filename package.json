@@ -12,15 +12,15 @@
     "test": "vitest run",
     "spike": "node dist/spike-tools.mjs",
     "build:desktop": "node scripts/build-desktop.mjs",
-    "desktop": "node scripts/build-desktop.mjs && electron apps/desktop"
-  },
-  "dependencies": {
-    "@modelcontextprotocol/sdk": "1.32.2"
+    "desktop": "node scripts/build-desktop.mjs && electron apps/desktop",
+    "package:desktop": "node scripts/build-desktop.mjs && cd apps/desktop && electron-builder --config electron-builder.config.cjs"
   },
   "devDependencies": {
     "@types/node": "^24.19.2",
     "esbuild": "0.28.2",
+    "tslib": "^2.9.1",
     "typescript": "7.0.2",
-    "vitest": "5.1.0"
+    "vitest": "5.1.0",
+    "@modelcontextprotocol/sdk": "1.32.2"
   }
 }

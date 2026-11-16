@@ -1,39 +1,50 @@
+/*
+ * Colours from the Ringkeeper logo: the ring's blue (#019DFC → #0472FB) on the
+ * tile's deep navy (#022359 → #01112E), with the keys' cyan and purple as
+ * occasional accents. The window follows the system's light/dark setting.
+ */
 :root {
-  --bg: #f7f8f7;
+  --bg: #f4f7fc;
   --panel: #ffffff;
-  --sidebar: #eef2f1;
-  --text: #17201e;
-  --muted: #5d6b67;
-  --border: #d9e0de;
-  --accent: #0f766e;
+  --sidebar: #eaf0fb;
+  --text: #0b1733;
+  --muted: #56647f;
+  --border: #d5deee;
+  --accent: #0472fb;
+  --accent-strong: #035bd0;
+  --accent-gradient: linear-gradient(135deg, #019dfc, #0472fb);
   --accent-text: #ffffff;
-  --accent-soft: #d8efec;
-  --warn: #9a6200;
-  --warn-soft: #fdf1d8;
-  --bad: #b42318;
-  --bad-soft: #fde8e6;
-  --ok: #18794e;
-  --ok-soft: #dcf3e6;
+  --accent-soft: #e2edff;
+  --key-purple: #7c3aed;
+  --warn: #9a5b00;
+  --warn-soft: #fff3db;
+  --bad: #c0262d;
+  --bad-soft: #fde8e8;
+  --ok: #0f7a4d;
+  --ok-soft: #dcf5e9;
   color-scheme: light;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #121615;
-    --panel: #1a201e;
-    --sidebar: #161b1a;
-    --text: #e6ecea;
-    --muted: #97a5a1;
-    --border: #2c3532;
-    --accent: #2bb3a5;
-    --accent-text: #06201d;
-    --accent-soft: #163b37;
-    --warn: #f0b44c;
-    --warn-soft: #3a2c10;
-    --bad: #f1857a;
-    --bad-soft: #3d1a17;
-    --ok: #5ad19a;
-    --ok-soft: #12321f;
+    --bg: #081127;
+    --panel: #0f1c3a;
+    --sidebar: #0b1631;
+    --text: #e7eefb;
+    --muted: #94a5c6;
+    --border: #213460;
+    --accent: #3aa6ff;
+    --accent-strong: #63b8ff;
+    --accent-gradient: linear-gradient(135deg, #019dfc, #0472fb);
+    --accent-text: #ffffff;
+    --accent-soft: #11305e;
+    --key-purple: #b98cff;
+    --warn: #f3bb55;
+    --warn-soft: #362710;
+    --bad: #ff8a85;
+    --bad-soft: #3b1720;
+    --ok: #4ad7a0;
+    --ok-soft: #0e3327;
     color-scheme: dark;
   }
 }
@@ -78,10 +89,13 @@ button:disabled {
   cursor: default;
 }
 button.primary {
-  background: var(--accent);
-  border-color: var(--accent);
+  background: var(--accent-gradient);
+  border-color: transparent;
   color: var(--accent-text);
   font-weight: 600;
+}
+button.primary:hover {
+  filter: brightness(1.08);
 }
 button.danger {
   background: var(--bad);
@@ -622,6 +636,11 @@ p.muted {
 .waiting::before {
   content: "◌ ";
 }
+.candidates .badge,
+.choice .badge {
+  background: color-mix(in srgb, var(--key-purple) 16%, transparent);
+  color: var(--key-purple);
+}
 .choice .badge {
   margin-left: 6px;
 }
@@ -630,4 +649,13 @@ p.muted {
   font-size: 12px;
   font-weight: 600;
   color: var(--muted);
+}
+
+.setting.tight {
+  margin-top: 0;
+}
+.version {
+  font-size: 11px;
+  color: var(--muted);
+  padding: 0 8px;
 }

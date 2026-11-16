@@ -114,7 +114,20 @@ export class AppsService {
   }
 
   start(): void {
+    this.refreshEntries();
     this.manager.watch();
+  }
+
+  /**
+   * Keep each connected app's Ringkeeper entry pointing at this copy of the
+   * app (it may have been moved, or updated to a new place). Only writes when
+   * the entry actually differs.
+   */
+  private refreshEntries(): void {
+    const connected = this.hosts().filter((h) => h.status === "connected").map((h) => h.id);
+    for (const r of this.manager.connect(connected, [])) {
+      if (!r.ok) console.warn(r.error);
+    }
   }
 
   stop(): void {

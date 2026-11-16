@@ -1,0 +1,68 @@
+# Checks every push and pull request on Windows and macOS: types, tests,
+# and that the app still packages (unsigned, nothing published).
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-15]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - name: Enable pnpm (version from package.json)
+        run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - name: Fetch the bundled Node and uv (checksum-verified)
+        run: node scripts/fetch-runtimes.mjs
+      - run: pnpm typecheck
+      - run: pnpm test
+
+  package:
+    name: package (${{ matrix.os }})
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: windows-latest, args: "--win --dir --publish never", runtimes: win32-x64 }
+          - { os: macos-15, args: "--mac --dir --arm64 --publish never", runtimes: darwin-arm64 }
+    runs-on: ${{ matrix.os }}
+    env:
+      # CI packaging is a smoke test: never sign, never look for a certificate.
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - run: node scripts/fetch-runtimes.mjs ${{ matrix.runtimes }}
+      - run: pnpm package:desktop ${{ matrix.args }}
+      - name: Check the packaged app has its bridge and runtimes
+        shell: bash
+        run: |
+          set -e
+          res=$(find apps/desktop/release -type d -name resources -path "*unpacked*" -o -type d -name Resources -path "*.app/Contents/*" | head -1)
+          echo "resources: $res"
+          test -f "$res/bridge.mjs"
+          test -d "$res/runtimes/node"
+          test -d "$res/runtimes/uv"

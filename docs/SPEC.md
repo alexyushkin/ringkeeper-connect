@@ -54,6 +54,7 @@ A desktop app for Windows and macOS that sits between AI apps (Claude Desktop, C
 - GitHub Actions matrix (windows-latest, macos-latest), build on tag push, publish installers to GitHub Releases.
 - Windows code signing plus macOS Developer ID signing and notarization, using repo secrets. Builds must still succeed unsigned when secrets are missing (for forks).
 - Auto-update from Releases.
+- **As built in M5** (see [m5-results.md](m5-results.md)): electron-builder config in `apps/desktop/electron-builder.config.cjs`. Windows uses a per-user one-click NSIS installer; macOS gets a dmg + zip for each architecture, built in one job so the update feed lists both. Windows signing uses Azure Artifact Signing with the same secret and variable names as the `ringkeeper` repo, or a .pfx. macOS uses a Developer ID certificate and notarization. Each is used only when its secrets are present. Updates download in the background and install on the next restart. The uninstaller runs `--restore`, except during updates (the same uninstaller runs then, and restoring would disconnect everything). The app starts at login in the background (a setting, on by default). The app archive holds only the bundled code (no node_modules), and only the English Chromium language pack ships.
 
 ## UX rules
 

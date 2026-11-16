@@ -1,0 +1,102 @@
+# Builds installers when a version tag is pushed (v0.1.0, …) and publishes them
+# to GitHub Releases, where the app's automatic updates find them.
+#
+# Signing is used only when its secrets are set, so forks still build
+# (unsigned) installers:
+#
+# Windows (Azure Artifact Signing, same setup as the ringkeeper repo):
+#   secrets   AZURE_TENANT_ID, AZURE_CLIENT_ID, AZURE_CLIENT_SECRET
+#   variables AZURE_SIGNING_ENDPOINT, AZURE_SIGNING_ACCOUNT, AZURE_SIGNING_PROFILE,
+#             WIN_PUBLISHER_NAME (exactly as on the certificate)
+#   or a .pfx certificate: secrets WIN_CSC_LINK, WIN_CSC_KEY_PASSWORD
+# macOS (Developer ID + notarization):
+#   secrets   CSC_LINK, CSC_KEY_PASSWORD, APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID
+#
+# Unsigned macOS builds can't update themselves (macOS requires a signature);
+# users of those builds download new versions by hand.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - run: node scripts/fetch-runtimes.mjs
+      - run: pnpm typecheck
+      - run: pnpm test
+      - name: The tag matches the app's version
+        shell: bash
+        run: |
+          v=$(node -p "require('./apps/desktop/package.json').version")
+          test "v$v" = "${GITHUB_REF_NAME}" || { echo "Tag ${GITHUB_REF_NAME} doesn't match apps/desktop/package.json version $v"; exit 1; }
+
+  windows:
+    needs: test
+    runs-on: windows-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+      AZURE_SIGNING_ENDPOINT: ${{ vars.AZURE_SIGNING_ENDPOINT }}
+      AZURE_SIGNING_ACCOUNT: ${{ vars.AZURE_SIGNING_ACCOUNT }}
+      AZURE_SIGNING_PROFILE: ${{ vars.AZURE_SIGNING_PROFILE }}
+      WIN_PUBLISHER_NAME: ${{ vars.WIN_PUBLISHER_NAME }}
+      WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+      WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - run: node scripts/fetch-runtimes.mjs win32-x64
+      - name: Say whether this build is signed
+        shell: bash
+        run: |
+          if [ -n "$AZURE_CLIENT_ID" ]; then echo "Signing with Azure Artifact Signing";
+          elif [ -n "$WIN_CSC_LINK" ]; then echo "Signing with the .pfx certificate";
+          else echo "::warning::No Windows signing secrets: the installer will be unsigned (SmartScreen will warn)."; fi
+      - name: Build and publish
+        run: pnpm package:desktop --win --x64 --publish always
+
+  macos:
+    needs: test
+    # One job builds both architectures, so the update feed (latest-mac.yml)
+    # lists both and each Mac downloads its own.
+    runs-on: macos-15
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      CSC_LINK: ${{ secrets.CSC_LINK }}
+      CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - run: node scripts/fetch-runtimes.mjs darwin-arm64
+      - run: node scripts/fetch-runtimes.mjs darwin-x64
+      - name: Say whether this build is signed
+        run: |
+          if [ -n "$CSC_LINK" ]; then echo "Signing with the Developer ID certificate${APPLE_ID:+ and notarizing}";
+          else echo "::warning::No macOS signing secrets: the app will be unsigned and can't update itself."; echo "CSC_IDENTITY_AUTO_DISCOVERY=false" >> "$GITHUB_ENV"; fi
+      - name: Build and publish
+        run: pnpm package:desktop --mac --arm64 --x64 --publish always

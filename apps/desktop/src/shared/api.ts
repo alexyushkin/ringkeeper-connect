@@ -33,6 +33,11 @@ export interface AppState {
   found: FoundConnection[];
   /** The first-run setup has been completed or skipped. */
   setupDone: boolean;
+  version: string;
+  /** A downloaded update waiting for a restart. */
+  updateReady?: string;
+  /** Installed build (not a development run). */
+  packaged: boolean;
 }
 
 /** What the setup wizard can bring in (no key values). */
@@ -100,6 +105,7 @@ export interface RingkeeperApi {
   signIn(clientId: string, connectionId: string): Promise<Result>;
   cancelSignIn(): Promise<Result>;
   openLink(url: string): Promise<Result>;
+  restartToUpdate(): Promise<Result>;
   /** The sign-in address, sent while a sign-in waits, for a "copy link" fallback. */
   onSignInLink(listener: (url: string) => void): () => void;
   onStateChanged(listener: (state: AppState) => void): () => void;

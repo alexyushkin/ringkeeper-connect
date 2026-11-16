@@ -7,17 +7,17 @@
   "author": "Alexey Yushkin",
   "license": "MIT",
   "main": "dist/main.cjs",
-  "dependencies": {
+  "devDependencies": {
     "@ringkeeper/bridge": "workspace:*",
+    "@ringkeeper/catalog": "workspace:*",
     "@ringkeeper/gateway": "workspace:*",
     "@ringkeeper/hostconfig": "workspace:*",
-    "@ringkeeper/catalog": "workspace:*"
-  },
-  "devDependencies": {
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "6.3.0",
     "electron": "45.3.3",
+    "electron-builder": "26.18.0",
+    "electron-updater": "6.8.11",
     "react": "19.3.1",
     "react-dom": "19.3.1",
     "vite": "8.3.8"

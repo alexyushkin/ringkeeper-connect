@@ -2,7 +2,7 @@
 // gateway that AI apps connect to, and keeps a tray menu for switching clients.
 import fs from "node:fs";
 import { join } from "node:path";
-import { BrowserWindow, Menu, Notification, Tray, app, dialog, ipcMain, nativeImage, safeStorage, shell } from "electron";
+import { BrowserWindow, Menu, Notification, Tray, app, dialog, ipcMain, nativeImage, nativeTheme, safeStorage, shell } from "electron";
 import {
   ClientStore,
   Gateway,
@@ -25,6 +25,7 @@ import { HostConfigError } from "@ringkeeper/hostconfig";
 import { IPC, type ApiMethod, type AppState, type Result } from "../shared/api.js";
 import { AppsError, AppsService, bridgeLaunch, bundledRuntimes } from "./apps.js";
 import { CatalogActionError, CatalogActions } from "./catalog.js";
+import { Updates } from "./updates.js";
 
 const dataDir = resolveDataDir();
 const files = dataFiles(dataDir);
@@ -36,11 +37,14 @@ app.setPath("userData", join(dataDir, "electron"));
 app.setAppUserModelId(app.isPackaged ? "com.ringkeeper.connect" : process.execPath);
 
 const startedInBackground = process.argv.includes("--background");
+// The window follows the system theme. For screenshots and testing, RINGKEEPER_THEME=light|dark overrides it.
+if (process.env.RINGKEEPER_THEME === "light" || process.env.RINGKEEPER_THEME === "dark") nativeTheme.themeSource = process.env.RINGKEEPER_THEME;
 const log = fileLogger(files.log);
 
 let store: ClientStore;
 let apps: AppsService;
 let catalogActions: CatalogActions;
+let updates: Updates | undefined;
 let gateway: Gateway;
 let tray: Tray | undefined;
 let window: BrowserWindow | undefined;
@@ -146,14 +150,34 @@ async function start(): Promise<void> {
 
   store.onChange(() => {
     gateway.applyConfig(store.toGatewayConfig(), store.activeClientId);
+    applyLoginItem();
     scheduleRefresh();
   });
 
   registerIpc();
   createTray();
   apps.start();
+  applyLoginItem();
+  if (app.isPackaged) {
+    updates = new Updates({ log, notify, onChange: () => scheduleRefresh() });
+    updates.start();
+  }
   if (!startedInBackground || !store.settings.setupDone) showWindow();
   log({ ev: "app_started", port, background: startedInBackground });
+}
+
+/**
+ * Start with the computer (in the background, tray only), so AI apps can
+ * reach Ringkeeper right away. Only for installed builds: a development run
+ * would register the bare Electron program.
+ */
+function applyLoginItem(): void {
+  // Test runs use their own data folder (RINGKEEPER_DATA_DIR) and must never register at login.
+  if (!app.isPackaged || process.env.RINGKEEPER_DATA_DIR) return;
+  const openAtLogin = store.settings.startAtLogin;
+  if (app.getLoginItemSettings({ args: ["--background"] }).openAtLogin !== openAtLogin) {
+    app.setLoginItemSettings({ openAtLogin, args: ["--background"] });
+  }
 }
 
 /** The gateway switched clients (an AI app asked, or a client was removed). */
@@ -178,6 +202,7 @@ function onSwitched(clientId: string, source: SwitchSource): void {
 // ---------- window ----------
 
 function showWindow(): void {
+  if (process.platform === "darwin") void app.dock?.show();
   if (window && !window.isDestroyed()) {
     if (window.isMinimized()) window.restore();
     window.show();
@@ -207,6 +232,7 @@ function showWindow(): void {
     if (!quitting) {
       e.preventDefault();
       window?.hide();
+      if (process.platform === "darwin") app.dock?.hide();
     }
   });
   // Never navigate away or open new windows from the app.
@@ -217,8 +243,17 @@ function showWindow(): void {
 
 // ---------- tray ----------
 
-/** The Ringkeeper keyring, 16 px with a sharp 32 px version for high-DPI screens. */
+/**
+ * The Ringkeeper keyring, 16 px with a sharp 32 px version for high-DPI
+ * screens. On macOS a black "template" version, which the menu bar tints.
+ */
 function trayIcon(): Electron.NativeImage {
+  if (process.platform === "darwin") {
+    const t = nativeImage.createFromPath(join(__dirname, "..", "assets", "trayTemplate.png"));
+    t.addRepresentation({ scaleFactor: 2, buffer: nativeImage.createFromPath(join(__dirname, "..", "assets", "trayTemplate@2x.png")).toPNG() });
+    t.setTemplateImage(true);
+    return t;
+  }
   const big = nativeImage.createFromPath(join(__dirname, "..", "assets", "tray@2x.png"));
   const img = big.resize({ width: 16, height: 16, quality: "best" });
   img.addRepresentation({ scaleFactor: 2, buffer: big.toPNG() });
@@ -265,7 +300,26 @@ function refreshTray(): void {
     }
     items.push({ type: "separator" });
   }
+  const problems = active
+    ? statuses.filter((s) => s.clientId === active.id && (s.status === "error" || s.status === "needs_key" || s.status === "needs_signin")).length
+    : 0;
+  if (problems) items.push({ label: `Fix ${problems === 1 ? "1 connection" : `${problems} connections`}…`, click: () => showWindow() });
   items.push({ label: "Manage clients…", click: () => showWindow() });
+  items.push({ type: "separator" });
+  if (updates?.ready) {
+    items.push({ label: `Restart to update to ${updates.ready}`, click: () => updates?.restartToUpdate() });
+  } else if (updates) {
+    items.push({ label: "Check for updates", click: () => updates?.check() });
+  }
+  if (app.isPackaged) {
+    items.push({
+      label: "Start when I log in",
+      type: "checkbox",
+      checked: store.settings.startAtLogin,
+      click: (item) => store.updateSettings({ startAtLogin: item.checked }),
+    });
+  }
+  items.push({ label: `Version ${app.getVersion()}`, enabled: false });
   items.push({ type: "separator" });
   items.push({ label: "Quit Ringkeeper Connect", click: () => quit() });
 
@@ -292,6 +346,9 @@ function appState(): AppState {
     settings: store.settings,
     hosts: apps.hosts(),
     found: apps.pendingFound(),
+    version: app.getVersion(),
+    updateReady: updates?.ready,
+    packaged: app.isPackaged,
     setupDone: store.settings.setupDone,
   };
 }
@@ -321,6 +378,7 @@ function registerIpc(): void {
     signIn: (clientId: string, connectionId: string) => catalogActions.signIn(clientId, connectionId),
     cancelSignIn: () => catalogActions.cancelSignIn(),
     openLink: (url: string) => catalogActions.openLink(url),
+    restartToUpdate: () => updates?.restartToUpdate(),
   };
 
   ipcMain.handle(IPC.state, () => appState());

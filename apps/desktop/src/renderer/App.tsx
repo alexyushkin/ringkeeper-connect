@@ -117,6 +117,13 @@ export function App() {
           />
           <span>Ask AI apps to name the client on every action (recommended)</span>
         </label>
+        {state.packaged && (
+          <label className="setting tight">
+            <input type="checkbox" checked={state.settings.startAtLogin} onChange={(e) => void run(api.updateSettings({ startAtLogin: e.target.checked }))} />
+            <span>Start when I log in, so AI apps can always reach my clients</span>
+          </label>
+        )}
+        <div className="version">Version {state.version}</div>
       </aside>
 
       <main className="main">
@@ -134,6 +141,14 @@ export function App() {
             <span>{hint}</span>
             <button className="link" onClick={() => setHint(null)}>
               OK
+            </button>
+          </div>
+        )}
+        {state.updateReady && (
+          <div className="banner info" role="status">
+            <span>Version {state.updateReady} is ready. It installs the next time Ringkeeper Connect restarts.</span>
+            <button className="link" onClick={() => void run(api.restartToUpdate())}>
+              Restart now
             </button>
           </div>
         )}

@@ -43,6 +43,33 @@ function unpack(buf, archive, dest) {
   fs.rmSync(work, { recursive: true, force: true });
 }
 
+/**
+ * Drop what running connections never needs: C headers, docs, the changelog
+ * and corepack. npm (and npx) stay.
+ */
+function trimNode(dir) {
+  const doomed = [
+    "include", "share", "CHANGELOG.md", "README.md",
+    "node_modules/corepack", "lib/node_modules/corepack",
+    "corepack", "corepack.cmd", "corepack.ps1", "bin/corepack",
+    "install_tools.bat", "nodevars.bat",
+  ];
+  let freed = 0;
+  for (const rel of doomed) {
+    const p = join(dir, rel);
+    if (!fs.existsSync(p)) continue;
+    freed += size(p);
+    fs.rmSync(p, { recursive: true, force: true });
+  }
+  return freed;
+}
+
+function size(p) {
+  const st = fs.lstatSync(p);
+  if (!st.isDirectory()) return st.size;
+  return fs.readdirSync(p).reduce((n, e) => n + size(join(p, e)), 0);
+}
+
 for (const target of targets) {
   for (const name of ["node", "uv"]) {
     const t = manifest[name].targets[target];
@@ -50,7 +77,8 @@ for (const target of targets) {
     const dest = join(outRoot, target, name);
     const stamp = join(dest, ".pinned");
     if (fs.existsSync(stamp) && fs.readFileSync(stamp, "utf8") === t.sha256) {
-      console.log(`${name} ${manifest[name].version} for ${target}: already here`);
+      const freed = name === "node" ? trimNode(dest) : 0;
+      console.log(`${name} ${manifest[name].version} for ${target}: already here${freed ? ` (trimmed ${(freed / 1e6).toFixed(0)} MB)` : ""}`);
       continue;
     }
     process.stdout.write(`${name} ${manifest[name].version} for ${target}: downloading… `);
@@ -58,6 +86,7 @@ for (const target of targets) {
     const sum = createHash("sha256").update(buf).digest("hex");
     if (sum !== t.sha256) throw new Error(`Checksum mismatch for ${t.url}: expected ${t.sha256}, got ${sum}. Not using it.`);
     unpack(buf, t.archive, dest);
+    if (name === "node") trimNode(dest);
     fs.writeFileSync(stamp, t.sha256);
     console.log(`ok (${(buf.length / 1e6).toFixed(1)} MB, checksum verified)`);
   }

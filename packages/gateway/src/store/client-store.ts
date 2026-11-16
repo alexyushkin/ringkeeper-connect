@@ -46,6 +46,8 @@ export interface Settings {
   dynamicHosts: string[];
   /** The first-run setup (connecting AI apps) was completed or skipped. */
   setupDone: boolean;
+  /** Start in the background when the user logs in, so AI apps can reach it. */
+  startAtLogin: boolean;
 }
 
 interface StoreFile {
@@ -55,7 +57,7 @@ interface StoreFile {
   settings: Settings;
 }
 
-export const DEFAULT_SETTINGS: Settings = { requireClientArg: true, dynamicHosts: [...DEFAULT_DYNAMIC_HOSTS], setupDone: false };
+export const DEFAULT_SETTINGS: Settings = { requireClientArg: true, dynamicHosts: [...DEFAULT_DYNAMIC_HOSTS], setupDone: false, startAtLogin: true };
 
 // ---------- inputs and views (what the UI sends and sees) ----------
 

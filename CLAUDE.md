@@ -32,5 +32,5 @@ This code can break Claude Desktop, Cursor or Claude Code, so:
 ## Development
 
 - `pnpm install`, then `node scripts/fetch-runtimes.mjs` once (downloads the pinned Node and uv for this computer into `apps/desktop/runtimes/`, checksum-verified).
-- `pnpm test` builds and runs everything; `pnpm desktop` starts the app.
+- `pnpm test` builds and runs everything; `pnpm desktop` starts the app; `pnpm package:desktop --win --dir --publish never` builds an unpacked app (drop `--dir` for the installer). Never install a test build on your own computer: it registers at login and would set up your real AI apps.
 - Never try the setup or Restore against your own AI apps while developing: start the app with `RINGKEEPER_FAKE_HOME` and `RINGKEEPER_DATA_DIR` (see `spike/README.md`).
