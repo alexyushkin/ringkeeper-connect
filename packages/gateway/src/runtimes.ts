@@ -3,7 +3,7 @@
 // started, never in the stored settings, so the user's own setup (and
 // Restore) stay exactly as written.
 import fs from "node:fs";
-import { basename, join } from "node:path";
+import { join } from "node:path";
 
 export interface BundledRuntimes {
   /** Folder of the unpacked Node build (node.exe on Windows; bin/node elsewhere). */
@@ -41,9 +41,12 @@ export function runtimesPresent(rt: BundledRuntimes): { node: boolean; uv: boole
   return { node: !!p.nodeBin && fs.existsSync(p.nodeBin), uv: !!p.uvx && fs.existsSync(p.uvx) };
 }
 
-/** "npx", "npx.cmd", "C:\\…\\npx.CMD" → "npx" */
+/**
+ * "npx", "npx.cmd", "C:\\…\\npx.CMD", "/usr/local/bin/npx" → "npx". Splits on
+ * both kinds of slash: path.basename only knows the current platform's.
+ */
 function commandName(command: string): string {
-  return basename(command).toLowerCase().replace(/\.(cmd|exe|bat|ps1)$/, "");
+  return (command.split(/[\\/]/).pop() ?? command).toLowerCase().replace(/\.(cmd|exe|bat|ps1)$/, "");
 }
 
 function withPathFirst(env: Record<string, string>, dirs: string[], win: boolean): Record<string, string> {

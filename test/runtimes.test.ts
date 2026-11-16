@@ -31,7 +31,8 @@ function fakeRuntimes(platform: NodeJS.Platform) {
 describe("running connections on the bundled Node and uv", () => {
   it("rewrites npx (in any spelling) to the bundled node + npx, keeping the arguments", () => {
     const rt = fakeRuntimes("win32");
-    for (const cmd of ["npx", "npx.cmd", "C:\\Program Files\\nodejs\\npx.CMD"]) {
+    // Windows and Unix spellings must both be recognised on every platform (CI runs this on macOS too).
+    for (const cmd of ["npx", "npx.cmd", "C:\\Program Files\\nodejs\\npx.CMD", "/usr/local/bin/npx"]) {
       const l = resolveLaunch(cmd, ["-y", "n8n-mcp"], { Path: "C:\\Windows" }, rt);
       expect(l.command).toBe(join(rt.nodeDir, "node.exe"));
       expect(l.args).toEqual([join(rt.nodeDir, "node_modules", "npm", "bin", "npx-cli.js"), "-y", "n8n-mcp"]);
