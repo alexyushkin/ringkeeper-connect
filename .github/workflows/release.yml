@@ -42,8 +42,29 @@ jobs:
           v=$(node -p "require('./apps/desktop/package.json').version")
           test "v$v" = "${GITHUB_REF_NAME}" || { echo "Tag ${GITHUB_REF_NAME} doesn't match apps/desktop/package.json version $v"; exit 1; }
 
-  windows:
+  # Create the release once, as a draft, before the builds start. Each build
+  # uploads into it; it's published only after every build succeeded. (Letting
+  # each build create the release made two parallel uploads each create one:
+  # v0.1.0 ended up split across two releases.)
+  draft:
     needs: test
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Create the draft release with install notes
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            echo "Release $GITHUB_REF_NAME already exists; builds will upload to it."
+          else
+            sed "s/{{VERSION}}/$version/g" .github/release-notes.md > "$RUNNER_TEMP/notes.md"
+            gh release create "$GITHUB_REF_NAME" --draft --verify-tag --title "$version" --notes-file "$RUNNER_TEMP/notes.md"
+          fi
+
+  windows:
+    needs: draft
     runs-on: windows-latest
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -74,7 +95,7 @@ jobs:
         run: pnpm package:desktop --win --x64 --publish always
 
   macos:
-    needs: test
+    needs: draft
     # One job builds both architectures, so the update feed (latest-mac.yml)
     # lists both and each Mac downloads its own.
     runs-on: macos-15
@@ -100,3 +121,13 @@ jobs:
           else echo "::warning::No macOS signing secrets: the app will be unsigned and can't update itself."; echo "CSC_IDENTITY_AUTO_DISCOVERY=false" >> "$GITHUB_ENV"; fi
       - name: Build and publish
         run: pnpm package:desktop --mac --arm64 --x64 --publish always
+
+  # Everything built and uploaded: make the release public (and "latest").
+  publish:
+    needs: [windows, macos]
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Publish the release
+        run: gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft=false --latest

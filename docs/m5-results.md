@@ -73,3 +73,13 @@ Date: 2026-11-16.
 - **Installing and uninstalling the real installer** (including Restore on uninstall and an update with its guard). Test runs never register at login, but a real install would. It should be tried in a clean Windows VM or user account, not on a development machine.
 - **Signing and notarization:** none of the secrets are set in this repo yet.
 - **macOS:** packaging, menu bar icon, Dock behaviour, Keychain, and anything else, since there's no Mac here. The CI macOS jobs will be the first check.
+
+## First release: v0.1.0 (2026-11-16)
+
+- Published from `main` (6d8443f), unsigned: <https://github.com/alexyushkin/ringkeeper-connect/releases/tag/v0.1.0>.
+- **What went wrong:**
+  - The release workflow let each build create the GitHub release itself. Parallel uploads raced, and two "0.1.0" releases were created on the same tag: one with the Windows installer and `latest.yml`, the other with everything else.
+- **What I did about it:**
+  - I moved the Windows files, after checking their SHA-512 against `latest.yml`, into the main release and deleted the empty duplicate. The tag was unchanged.
+  - I added install notes to the release page.
+  - The workflow now creates one **draft** release first, the builds upload into it, and it's published only after every build succeeded (`.github/release-notes.md` holds the notes template).
