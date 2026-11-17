@@ -19,7 +19,12 @@ import {
   type HostId,
   type LaunchCommand,
   type Roots,
+  appForClientName,
+  appStatus,
 } from "@ringkeeper/hostconfig";
+import { readJson, writeJsonAtomic } from "@ringkeeper/gateway";
+import { AppStartWatcher } from "./app-processes.js";
+import type { HostView } from "../shared/api.js";
 import type { Cipher } from "@ringkeeper/gateway";
 import type { FoundConnection, ImportScan, SetupOutcome, SetupRequest } from "../shared/api.js";
 
@@ -86,10 +91,33 @@ const RESTART_HINT: Record<HostId, string> = {
   "claude-code": "Claude Code: new sessions pick it up automatically.",
 };
 
+/** Plain steps to check that an AI app really uses Ringkeeper. */
+export const HOW_TO_CHECK: Record<HostId, string[]> = {
+  "claude-desktop": [
+    "Quit Claude Desktop completely: right-click its icon near the clock (on a Mac, the menu bar) and choose Quit. Closing the window isn't enough.",
+    "Open Claude Desktop again and wait a few seconds. This page turns to Connected when it contacts Ringkeeper Connect.",
+    "Still not connected? In Claude Desktop, open Settings > Desktop app > Extensions > Edit config. The file that opens should mention \"ringkeeper-connect\". If it doesn't, choose Fix here and restart Claude Desktop again.",
+  ],
+  cursor: [
+    "Quit Cursor completely and open it again.",
+    "In Cursor, open Settings > MCP (Tools & Integrations). \"ringkeeper-connect\" should be listed and switched on.",
+    "If it's switched off, switch it on. This page turns to Connected within a few seconds.",
+  ],
+  "claude-code": [
+    "Start a new Claude Code session (close the terminal or tab and run claude again).",
+    "Type /mcp. \"ringkeeper-connect\" should be listed as connected.",
+    "This page turns to Connected as soon as a session uses it.",
+  ],
+};
+
 export class AppsService {
   readonly manager: HostManager;
   private readonly ledger: Ledger;
   private found: FoundConnection[] = [];
+  /** Last time each app's bridge contacted us (ms). Kept across restarts. */
+  private contacts: Partial<Record<HostId, number>>;
+  private readonly contactsFile: string;
+  private readonly starts: AppStartWatcher;
   /** Candidates from the last scan, so setup uses exactly what the user saw. */
   private lastScan = new Map<string, Candidate>();
 
@@ -104,6 +132,9 @@ export class AppsService {
     },
   ) {
     this.ledger = new Ledger(opts.dataDir, opts.cipher);
+    this.contactsFile = join(opts.dataDir, "app-contacts.json");
+    this.contacts = readJson<Partial<Record<HostId, number>>>(this.contactsFile) ?? {};
+    this.starts = new AppStartWatcher(() => opts.onChange());
     this.manager = new HostManager({
       roots: rootsForThisRun(),
       ledger: this.ledger,
@@ -114,28 +145,71 @@ export class AppsService {
   }
 
   start(): void {
+    // An app may read a different file than the one we set up (e.g. Claude
+    // Desktop's newer Claude-Data folder): move our entry there first.
+    this.manager.migrateMoved();
     this.refreshEntries();
     this.manager.watch();
+    this.starts.start();
   }
 
   /**
-   * Keep each connected app's Ringkeeper entry pointing at this copy of the
-   * app (it may have been moved, or updated to a new place). Only writes when
-   * the entry actually differs.
+   * Keep each set-up app's Ringkeeper entry pointing at this copy of the app
+   * (it may have been moved or updated). Only writes when the entry differs.
    */
   private refreshEntries(): void {
-    const connected = this.hosts().filter((h) => h.status === "connected").map((h) => h.id);
-    for (const r of this.manager.connect(connected, [])) {
+    const present = this.manager.views().filter((h) => h.status === "entry_present").map((h) => h.id);
+    for (const r of this.manager.connect(present, [])) {
       if (!r.ok) console.warn(r.error);
     }
   }
 
   stop(): void {
     this.manager.stop();
+    this.starts.stop();
   }
 
-  hosts() {
-    return this.manager.views();
+  /** The bridge of some app contacted us: remember it, by app. */
+  recordContact(contact: { app?: string; hostName?: string; at: number }): void {
+    const known = ["claude-desktop", "cursor", "claude-code"] as const;
+    const id = (known as readonly string[]).includes(contact.app ?? "") ? (contact.app as HostId) : appForClientName(contact.hostName);
+    if (!id) return;
+    this.contacts[id] = contact.at;
+    try {
+      writeJsonAtomic(this.contactsFile, this.contacts, 0o644);
+    } catch {
+      // Only affects the status shown; never fatal.
+    }
+    // Statuses depend on contact: refresh the window and tray.
+    this.opts.onChange();
+  }
+
+  /** Each app with whether it really uses Ringkeeper (see appStatus). */
+  hosts(): HostView[] {
+    const now = Date.now();
+    const starts = this.starts.times;
+    return this.manager.views().map((v) => ({
+      id: v.id,
+      label: v.label,
+      status: appStatus(v, this.contacts[v.id], v.id === "claude-code" ? undefined : starts[v.id], now),
+      problem: v.problem,
+      note: v.note,
+      configPath: v.configPath,
+      otherConnections: v.otherConnections,
+      lastContactAt: this.contacts[v.id],
+      howToCheck: HOW_TO_CHECK[v.id],
+    }));
+  }
+
+  /** Put our entry back after the app removed it (with a backup, like every change). */
+  fixApp(host: HostId): void {
+    const r = this.manager.connect([host], [])[0];
+    if (!r || !r.ok) throw new AppsError(r?.error ?? `${HOST_LABELS[host]} isn't installed.`);
+    this.opts.onChange();
+  }
+
+  configPathOf(host: HostId): string {
+    return this.manager.locations().find((l) => l.id === host)!.configPath;
   }
 
   pendingFound(): FoundConnection[] {
@@ -153,6 +227,11 @@ export class AppsService {
       this.opts.notify(
         `${app} was reconnected`,
         `${app} removed Ringkeeper Connect from its settings, so it was put back. If your clients' tools are missing, restart ${app}.`,
+      );
+    } else if (e.kind === "moved") {
+      this.opts.notify(
+        `${app} now uses the right settings`,
+        `${app} reads its settings from a different place than before, so Ringkeeper Connect moved its entry there and undid its changes in the old one. Restart ${app} to finish.`,
       );
     } else {
       this.opts.notify(
@@ -200,7 +279,10 @@ export class AppsService {
       }
     }
 
-    const installed = this.hosts().filter((h) => h.status === "connected" || h.status === "not_connected").map((h) => h.id);
+    const installed = this.manager
+      .views()
+      .filter((h) => h.status !== "not_installed" && h.status !== "unreadable")
+      .map((h) => h.id);
     const take = added.flatMap((a) => a.cand.sources);
     const results = this.manager.connect(installed, take);
     const failedHosts = new Set(results.filter((r) => !r.ok).map((r) => r.host));

@@ -48,6 +48,8 @@ export interface Settings {
   setupDone: boolean;
   /** Start in the background when the user logs in, so AI apps can reach it. */
   startAtLogin: boolean;
+  /** The "bring in what your apps already use" wizard was offered for an empty first client. */
+  bringInOffered: boolean;
 }
 
 interface StoreFile {
@@ -57,7 +59,7 @@ interface StoreFile {
   settings: Settings;
 }
 
-export const DEFAULT_SETTINGS: Settings = { requireClientArg: true, dynamicHosts: [...DEFAULT_DYNAMIC_HOSTS], setupDone: false, startAtLogin: true };
+export const DEFAULT_SETTINGS: Settings = { requireClientArg: true, dynamicHosts: [...DEFAULT_DYNAMIC_HOSTS], setupDone: false, startAtLogin: true, bringInOffered: false };
 
 // ---------- inputs and views (what the UI sends and sees) ----------
 

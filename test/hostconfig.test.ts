@@ -270,11 +270,15 @@ describe("connecting apps and restoring them", () => {
     expect(desktop.mcpServers[RINGKEEPER_ENTRY]).toEqual({
       command: "C:\\Program Files\\Ringkeeper Connect\\node.exe",
       args: ["C:\\Program Files\\Ringkeeper Connect\\bridge.mjs"],
+      // So the bridge can tell Ringkeeper which app launched it.
+      env: { RINGKEEPER_APP: "claude-desktop" },
     });
     expect(outsideServers(m.read(m.paths.desktop))).toBe(outsideServers(claudeDesktop));
     // Cursor and Claude Code want the type spelled out.
     expect(JSON.parse(m.read(m.paths.code)).mcpServers[RINGKEEPER_ENTRY].type).toBe("stdio");
-    expect(m.manager.views().map((v) => v.status)).toEqual(["connected", "connected", "connected"]);
+    expect(JSON.parse(m.read(m.paths.code)).mcpServers[RINGKEEPER_ENTRY].env).toEqual({ RINGKEEPER_APP: "claude-code" });
+    // Written, but that alone doesn't mean the apps use it (see app status).
+    expect(m.manager.views().map((v) => v.status)).toEqual(["entry_present", "entry_present", "entry_present"]);
   });
 
   it("keeps its records and backups encrypted, since they contain keys", () => {
@@ -425,5 +429,160 @@ describe("Claude Desktop extensions", () => {
       ["Airtable", "airtable"],
       ["files", undefined],
     ]);
+  });
+});
+
+describe("Claude Desktop's newer settings folder (Claude-Data)", () => {
+  /** %LOCALAPPDATA%\Claude-Data\<install id>\claude_desktop_config.json, as seen on a real Windows install. */
+  function claudeData(m: ReturnType<typeof machine>, id: string, text: string | null, mtimeSec?: number): string {
+    const dir = join(m.home, "AppData", "Local", "Claude-Data", id);
+    fs.mkdirSync(dir, { recursive: true });
+    const file = join(dir, "claude_desktop_config.json");
+    if (text !== null) {
+      fs.writeFileSync(file, text);
+      if (mtimeSec !== undefined) fs.utimesSync(file, mtimeSec, mtimeSec);
+    }
+    return file;
+  }
+
+  it("uses the Claude-Data file when there is one, over the classic and Store files", () => {
+    const m = machine();
+    const store = join(m.home, "AppData", "Local", "Packages", "Claude_pzs8sxrjxfjjc", "LocalCache", "Roaming", "Claude");
+    fs.mkdirSync(store, { recursive: true });
+    fs.writeFileSync(join(store, "claude_desktop_config.json"), "{}");
+    const file = claudeData(m, "claude_pzs8sxrjxfjjc", claudeDesktop);
+    const loc = locateHosts(m.roots)[0]!;
+    expect(loc).toMatchObject({ configPath: file, installed: true, exists: true });
+    expect(loc.note).toBeUndefined();
+  });
+
+  it("picks the most recently changed one when there are several, and says which", () => {
+    const m = machine();
+    claudeData(m, "claude_old111", "{}", 1_700_000_000);
+    const newest = claudeData(m, "claude_new222", "{}", 1_800_000_000);
+    claudeData(m, "claude_mid333", "{}", 1_750_000_000);
+    const loc = locateHosts(m.roots)[0]!;
+    expect(loc.configPath).toBe(newest);
+    expect(loc.note).toContain("3 places");
+    expect(loc.note).toContain("claude_new222");
+  });
+
+  it("ignores an empty Claude-Data folder and keeps using the classic file", () => {
+    const m = machine();
+    fs.mkdirSync(join(m.home, "AppData", "Local", "Claude-Data"), { recursive: true });
+    expect(locateHosts(m.roots)[0]!.configPath).toBe(m.paths.desktop);
+  });
+
+  it("keeps the classic file when a Claude-Data folder has no settings file yet", () => {
+    const m = machine();
+    claudeData(m, "claude_pzs8sxrjxfjjc", null);
+    expect(locateHosts(m.roots)[0]!.configPath).toBe(m.paths.desktop);
+  });
+
+  it("uses a Claude-Data folder without a file when there is no classic file either", () => {
+    const m = machine({ desktop: null });
+    const file = claudeData(m, "claude_pzs8sxrjxfjjc", null);
+    expect(locateHosts(m.roots)[0]).toMatchObject({ configPath: file, installed: true, exists: false });
+  });
+
+  it("finds the 3P edition on Windows only when the standard app isn't there", () => {
+    const root = tempDir();
+    const home = join(root, "home");
+    const local = join(home, "AppData", "Local");
+    const roaming = join(home, "AppData", "Roaming");
+    fs.mkdirSync(join(local, "Claude-3p"), { recursive: true });
+    fs.mkdirSync(roaming, { recursive: true });
+    const roots: Roots = { platform: "win32", home, appData: roaming, localAppData: local };
+    const loc = locateHosts(roots)[0]!;
+    expect(loc.configPath).toBe(join(local, "Claude-3p", "claude_desktop_config.json"));
+    expect(loc.note).toContain("3P");
+  });
+
+  it("on a Mac, uses Application Support/Claude, or the 3P edition's folder if that's the only one", () => {
+    const root = tempDir();
+    const support = join(root, "Library", "Application Support");
+    fs.mkdirSync(join(support, "Claude-3p"), { recursive: true });
+    const roots: Roots = { platform: "darwin", home: root };
+    expect(locateHosts(roots)[0]!.configPath).toBe(join(support, "Claude-3p", "claude_desktop_config.json"));
+    fs.mkdirSync(join(support, "Claude"), { recursive: true });
+    expect(locateHosts(roots)[0]).toMatchObject({ configPath: join(support, "Claude", "claude_desktop_config.json"), installed: true });
+  });
+
+  it("moves Ringkeeper's entry to the file Claude Desktop really reads, and undoes its changes in the old one (with backups)", () => {
+    const m = machine();
+    // v0.1.0 set up the classic file...
+    m.manager.connect(["claude-desktop"], [{ host: "claude-desktop", name: "n8n" }]);
+    expect(RINGKEEPER_ENTRY in JSON.parse(m.read(m.paths.desktop)).mcpServers).toBe(true);
+    // ...but this Claude Desktop reads Claude-Data.
+    const real = claudeData(m, "claude_pzs8sxrjxfjjc", claudeDesktopCrlfBom);
+    const backupsBefore = m.ledger.listBackups("claude-desktop").length;
+
+    const moves = m.manager.migrateMoved();
+    expect(moves).toEqual([{ host: "claude-desktop", from: m.paths.desktop, to: real, ok: true }]);
+    expect(m.events).toContainEqual({ kind: "moved", host: "claude-desktop", from: m.paths.desktop, to: real });
+
+    // The old file is exactly as it was before Ringkeeper.
+    expect(m.read(m.paths.desktop)).toBe(claudeDesktop);
+    // The real one gains the entry and keeps everything else, line endings and BOM included.
+    const after = m.read(real);
+    expect(after.startsWith("﻿")).toBe(true);
+    expect(after).toContain("\r\n");
+    expect(outsideServers(after)).toBe(outsideServers(claudeDesktopCrlfBom));
+    const servers = JSON.parse(after.replace(/^﻿/, "")).mcpServers;
+    expect(Object.keys(servers)).toEqual(["playwright", "n8n", RINGKEEPER_ENTRY]);
+    // A backup was kept for each change.
+    expect(m.ledger.listBackups("claude-desktop").length).toBeGreaterThan(backupsBefore);
+    expect(m.ledger.host("claude-desktop")!.path).toBe(real);
+    expect(m.manager.views()[0]).toMatchObject({ status: "entry_present", configPath: real });
+
+    // Nothing more to move.
+    expect(m.manager.migrateMoved()).toEqual([]);
+  });
+
+  it("doesn't move anything when the file it set up is still the right one", () => {
+    const m = machine();
+    m.manager.connect(["claude-desktop"], []);
+    const before = m.read(m.paths.desktop);
+    expect(m.manager.migrateMoved()).toEqual([]);
+    expect(m.read(m.paths.desktop)).toBe(before);
+  });
+
+  it("leaves the new file alone when it isn't valid, and says so", () => {
+    const m = machine();
+    m.manager.connect(["claude-desktop"], []);
+    const broken = '{ "mcpServers": { ';
+    const real = claudeData(m, "claude_pzs8sxrjxfjjc", broken);
+    const [move] = m.manager.migrateMoved();
+    expect(move).toMatchObject({ host: "claude-desktop", ok: false });
+    expect(move!.error).toMatch(/Claude Desktop/);
+    expect(m.read(real)).toBe(broken);
+    // And the old file keeps its entry, so nothing is lost until the new one is fixed.
+    expect(RINGKEEPER_ENTRY in JSON.parse(m.read(m.paths.desktop)).mcpServers).toBe(true);
+    expect(m.ledger.host("claude-desktop")!.path).toBe(m.paths.desktop);
+  });
+});
+
+describe("whether an app's entry is there", () => {
+  it("tells apart never set up, set up, and removed by the app", () => {
+    const m = machine();
+    expect(m.manager.views()[0]!.status).toBe("not_connected");
+    m.manager.connect(["claude-desktop"], []);
+    expect(m.manager.views()[0]!.status).toBe("entry_present");
+    fs.writeFileSync(m.paths.desktop, claudeDesktop); // Claude Desktop rewrote its file without us
+    expect(m.manager.views()[0]!.status).toBe("entry_missing");
+  });
+
+  it("remembers when the entry was written, and doesn't reset it for an unchanged entry", () => {
+    const m = machine();
+    m.manager.connect(["claude-desktop"], []);
+    const first = m.manager.views()[0]!.entryWrittenAt!;
+    expect(first).toBeGreaterThan(0);
+    // An entry from v0.1.0 had no RINGKEEPER_APP; adding it isn't a new entry for the app.
+    const text = JSON.parse(m.read(m.paths.desktop));
+    delete text.mcpServers[RINGKEEPER_ENTRY].env;
+    fs.writeFileSync(m.paths.desktop, JSON.stringify(text, null, 2));
+    m.manager.connect(["claude-desktop"], []);
+    expect(JSON.parse(m.read(m.paths.desktop)).mcpServers[RINGKEEPER_ENTRY].env).toEqual({ RINGKEEPER_APP: "claude-desktop" });
+    expect(m.manager.views()[0]!.entryWrittenAt).toBe(first);
   });
 });

@@ -15,7 +15,14 @@ export interface LaunchCommand {
   env?: Record<string, string>;
 }
 
-export type HostStatus = "not_installed" | "not_connected" | "connected" | "unreadable";
+/**
+ * What the app's settings file says. Whether the app actually uses us is
+ * decided by the desktop app, from contact with the bridge.
+ * - entry_present: our entry is in the file
+ * - entry_missing: we set the app up before, but our entry is gone (the app rewrote its file)
+ * - not_connected: never set up
+ */
+export type HostStatus = "not_installed" | "not_connected" | "entry_present" | "entry_missing" | "unreadable";
 
 export interface HostView {
   id: HostId;
@@ -25,12 +32,27 @@ export interface HostView {
   problem?: string;
   /** Connections still set up directly in the app (not through Ringkeeper). */
   otherConnections: string[];
+  /** The settings file in use. */
+  configPath: string;
+  /** Plain-language note about which file was chosen, when there was a choice. */
+  note?: string;
+  /** When our entry was last added or changed meaningfully (ms), if known. */
+  entryWrittenAt?: number;
+}
+
+export type HostMove = { host: HostId; from: string; to: string; ok: boolean; error?: string };
+
+/** What makes the app start a different program: a change here needs the app to restart. */
+function entryEssence(entry: unknown): string {
+  const e = (entry ?? {}) as { command?: unknown; args?: unknown };
+  return JSON.stringify([e.command ?? null, e.args ?? null]);
 }
 
 export type HostEvent =
   | { kind: "found"; host: HostId; name: string }
   | { kind: "reconnected"; host: HostId }
-  | { kind: "lost"; host: HostId };
+  | { kind: "lost"; host: HostId }
+  | { kind: "moved"; host: HostId; from: string; to: string };
 
 export interface HostResult {
   host: HostId;
@@ -69,17 +91,26 @@ export class HostManager {
   /** The entry an app needs to reach Ringkeeper Connect. */
   entryFor(loc: HostLocation): Record<string, unknown> {
     const l = this.opts.launch();
+    // RINGKEEPER_APP tells the bridge which app launched it, so Ringkeeper
+    // knows that app really uses it (not just that its settings mention it).
     return {
       ...(loc.entryStyle === "typed" ? { type: "stdio" } : {}),
       command: l.command,
       args: l.args,
-      ...(l.env && Object.keys(l.env).length ? { env: l.env } : {}),
+      env: { ...(l.env ?? {}), RINGKEEPER_APP: loc.id },
     };
   }
 
   views(): HostView[] {
     return this.locations().map((loc) => {
-      const base = { id: loc.id, label: loc.label };
+      const ledger = this.opts.ledger.host(loc.id);
+      const base = {
+        id: loc.id,
+        label: loc.label,
+        configPath: loc.configPath,
+        ...(loc.note ? { note: loc.note } : {}),
+        ...(ledger?.entryWrittenAt ? { entryWrittenAt: ledger.entryWrittenAt } : {}),
+      };
       if (!loc.installed && !loc.exists) return { ...base, status: "not_installed" as const, otherConnections: [] };
       const r = readHostConfig(loc.configPath);
       if (r.status === "unreadable") {
@@ -87,7 +118,8 @@ export class HostManager {
       }
       const servers = r.status === "ok" ? r.servers : {};
       const others = Object.keys(servers).filter((n) => n !== RINGKEEPER_ENTRY);
-      return { ...base, status: RINGKEEPER_ENTRY in servers ? ("connected" as const) : ("not_connected" as const), otherConnections: others };
+      const status = RINGKEEPER_ENTRY in servers ? "entry_present" : ledger ? "entry_missing" : "not_connected";
+      return { ...base, status: status as HostStatus, otherConnections: others };
     });
   }
 
@@ -97,7 +129,7 @@ export class HostManager {
     const unreadable: HostView[] = [];
     for (const v of this.views()) {
       if (v.status === "unreadable") unreadable.push(v);
-      if (v.status !== "connected" && v.status !== "not_connected") continue;
+      if (v.status === "not_installed" || v.status === "unreadable") continue;
       const r = readHostConfig(this.location(v.id).configPath);
       if (r.status !== "ok") continue;
       for (const [name, value] of Object.entries(r.servers)) {
@@ -110,17 +142,21 @@ export class HostManager {
   /** Edit one app's file with backups and a ledger record. */
   private edit(loc: HostLocation, plan: (servers: ServerMap) => Change[], taken: (servers: ServerMap) => FoundEntry[]): HostResult {
     let lastTaken: FoundEntry[] = [];
+    let entryChanged = false;
     try {
       const res = editHostConfig(
         loc.configPath,
         (servers) => {
           lastTaken = taken(servers);
-          return plan(servers);
+          const changes = plan(servers);
+          const ours = changes.find((c) => c.op === "set" && c.name === RINGKEEPER_ENTRY);
+          entryChanged = !!ours && ours.op === "set" && entryEssence(servers[RINGKEEPER_ENTRY]) !== entryEssence(ours.value);
+          return changes;
         },
         { createIfMissing: true, onBeforeWrite: (before) => this.opts.ledger.beforeWrite(loc.id, loc.configPath, before) },
       );
       if (res.changed) {
-        this.opts.ledger.afterWrite(loc.id, res.after, lastTaken.map((t) => ({ name: t.name, value: t.value })));
+        this.opts.ledger.afterWrite(loc.id, res.after, lastTaken.map((t) => ({ name: t.name, value: t.value })), entryChanged);
       }
       this.known.set(loc.id, new Set(Object.keys(readServers(loc.configPath))));
       return { host: loc.id, ok: true, taken: lastTaken };
@@ -165,6 +201,46 @@ export class HostManager {
   /** Leave a connection in the app and stop asking about it. */
   ignore(host: HostId, name: string): void {
     this.opts.ledger.ignore(host, name);
+  }
+
+  /**
+   * If Ringkeeper set an app up in a file the app doesn't actually read (for
+   * example the classic Claude Desktop file, when a newer build reads its
+   * Claude-Data copy), undo our changes there (with a backup) and add our
+   * entry to the file the app does read.
+   */
+  migrateMoved(): HostMove[] {
+    const moves: HostMove[] = [];
+    for (const id of this.opts.ledger.hosts()) {
+      const h = this.opts.ledger.host(id)!;
+      const loc = this.location(id);
+      if (h.path === loc.configPath || !loc.installed) continue;
+      // Never leave the app with no entry at all: check the new file first.
+      if (readHostConfig(loc.configPath).status === "unreadable") {
+        moves.push({
+          host: id,
+          from: h.path,
+          to: loc.configPath,
+          ok: false,
+          error:
+            `${HOST_LABELS[id]}: its settings file can't be read, so Ringkeeper Connect didn't change anything. ` +
+            (id === "claude-desktop"
+              ? "Open it from Claude Desktop (Settings > Desktop app > Extensions > Edit config), fix it, then restart Ringkeeper Connect."
+              : "Fix it, then restart Ringkeeper Connect."),
+        });
+        continue;
+      }
+      const undo = this.restore(id);
+      if (!undo.ok) {
+        moves.push({ host: id, from: h.path, to: loc.configPath, ok: false, error: undo.error });
+        continue;
+      }
+      const done = this.connect([id], [])[0];
+      const ok = !!done?.ok;
+      moves.push({ host: id, from: h.path, to: loc.configPath, ok, ...(ok ? {} : { error: done?.error }) });
+      if (ok) this.opts.onEvent?.({ kind: "moved", host: id, from: h.path, to: loc.configPath });
+    }
+    return moves;
   }
 
   /** Put every app's settings back the way they were before Ringkeeper Connect. */

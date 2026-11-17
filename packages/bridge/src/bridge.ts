@@ -28,6 +28,16 @@ import {
 
 const START_TIMEOUT_MS = 20_000;
 
+/**
+ * Which AI app launched this bridge, from its settings entry
+ * (RINGKEEPER_APP). Sent with every request so Ringkeeper knows that app
+ * really uses it.
+ */
+function headersFor(info: RuntimeInfo): Record<string, string> {
+  const app = process.env.RINGKEEPER_APP;
+  return { Authorization: `Bearer ${info.token}`, ...(app && /^[a-z0-9-]{1,40}$/.test(app) ? { "X-Ringkeeper-App": app } : {}) };
+}
+
 export const OFFLINE_MESSAGE =
   "Ringkeeper Connect isn't running, so your client tools aren't available. Open Ringkeeper Connect and try again. " +
   "If you uninstalled it, open Ringkeeper Connect's Restore option first, or remove \"Ringkeeper Connect\" from this app's connections.";
@@ -118,7 +128,7 @@ export class BridgePipe {
 
   private makeUpstream(info: RuntimeInfo): StreamableHTTPClientTransport {
     const t = new StreamableHTTPClientTransport(new URL(mcpUrl(info.port)), {
-      requestInit: { headers: { Authorization: `Bearer ${info.token}` } },
+      requestInit: { headers: headersFor(info) },
     });
     t.onmessage = (msg) => this.fromGateway(t, msg);
     t.onerror = (err) => stderr(`gateway error: ${err.message}`);
@@ -180,7 +190,7 @@ export class BridgePipe {
     void old.close().catch(() => {});
 
     const fresh = new StreamableHTTPClientTransport(new URL(mcpUrl(info.port)), {
-      requestInit: { headers: { Authorization: `Bearer ${info.token}` } },
+      requestInit: { headers: headersFor(info) },
     });
     const reinitId = `ringkeeper-reinit-${++this.reinitCount}`;
     const handshake = new Promise<boolean>((resolveHandshake) => {

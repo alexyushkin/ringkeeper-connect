@@ -74,6 +74,12 @@ export interface GatewayOptions {
   timings?: Partial<GatewayTimings>;
   /** Bundled Node/uv and the OAuth sign-in store, for upstream connections. */
   upstreamEnv?: UpstreamEnv;
+  /**
+   * An AI app connected and introduced itself: proof that it really uses us.
+   * `app` comes from the bridge (which knows which app launched it), or from
+   * the name the app reports; `hostName` is that reported name.
+   */
+  onAppContact?: (contact: { app?: string; hostName?: string; at: number }) => void;
 }
 
 interface Session {
@@ -598,6 +604,8 @@ export class Gateway {
 
   private async createSession(req: http.IncomingMessage, res: http.ServerResponse, body: unknown): Promise<void> {
     const hostName = (body as { params?: { clientInfo?: { name?: string } } }).params?.clientInfo?.name;
+    // The bridge says which app launched it (RINGKEEPER_APP in that app's settings).
+    const declaredApp = header(req, "x-ringkeeper-app");
     const mode = this.modeForHost(hostName);
     const session = {
       id: "",
@@ -630,8 +638,10 @@ export class Gateway {
         ev: "host_initialized",
         session: transport.sessionId ? short(transport.sessionId) : undefined,
         host: info,
+        app: declaredApp,
         capabilities: server.getClientCapabilities(),
       });
+      this.opts.onAppContact?.({ app: declaredApp, hostName: info?.name ?? hostName, at: Date.now() });
     };
     session.server = server;
     session.transport = transport;

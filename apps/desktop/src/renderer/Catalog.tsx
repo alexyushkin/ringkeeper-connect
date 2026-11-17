@@ -23,7 +23,7 @@ export function AddFromCatalog(props: { client: ClientView; run: Run; onAdvanced
     <Overlay onClose={props.onClose}>
       {!service ? (
         <>
-          <h2>Add a connection for {props.client.name}</h2>
+          <h2>Add a tool for {props.client.name}</h2>
           <p className="muted small">Pick the service. You'll use {props.client.name}'s own account or keys.</p>
           {!services ? (
             <p className="muted">Loading…</p>
@@ -168,7 +168,7 @@ function ServiceForm(props: {
           Back
         </button>
         <button type="submit" className="primary" disabled={busy || !name.trim()}>
-          {usesSignIn ? "Add and sign in" : "Add connection"}
+          {usesSignIn ? "Add and sign in" : "Add tool"}
         </button>
       </div>
     </form>

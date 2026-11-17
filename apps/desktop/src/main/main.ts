@@ -1,7 +1,7 @@
 // Ringkeeper Connect's main process: owns the clients and keys, runs the
 // gateway that AI apps connect to, and keeps a tray menu for switching clients.
 import fs from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { BrowserWindow, Menu, Notification, Tray, app, dialog, ipcMain, nativeImage, nativeTheme, safeStorage, shell } from "electron";
 import {
   ClientStore,
@@ -22,7 +22,7 @@ import {
   type SwitchSource,
 } from "@ringkeeper/gateway";
 import { HostConfigError } from "@ringkeeper/hostconfig";
-import { IPC, type ApiMethod, type AppState, type Result } from "../shared/api.js";
+import { IPC, type ApiMethod, type AppState, type HostView, type Result } from "../shared/api.js";
 import { AppsError, AppsService, bridgeLaunch, bundledRuntimes } from "./apps.js";
 import { CatalogActionError, CatalogActions } from "./catalog.js";
 import { Updates } from "./updates.js";
@@ -131,6 +131,7 @@ async function start(): Promise<void> {
     onActiveClientChanged: onSwitched,
     onStatusChanged: () => scheduleRefresh(),
     upstreamEnv: { runtimes, oauthStore },
+    onAppContact: (contact) => apps.recordContact(contact),
   });
   log({ ev: "runtimes", node: !!runtimes.nodeDir, uv: !!runtimes.uvDir });
   const port = await gateway.start();
@@ -277,6 +278,23 @@ const STATUS_WORDS: Record<string, string> = {
   stopped: "stopped",
 };
 
+function trayAppWord(h: HostView): string {
+  switch (h.status) {
+    case "connected":
+      return "connected";
+    case "added":
+      return h.id === "claude-code" ? "added, start a new session to finish" : `added, restart ${h.label} to finish`;
+    case "not_seeing":
+      return "not seeing us yet";
+    case "missing":
+      return "entry missing";
+    case "unreadable":
+      return "can't read its settings";
+    default:
+      return "not connected";
+  }
+}
+
 function refreshTray(): void {
   if (!tray) return;
   const clients = store.list();
@@ -293,10 +311,19 @@ function refreshTray(): void {
     items.push({ type: "separator" });
   }
   if (active) {
-    if (active.connections.length === 0) items.push({ label: `${active.name} has no connections yet`, enabled: false });
+    if (active.connections.length === 0) items.push({ label: `${active.name} has no tools yet`, enabled: false });
     for (const conn of active.connections) {
       const s = statuses.find((x) => x.clientId === active.id && x.connectionId === conn.id);
       items.push({ label: `${conn.name}: ${STATUS_WORDS[s?.status ?? "idle"]}`, enabled: false });
+    }
+    items.push({ type: "separator" });
+  }
+  // AI apps: "Connected" only once the app has actually contacted us.
+  const hostViews = apps ? apps.hosts().filter((h) => h.status !== "not_installed" && h.status !== "not_connected") : [];
+  if (hostViews.length) {
+    for (const h of hostViews) items.push({ label: `${h.label}: ${trayAppWord(h)}`, enabled: false });
+    if (hostViews.some((h) => h.status === "missing" || h.status === "not_seeing" || h.status === "unreadable")) {
+      items.push({ label: "Check AI apps…", click: () => showWindow() });
     }
     items.push({ type: "separator" });
   }
@@ -372,6 +399,12 @@ function registerIpc(): void {
     moveFound: (host, name: string, clientId: string) => apps.moveFound(host, name, clientId),
     leaveFound: (host, name: string) => apps.leaveFound(host, name),
     restoreApps: () => apps.restore(),
+    fixApp: (host) => apps.fixApp(host),
+    showAppSettingsFile: (host) => {
+      const p = apps.configPathOf(host);
+      if (fs.existsSync(p)) shell.showItemInFolder(p);
+      else void shell.openPath(dirname(p));
+    },
     catalogServices: () => catalogActions.services(),
     addFromCatalog: (clientId: string, serviceId: string, optionId: string, answers: Record<string, string>, name?: string) =>
       catalogActions.add(clientId, serviceId, optionId, answers, name),
