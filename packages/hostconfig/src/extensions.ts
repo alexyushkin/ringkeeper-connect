@@ -11,9 +11,25 @@ export interface DesktopExtension {
   service?: Service;
 }
 
-/** Extensions installed next to Claude Desktop's config file. */
-export function listDesktopExtensions(desktopConfigPath: string): DesktopExtension[] {
-  const dir = join(dirname(desktopConfigPath), "Claude Extensions");
+/**
+ * Extensions installed in Claude Desktop: next to its config file, and in the
+ * classic and Store folders (newer builds keep extensions there even when the
+ * config file lives in Claude-Data; unverified, so all are looked at).
+ */
+export function listDesktopExtensions(desktopConfigPath: string, moreFolders: string[] = []): DesktopExtension[] {
+  const out: DesktopExtension[] = [];
+  const seen = new Set<string>();
+  for (const folder of [dirname(desktopConfigPath), ...moreFolders]) {
+    for (const e of extensionsIn(join(folder, "Claude Extensions"))) {
+      if (seen.has(e.id)) continue;
+      seen.add(e.id);
+      out.push(e);
+    }
+  }
+  return out;
+}
+
+function extensionsIn(dir: string): DesktopExtension[] {
   let entries: string[];
   try {
     entries = fs.readdirSync(dir);

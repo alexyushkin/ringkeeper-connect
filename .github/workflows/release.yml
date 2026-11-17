@@ -1,6 +1,10 @@
 # Builds installers when a version tag is pushed (v0.1.0, …) and publishes them
 # to GitHub Releases, where the app's automatic updates find them.
 #
+# A tag with a pre-release part (v0.2.0-beta.1) becomes a GitHub pre-release,
+# never "Latest". Installed copies on a normal version only look at "Latest",
+# so a beta never reaches them; only someone who installs the beta by hand gets it.
+#
 # Signing is used only when its secrets are set, so forks still build
 # (unsigned) installers:
 #
@@ -56,11 +60,20 @@ jobs:
       - name: Create the draft release with install notes
         run: |
           version="${GITHUB_REF_NAME#v}"
+          pre=""
+          : > "$RUNNER_TEMP/notes.md"
+          case "$version" in
+            *-*)
+              pre="--prerelease"
+              echo "> **Test version.** Copies of the normal version don't update to this one. Install it by hand to try it." >> "$RUNNER_TEMP/notes.md"
+              echo "" >> "$RUNNER_TEMP/notes.md"
+              ;;
+          esac
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             echo "Release $GITHUB_REF_NAME already exists; builds will upload to it."
           else
-            sed "s/{{VERSION}}/$version/g" .github/release-notes.md > "$RUNNER_TEMP/notes.md"
-            gh release create "$GITHUB_REF_NAME" --draft --verify-tag --title "$version" --notes-file "$RUNNER_TEMP/notes.md"
+            sed "s/{{VERSION}}/$version/g" .github/release-notes.md >> "$RUNNER_TEMP/notes.md"
+            gh release create "$GITHUB_REF_NAME" --draft $pre --verify-tag --title "$version" --notes-file "$RUNNER_TEMP/notes.md"
           fi
 
   windows:
@@ -122,7 +135,8 @@ jobs:
       - name: Build and publish
         run: pnpm package:desktop --mac --arm64 --x64 --publish always
 
-  # Everything built and uploaded: make the release public (and "latest").
+  # Everything built and uploaded: make the release public. A normal version
+  # becomes "Latest" (what installed copies update to); a pre-release never does.
   publish:
     needs: [windows, macos]
     runs-on: ubuntu-latest
@@ -130,4 +144,8 @@ jobs:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - name: Publish the release
-        run: gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft=false --latest
+        run: |
+          case "${GITHUB_REF_NAME#v}" in
+            *-*) gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft=false --prerelease --latest=false ;;
+            *) gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft=false --latest ;;
+          esac

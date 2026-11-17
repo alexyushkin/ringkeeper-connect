@@ -5,13 +5,19 @@ type Run = <T>(p: Promise<Result<T>>) => Promise<{ value: T } | null>;
 const api = () => window.ringkeeper;
 
 /** Add a known service to a client: pick it, answer its few questions, sign in if it uses sign-in. */
-export function AddFromCatalog(props: { client: ClientView; run: Run; onAdvanced: () => void; onClose: () => void }) {
+export function AddFromCatalog(props: { client: ClientView; run: Run; onAdvanced: () => void; onClose: () => void; initialToolId?: string }) {
   const [services, setServices] = useState<CatalogService[] | null>(null);
   const [service, setService] = useState<CatalogService | null>(null);
   const [signing, setSigning] = useState<{ connectionId: string; name: string } | null>(null);
 
   useEffect(() => {
-    void props.run(api().catalogServices()).then((r) => r && setServices(r.value));
+    void props.run(api().catalogServices()).then((r) => {
+      if (!r) return;
+      setServices(r.value);
+      // Opened for one tool (from "Still to add"): go straight to its form.
+      const first = props.initialToolId ? r.value.find((s) => s.id === props.initialToolId) : undefined;
+      if (first) setService(first);
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -28,18 +34,7 @@ export function AddFromCatalog(props: { client: ClientView; run: Run; onAdvanced
           {!services ? (
             <p className="muted">Loading…</p>
           ) : (
-            <div className="service-grid">
-              {services.map((s) => (
-                <button key={s.id} className="service" onClick={() => setService(s)}>
-                  <span className="service-name">{s.name}</span>
-                  <span className="muted small">{s.description}</span>
-                </button>
-              ))}
-              <button className="service other" onClick={props.onAdvanced}>
-                <span className="service-name">Something else</span>
-                <span className="muted small">Set it up yourself with a web address or a program (advanced).</span>
-              </button>
-            </div>
+            <ToolPicker services={services} onPick={setService} onAdvanced={props.onAdvanced} run={props.run} />
           )}
           <div className="modal-actions">
             <button onClick={props.onClose}>Cancel</button>
@@ -56,6 +51,100 @@ export function AddFromCatalog(props: { client: ClientView; run: Run; onAdvanced
         />
       )}
     </Overlay>
+  );
+}
+
+/** The order "Add a tool" shows its groups in (the catalog's own order). */
+const GROUP_ORDER = [
+  "Data",
+  "Automations",
+  "CRM and sales",
+  "Marketing and email",
+  "Websites",
+  "Payments",
+  "Work and projects",
+  "Scheduling",
+  "Developers",
+  "Voice and research",
+  "Other",
+];
+
+function matches(s: CatalogService, q: string): boolean {
+  if (!q) return true;
+  const hay = `${s.name} ${s.group} ${s.description} ${(s.tags ?? []).join(" ")}`.toLowerCase();
+  return q
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean)
+    .every((w) => hay.includes(w));
+}
+
+/** Short facts and Beta, shown on a tile and above the form. */
+export function ToolTags(props: { service: CatalogService }) {
+  const { service } = props;
+  if (!service.beta && !service.tags?.length) return null;
+  return (
+    <span className="tool-tags">
+      {service.beta && (
+        <span className="badge beta" title="Not yet tried with a real sign-in. Tell us if something doesn't work.">
+          Beta
+        </span>
+      )}
+      {service.tags?.map((t) => (
+        <span key={t} className="badge tag">
+          {t}
+        </span>
+      ))}
+    </span>
+  );
+}
+
+/** Search and groups over the catalog, with "Something else" and "Request a tool". */
+export function ToolPicker(props: { services: CatalogService[]; onPick: (s: CatalogService) => void; onAdvanced?: () => void; run: Run }) {
+  const [q, setQ] = useState("");
+  const shown = props.services.filter((s) => matches(s, q.trim()));
+  const groups = GROUP_ORDER.map((g) => ({ group: g, items: shown.filter((s) => s.group === g) })).filter((g) => g.items.length);
+  return (
+    <div className="tool-picker">
+      <input
+        className="tool-search"
+        type="search"
+        placeholder="Search tools, like CRM or WordPress"
+        value={q}
+        autoFocus
+        onChange={(e) => setQ(e.target.value)}
+      />
+      {groups.map((g) => (
+        <section key={g.group}>
+          <h3 className="group-title">{g.group}</h3>
+          <div className="service-grid">
+            {g.items.map((s) => (
+              <button key={s.id} className="service" onClick={() => props.onPick(s)}>
+                <span className="service-name">
+                  {s.name} <ToolTags service={s} />
+                </span>
+                <span className="muted small">{s.description}</span>
+              </button>
+            ))}
+          </div>
+        </section>
+      ))}
+      {groups.length === 0 && <p className="muted">No tool matches "{q.trim()}".</p>}
+      {props.onAdvanced && (
+        <div className="service-grid">
+          <button className="service other" onClick={props.onAdvanced}>
+            <span className="service-name">Something else</span>
+            <span className="muted small">Set it up yourself with a web address or a program (advanced).</span>
+          </button>
+        </div>
+      )}
+      <p className="muted small request-tool">
+        Missing a tool your clients use?{" "}
+        <button type="button" className="link small" onClick={() => void props.run(api().requestTool(q.trim()))}>
+          Request a tool
+        </button>
+      </p>
+    </div>
   );
 }
 
@@ -106,6 +195,10 @@ function ServiceForm(props: {
       <h2>
         Connect {client.name}'s {service.name}
       </h2>
+      <ToolTags service={service} />
+      {service.beta && (
+        <div className="notice info small">This tool is new in Ringkeeper Connect. If signing in or using it doesn't work, use "Request a tool" to tell us.</div>
+      )}
       {service.notes?.map((n) => (
         <div key={n} className="notice info small">
           {n}

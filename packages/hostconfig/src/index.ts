@@ -5,3 +5,4 @@ export * from "./import.js";
 export * from "./manager.js";
 export * from "./extensions.js";
 export * from "./app-status.js";
+export * from "./sources.js";

@@ -14,17 +14,40 @@
 // Claude Code: ~/.claude.json (or $CLAUDE_CONFIG_DIR/.claude.json), user-level
 //   servers in the top-level `mcpServers`. Per-project servers under `projects`
 //   and .mcp.json files are out of scope for v1. Expands ${VAR} and ${VAR:-default}.
+// The apps added for the MVP (checked against their docs 2026-11-17; see
+// docs/proposal-tools-and-apps.md, and each is checked on a real install):
+// VS Code: ~/.copilot/mcp-config.json ($COPILOT_HOME), shared with Copilot CLI,
+//   `mcpServers`. The older per-profile Code/User/mcp.json (`servers`) is only read.
+// Kiro: ~/.kiro/settings/mcp.json, `mcpServers`, ${VAR}.
+// Antigravity (CLI and app): ~/.gemini/config/mcp_config.json, `mcpServers`.
+// Codex and the ChatGPT desktop app: ~/.codex/config.toml ($CODEX_HOME),
+//   [mcp_servers.<name>] tables.
 import fs from "node:fs";
+import { MCP_JSON, CODEX_TOML, type ConfigFormat } from "./config-file-types.js";
 import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
 
-export type HostId = "claude-desktop" | "cursor" | "claude-code";
+/** AI apps Ringkeeper sets up (writes to). */
+export type HostId = "claude-desktop" | "cursor" | "claude-code" | "vscode" | "kiro" | "antigravity" | "codex";
+
+export const HOST_IDS: readonly HostId[] = ["claude-desktop", "cursor", "claude-code", "vscode", "kiro", "antigravity", "codex"];
 
 export const HOST_LABELS: Record<HostId, string> = {
   "claude-desktop": "Claude Desktop",
   cursor: "Cursor",
   "claude-code": "Claude Code",
+  vscode: "VS Code",
+  kiro: "Kiro",
+  antigravity: "Antigravity",
+  codex: "Codex / ChatGPT",
 };
+
+/** Added after the first release: shown in the wizard but not ticked unless the user picks them. */
+export const OPT_IN_HOSTS: ReadonlySet<HostId> = new Set<HostId>(["vscode", "kiro", "antigravity", "codex"]);
+
+export function isHostId(id: string): id is HostId {
+  return (HOST_IDS as readonly string[]).includes(id);
+}
 
 /** The folders hosts live under; injectable so tests never touch the real ones. */
 export interface Roots {
@@ -35,6 +58,10 @@ export interface Roots {
   /** Windows %LOCALAPPDATA% */
   localAppData?: string;
   claudeConfigDir?: string;
+  /** $COPILOT_HOME (VS Code's and Copilot CLI's settings folder). */
+  copilotHome?: string;
+  /** $CODEX_HOME. */
+  codexHome?: string;
 }
 
 export function systemRoots(env: NodeJS.ProcessEnv = process.env, home = homedir()): Roots {
@@ -44,6 +71,8 @@ export function systemRoots(env: NodeJS.ProcessEnv = process.env, home = homedir
     appData: env.APPDATA,
     localAppData: env.LOCALAPPDATA,
     claudeConfigDir: env.CLAUDE_CONFIG_DIR,
+    copilotHome: env.COPILOT_HOME,
+    codexHome: env.CODEX_HOME,
   };
 }
 
@@ -56,8 +85,12 @@ export interface HostLocation {
   installed: boolean;
   /** The file exists. */
   exists: boolean;
+  /** How the file is written. */
+  format: ConfigFormat;
   /** Format quirks for the entry we add. */
-  entryStyle: "plain" | "typed";
+  entryStyle: "plain" | "typed" | "copilot" | "codex";
+  /** Added after the first release: not ticked in the wizard by default. */
+  optIn: boolean;
   /** Plain-language note about which file was chosen, when there was a choice. */
   note?: string;
 }
@@ -167,13 +200,26 @@ function claudeDesktopPath(r: Roots): DesktopChoice {
   return { path: classic, installed: exists(classicDir) || storeDirs.length > 0 };
 }
 
+/** VS Code's own settings folder for the default profile (holds settings.json and the older mcp.json). */
+export function vscodeUserDir(r: Roots, app = "Code"): string {
+  if (r.platform === "win32") return join(r.appData ?? join(r.home, "AppData", "Roaming"), app, "User");
+  if (r.platform === "darwin") return join(r.home, "Library", "Application Support", app, "User");
+  return join(r.home, ".config", app, "User");
+}
+
 export function locateHosts(r: Roots): HostLocation[] {
   const desktop = claudeDesktopPath(r);
   const cursorDir = join(r.home, ".cursor");
   const claudeCodeFile = r.claudeConfigDir ? join(r.claudeConfigDir, ".claude.json") : join(r.home, ".claude.json");
   const claudeCodeDir = r.claudeConfigDir ?? join(r.home, ".claude");
+  const copilotHome = r.copilotHome ?? join(r.home, ".copilot");
+  const codexHome = r.codexHome ?? join(r.home, ".codex");
+  const gemini = join(r.home, ".gemini");
+  const local = r.localAppData ?? join(r.home, "AppData", "Local");
+  const antigravityApp =
+    r.platform === "win32" ? join(local, "Programs", "Antigravity") : r.platform === "darwin" ? "/Applications/Antigravity.app" : join(r.home, ".antigravity");
 
-  const list: Array<Omit<HostLocation, "exists" | "label">> = [
+  const list: Array<Omit<HostLocation, "exists" | "label" | "optIn" | "format"> & { format?: ConfigFormat }> = [
     {
       id: "claude-desktop",
       configPath: desktop.path,
@@ -188,6 +234,28 @@ export function locateHosts(r: Roots): HostLocation[] {
       installed: exists(claudeCodeFile) || exists(claudeCodeDir),
       entryStyle: "typed",
     },
+    {
+      id: "vscode",
+      configPath: join(copilotHome, "mcp-config.json"),
+      installed: exists(copilotHome) || exists(vscodeUserDir(r)),
+      entryStyle: "copilot",
+      note: "Also used by GitHub Copilot's command-line tool.",
+    },
+    { id: "kiro", configPath: join(r.home, ".kiro", "settings", "mcp.json"), installed: exists(join(r.home, ".kiro")), entryStyle: "plain" },
+    {
+      id: "antigravity",
+      configPath: join(gemini, "config", "mcp_config.json"),
+      installed: [join(gemini, "config"), join(gemini, "antigravity"), join(gemini, "antigravity-cli"), antigravityApp].some(exists),
+      entryStyle: "plain",
+    },
+    {
+      id: "codex",
+      configPath: join(codexHome, "config.toml"),
+      installed: exists(codexHome),
+      entryStyle: "codex",
+      format: CODEX_TOML,
+      note: "ChatGPT uses Ringkeeper Connect only in Codex, not in regular chats.",
+    },
   ];
-  return list.map((h) => ({ ...h, label: HOST_LABELS[h.id], exists: exists(h.configPath) }));
+  return list.map((h) => ({ ...h, format: h.format ?? MCP_JSON, optIn: OPT_IN_HOSTS.has(h.id), label: HOST_LABELS[h.id], exists: exists(h.configPath) }));
 }

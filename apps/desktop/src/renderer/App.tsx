@@ -171,6 +171,9 @@ export function App() {
             onRename={() => setDialog({ kind: "rename-client", client: selected })}
             onDelete={() => setDialog({ kind: "delete-client", client: selected })}
             onAddConnection={() => setDialog({ kind: "add", client: selected })}
+            onAddTool={(toolId) => setDialog({ kind: "add", client: selected, toolId })}
+            pendingTools={(state.settings.pendingTools ?? []).filter((p) => p.clientId === selected.id).map((p) => p.toolId)}
+            run={run}
             onBringIn={() => setShowSetup(true)}
             onSignIn={(conn) => setDialog({ kind: "signin", client: selected, conn })}
             onEditConnection={(conn) => setDialog({ kind: "connection", client: selected, conn })}
@@ -223,8 +226,18 @@ function ClientPanel(props: {
   onRemoveConnection: (c: ConnectionView) => void;
   onSignIn: (c: ConnectionView) => void;
   onBringIn: () => void;
+  /** Tools picked in the wizard that still need a sign-in or key. */
+  pendingTools: string[];
+  onAddTool: (toolId: string) => void;
+  run: Run;
 }) {
   const { client } = props;
+  const [toolNames, setToolNames] = useState<Record<string, string>>({});
+  useEffect(() => {
+    if (!props.pendingTools.length) return;
+    void props.run(api.catalogServices()).then((r) => r && setToolNames(Object.fromEntries(r.value.map((s) => [s.id, s.name]))));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.pendingTools.join(",")]);
   return (
     <section>
       <header className="client-header">
@@ -248,6 +261,25 @@ function ClientPanel(props: {
           </button>
         </div>
       </header>
+
+      {props.pendingTools.length > 0 && (
+        <div className="notice info pending-tools">
+          <strong>Still to add for {client.name}:</strong>
+          <ul>
+            {props.pendingTools.map((id) => (
+              <li key={id}>
+                <span>{toolNames[id] ?? id}</span>
+                <button className="link" onClick={() => props.onAddTool(id)}>
+                  Add
+                </button>
+                <button className="link muted" onClick={() => void props.run(api.dismissPendingTool(client.id, id))}>
+                  Not needed
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <div className="section-title">
         <h2>Tools for {client.name}</h2>
@@ -321,7 +353,7 @@ type DialogState =
   | { kind: "copy"; client: ClientView; conn: ConnectionView }
   | { kind: "remove-connection"; client: ClientView; conn: ConnectionView }
   | { kind: "restore" }
-  | { kind: "add"; client: ClientView }
+  | { kind: "add"; client: ClientView; toolId?: string }
   | { kind: "signin"; client: ClientView; conn: ConnectionView };
 
 function Dialogs(props: {
@@ -395,6 +427,7 @@ function Dialogs(props: {
       return (
         <AddFromCatalog
           client={dialog.client}
+          initialToolId={dialog.toolId}
           run={run}
           onClose={close}
           onAdvanced={() => props.onAdvanced(dialog.client)}

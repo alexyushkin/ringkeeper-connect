@@ -88,7 +88,13 @@ describe("finding the apps' settings", () => {
       ["claude-desktop", m.paths.desktop, true],
       ["cursor", m.paths.cursor, true],
       ["claude-code", m.paths.code, true],
+      ["vscode", join(m.home, ".copilot", "mcp-config.json"), false],
+      ["kiro", join(m.home, ".kiro", "settings", "mcp.json"), false],
+      ["antigravity", join(m.home, ".gemini", "config", "mcp_config.json"), false],
+      ["codex", join(m.home, ".codex", "config.toml"), false],
     ]);
+    // The apps added after the first release are opt-in.
+    expect(locs.filter((l) => l.optIn).map((l) => l.id)).toEqual(["vscode", "kiro", "antigravity", "codex"]);
   });
 
   it("prefers the Windows Store copy of Claude Desktop's settings when it exists, because that's the one the app reads", () => {
@@ -278,7 +284,7 @@ describe("connecting apps and restoring them", () => {
     expect(JSON.parse(m.read(m.paths.code)).mcpServers[RINGKEEPER_ENTRY].type).toBe("stdio");
     expect(JSON.parse(m.read(m.paths.code)).mcpServers[RINGKEEPER_ENTRY].env).toEqual({ RINGKEEPER_APP: "claude-code" });
     // Written, but that alone doesn't mean the apps use it (see app status).
-    expect(m.manager.views().map((v) => v.status)).toEqual(["entry_present", "entry_present", "entry_present"]);
+    expect(m.manager.views().map((v) => v.status)).toEqual(["entry_present", "entry_present", "entry_present", "not_installed", "not_installed", "not_installed", "not_installed"]);
   });
 
   it("keeps its records and backups encrypted, since they contain keys", () => {

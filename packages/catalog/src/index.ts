@@ -48,10 +48,30 @@ export interface LocalOption extends OptionBase {
 
 export type CatalogOption = RemoteOption | LocalOption;
 
+/** How "Add a tool" groups the tools, in this order. */
+export const GROUPS = [
+  "Data",
+  "Automations",
+  "CRM and sales",
+  "Marketing and email",
+  "Websites",
+  "Payments",
+  "Work and projects",
+  "Scheduling",
+  "Developers",
+  "Voice and research",
+  "Other",
+] as const;
+
 export interface CatalogService {
   id: string;
   name: string;
+  group: (typeof GROUPS)[number];
   description: string;
+  /** Short facts shown on the tile and before sign-in ("Paid plan", "Uses credits"). */
+  tags?: string[];
+  /** Not yet checked with a real sign-in. */
+  beta?: boolean;
   notes?: string[];
   options: CatalogOption[];
 }
@@ -65,6 +85,13 @@ export interface Catalog {
 export class CatalogInputError extends Error {}
 
 const PLACEHOLDER = /\{\{([A-Z0-9_]+)\}\}/g;
+/** {{basic:USER:PASSWORD}}: the two answers as an HTTP Basic credential (base64 of user:password). */
+const BASIC = /\{\{basic:([A-Z0-9_]+):([A-Z0-9_]+)\}\}/g;
+
+/** Every field a template refers to. */
+function refs(template: string): string[] {
+  return [...[...template.matchAll(PLACEHOLDER)].map((m) => m[1]!), ...[...template.matchAll(BASIC)].flatMap((m) => [m[1]!, m[2]!])];
+}
 
 /** Checks the catalog's own consistency; used by the tests and at startup. */
 export function validateCatalog(c: Catalog): string[] {
@@ -75,10 +102,12 @@ export function validateCatalog(c: Catalog): string[] {
     ids.add(s.id);
     if (!s.options.length) problems.push(`${s.id}: no options`);
     if (s.options.filter((o) => o.recommended).length > 1) problems.push(`${s.id}: more than one recommended option`);
+    if (!(GROUPS as readonly string[]).includes(s.group)) problems.push(`${s.id}: unknown group ${String(s.group)}`);
+    for (const t of s.tags ?? []) if (!t.trim() || t.length > 24) problems.push(`${s.id}: tag "${t}" must be short`);
     for (const o of s.options) {
       const fieldIds = new Set(o.fields.map((f) => f.id));
       const templates = o.kind === "remote" ? [o.url, ...Object.values(o.query ?? {}), ...Object.values(o.headers ?? {})] : [o.command, ...o.args, ...Object.values(o.env ?? {})];
-      for (const t of templates) for (const m of t.matchAll(PLACEHOLDER)) if (!fieldIds.has(m[1]!)) problems.push(`${s.id}/${o.id}: {{${m[1]}}} has no field`);
+      for (const t of templates) for (const id of refs(t)) if (!fieldIds.has(id)) problems.push(`${s.id}/${o.id}: {{${id}}} has no field`);
       if (o.kind === "remote" && !o.url.includes("{{") && !o.url.startsWith("https://")) problems.push(`${s.id}/${o.id}: address must be https`);
       for (const f of o.fields) {
         if (f.where && !f.where.url.startsWith("https://")) problems.push(`${s.id}/${o.id}/${f.id}: link must be https`);
@@ -130,7 +159,9 @@ export function checkField(field: CatalogField, raw: string | undefined): string
 }
 
 function fill(template: string, values: Record<string, string>): string {
-  return template.replace(PLACEHOLDER, (_, id: string) => values[id] ?? "");
+  return template
+    .replace(BASIC, (_, user: string, pass: string) => Buffer.from(`${values[user] ?? ""}:${values[pass] ?? ""}`, "utf8").toString("base64"))
+    .replace(PLACEHOLDER, (_, id: string) => values[id] ?? "");
 }
 
 /**
@@ -145,7 +176,7 @@ export function buildConnection(serviceId: string, optionId: string, answers: Re
   const values: Record<string, string> = {};
   for (const f of option.fields) values[f.id] = checkField(f, answers[f.id]);
   const secretIds = new Set(option.fields.filter((f) => f.secret).map((f) => f.id));
-  const usesSecret = (t: string) => [...t.matchAll(PLACEHOLDER)].some((m) => secretIds.has(m[1]!));
+  const usesSecret = (t: string) => refs(t).some((id) => secretIds.has(id));
   const connName = (name ?? service.name).trim() || service.name;
 
   if (option.kind === "remote") {
