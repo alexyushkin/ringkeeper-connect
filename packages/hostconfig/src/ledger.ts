@@ -21,6 +21,12 @@ export interface HostLedger {
   lastWrittenText: string | null;
   /** Connections moved out of this app into Ringkeeper, oldest first. */
   taken: TakenEntry[];
+  /**
+   * When our entry was added, or changed in a way the app must reload to see
+   * (a different program or bridge). The app counts as using us only after
+   * contacting us since then.
+   */
+  entryWrittenAt?: number;
 }
 
 interface LedgerData {
@@ -83,14 +89,15 @@ export class Ledger {
     this.save();
   }
 
-  afterWrite(id: HostId, after: string, taken: Array<{ name: string; value: unknown }> = []): void {
+  afterWrite(id: HostId, after: string, taken: Array<{ name: string; value: unknown }> = [], entryChanged = false, at = Date.now()): void {
     const h = this.data.hosts[id];
     if (!h) return;
     h.lastWrittenText = after;
-    const now = new Date().toISOString();
+    if (entryChanged) h.entryWrittenAt = at;
+    const takenAt = new Date(at).toISOString();
     for (const t of taken) {
       h.taken = h.taken.filter((x) => x.name !== t.name);
-      h.taken.push({ name: t.name, value: t.value, takenAt: now });
+      h.taken.push({ name: t.name, value: t.value, takenAt });
     }
     this.save();
   }

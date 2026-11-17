@@ -10,12 +10,28 @@ export type { ClientView, ConnectionInput, ConnectionView, Settings, ConnectionS
 
 export type HostId = "claude-desktop" | "cursor" | "claude-code";
 
+/**
+ * Whether an AI app really uses Ringkeeper:
+ * - connected: its bridge has contacted us since our entry was written
+ * - added: entry written; restart the app to finish
+ * - not_seeing: the app restarted since, and still no contact
+ * - missing: the app removed our entry (Fix puts it back)
+ * - not_connected / unreadable / not_installed
+ */
+export type AppStatus = "not_installed" | "unreadable" | "not_connected" | "missing" | "added" | "connected" | "not_seeing";
+
 export interface HostView {
   id: HostId;
   label: string;
-  status: "not_installed" | "not_connected" | "connected" | "unreadable";
+  status: AppStatus;
   problem?: string;
+  /** Which settings file is used, when there was a choice. */
+  note?: string;
+  configPath: string;
   otherConnections: string[];
+  lastContactAt?: number;
+  /** Plain steps to check it's working. */
+  howToCheck: string[];
 }
 
 /** A connection found in an AI app that the user hasn't decided about yet. */
@@ -94,6 +110,8 @@ export interface RingkeeperApi {
   moveFound(host: HostId, name: string, clientId: string): Promise<Result>;
   leaveFound(host: HostId, name: string): Promise<Result>;
   restoreApps(): Promise<Result<{ restored: string[]; problems: string[] }>>;
+  fixApp(host: HostId): Promise<Result>;
+  showAppSettingsFile(host: HostId): Promise<Result>;
   catalogServices(): Promise<Result<CatalogService[]>>;
   addFromCatalog(
     clientId: string,

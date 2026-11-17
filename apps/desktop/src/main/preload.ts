@@ -25,6 +25,8 @@ const api: RingkeeperApi = {
   moveFound: call("moveFound") as RingkeeperApi["moveFound"],
   leaveFound: call("leaveFound") as RingkeeperApi["leaveFound"],
   restoreApps: call("restoreApps") as RingkeeperApi["restoreApps"],
+  fixApp: call("fixApp") as RingkeeperApi["fixApp"],
+  showAppSettingsFile: call("showAppSettingsFile") as RingkeeperApi["showAppSettingsFile"],
   catalogServices: call("catalogServices") as RingkeeperApi["catalogServices"],
   addFromCatalog: call("addFromCatalog") as RingkeeperApi["addFromCatalog"],
   signIn: call("signIn") as RingkeeperApi["signIn"],

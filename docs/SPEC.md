@@ -46,6 +46,7 @@ A desktop app for Windows and macOS that sits between AI apps (Claude Desktop, C
 ## Config paths (verify against current docs before relying on them)
 
 - Claude Desktop: `%APPDATA%\Claude\claude_desktop_config.json` and `~/Library/Application Support/Claude/claude_desktop_config.json`
+  - **As found in the first real test (v0.1.1, see [m6-results.md](m6-results.md))**: newer Windows builds read `%LOCALAPPDATA%\Claude-Data\<install id>\claude_desktop_config.json`. Order checked: a Claude-Data file (newest first, the user is told which when there are several) → the Store copy (`Packages\Claude_*\LocalCache\Roaming\Claude`) → the classic file → the 3P edition (`Claude-3p`). If Ringkeeper set up a file the app doesn't read, it moves its entry to the right one on start and undoes its changes in the old one, with backups.
 - Cursor: `~/.cursor/mcp.json`
 - Claude Code: `~/.claude.json`
 

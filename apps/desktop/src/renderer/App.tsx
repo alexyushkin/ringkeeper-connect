@@ -37,6 +37,11 @@ export function App() {
     void api.getState().then((s) => {
       setState(s);
       if (!s.setupDone) setShowSetup(true);
+      // First run with only an empty client: offer to bring in what the AI apps already use (once).
+      else if (s.clients.length === 1 && s.clients[0]!.connections.length === 0 && !s.settings.bringInOffered) {
+        setShowSetup(true);
+        void api.updateSettings({ bringInOffered: true });
+      }
     });
     return api.onStateChanged(setState);
   }, []);
@@ -71,6 +76,7 @@ export function App() {
         )}
         <Setup
           clients={clients}
+          hosts={state.hosts}
           run={run}
           onDone={() => {
             setShowSetup(false);
@@ -165,6 +171,7 @@ export function App() {
             onRename={() => setDialog({ kind: "rename-client", client: selected })}
             onDelete={() => setDialog({ kind: "delete-client", client: selected })}
             onAddConnection={() => setDialog({ kind: "add", client: selected })}
+            onBringIn={() => setShowSetup(true)}
             onSignIn={(conn) => setDialog({ kind: "signin", client: selected, conn })}
             onEditConnection={(conn) => setDialog({ kind: "connection", client: selected, conn })}
             onCopyConnection={(conn) => setDialog({ kind: "copy", client: selected, conn })}
@@ -215,6 +222,7 @@ function ClientPanel(props: {
   onCopyConnection: (c: ConnectionView) => void;
   onRemoveConnection: (c: ConnectionView) => void;
   onSignIn: (c: ConnectionView) => void;
+  onBringIn: () => void;
 }) {
   const { client } = props;
   return (
@@ -242,14 +250,22 @@ function ClientPanel(props: {
       </header>
 
       <div className="section-title">
-        <h2>Connections</h2>
-        <button onClick={props.onAddConnection}>+ Add connection</button>
+        <h2>Tools for {client.name}</h2>
+        {client.connections.length > 0 && <button onClick={props.onAddConnection}>+ Add a tool</button>}
       </div>
 
       {client.connections.length === 0 ? (
-        <p className="muted">
-          No connections yet. Add {client.name}'s n8n, Airtable, Notion or other tools, using {client.name}'s own keys.
-        </p>
+        <div className="empty">
+          <p className="muted">
+            {client.name} has no tools yet. Bring in the ones you already use, or add one.
+          </p>
+          <div className="empty-actions">
+            <button className="primary" onClick={props.onBringIn}>
+              Bring in the ones you already use
+            </button>
+            <button onClick={props.onAddConnection}>Add one</button>
+          </div>
+        </div>
       ) : (
         <ul className="connections">
           {client.connections.map((conn) => {
@@ -522,7 +538,7 @@ function ConnectionDialog(props: {
   }
 
   return (
-    <Modal title={conn ? `Edit ${conn.name} for ${client.name}` : `Add a connection for ${client.name}`} onClose={props.onClose} wide>
+    <Modal title={conn ? `Edit ${conn.name} for ${client.name}` : `Add a tool for ${client.name}`} onClose={props.onClose} wide>
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -598,7 +614,7 @@ function ConnectionDialog(props: {
             Cancel
           </button>
           <button type="submit" className="primary" disabled={!name.trim()}>
-            {conn ? "Save" : "Add connection"}
+            {conn ? "Save" : "Add tool"}
           </button>
         </div>
       </form>

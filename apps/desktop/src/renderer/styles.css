@@ -659,3 +659,38 @@ p.muted {
   color: var(--muted);
   padding: 0 8px;
 }
+
+/* ---------- real app status ---------- */
+.apps li {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+.app-row {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+}
+.dot.muted {
+  color: var(--muted);
+}
+.finish-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.finish-row .status {
+  align-self: flex-start;
+}
+.how-to {
+  padding-left: 20px;
+}
+.how-to li {
+  margin: 6px 0;
+}
+.empty-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
