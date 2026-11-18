@@ -104,7 +104,7 @@ function rootsForThisRun(): Roots {
 const RESTART_HINT: Record<HostId, string> = {
   "claude-desktop": "Claude Desktop: quit it from its icon near the clock (or the menu bar on a Mac), then open it again.",
   cursor: "Cursor: if it's open, close and reopen it.",
-  "claude-code": "Claude Code: new sessions pick it up automatically.",
+  "claude-code": "Claude Code: select any session, new or existing, in the Claude app's Code tab. In a terminal, start claude again.",
   vscode: "VS Code: reload the window (Ctrl+Shift+P, then Developer: Reload Window) or restart it. Copilot CLI picks it up in a new session.",
   kiro: "Kiro: it picks up the change by itself; if not, restart Kiro.",
   antigravity: "Antigravity: restart it (in the command-line tool, type /mcp to reload).",
@@ -124,7 +124,7 @@ export const HOW_TO_CHECK: Record<HostId, string[]> = {
     "If it's switched off, switch it on. This page turns to Connected within a few seconds.",
   ],
   "claude-code": [
-    "Start a new Claude Code session (close the terminal or tab and run claude again).",
+    "In the Claude app's Code tab, select any session, new or existing. In a terminal, start claude again (a session already open there keeps its old settings).",
     "Type /mcp. \"ringkeeper-connect\" should be listed as connected.",
     "This page turns to Connected as soon as a session uses it.",
   ],
