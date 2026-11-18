@@ -169,12 +169,26 @@ export function hostEventMessage(e: HostEvent): { title: string; body: string } 
         body: `${app} reads its settings from a different place than before, so Ringkeeper Connect moved its entry there and undid its changes in the old one. Restart ${app} to finish.`,
       };
     case "lost":
-      return {
-        title: `${app} keeps disconnecting`,
-        body: `${app} keeps removing Ringkeeper Connect from its settings. Open Ringkeeper Connect and choose Connect next to ${app}.`,
-      };
+      // Usually the app was open during the setup and keeps saving its old settings. For apps whose
+      // closing Ringkeeper can see, it puts the entry back as soon as the app is closed.
+      return WATCHED_APPS.includes(e.host as WatchedApp)
+        ? {
+            title: `Restart ${app} to finish`,
+            body: `${app} keeps saving its old settings, which leaves out Ringkeeper Connect. Quit ${app} completely and open it again: Ringkeeper Connect puts itself back as soon as ${app} is closed.`,
+          }
+        : {
+            title: `${app} keeps disconnecting`,
+            body: `${app} keeps removing Ringkeeper Connect from its settings. Quit ${app} completely, then choose Connect next to it in Ringkeeper Connect and open ${app} again.`,
+          };
   }
 }
+
+/** Apps whose running and closing Ringkeeper can see (see app-processes.ts). */
+const WATCHED_APPS = ["claude-desktop", "cursor"] as const;
+type WatchedApp = (typeof WATCHED_APPS)[number];
+/** How often to look at running apps: normally, and while waiting for an app Ringkeeper gave up on to close. */
+const NORMAL_CHECK_MS = 20_000;
+const GIVEN_UP_CHECK_MS = 3_000;
 
 export class AppsService {
   readonly manager: HostManager;
@@ -201,7 +215,10 @@ export class AppsService {
     this.ledger = new Ledger(opts.dataDir, opts.cipher);
     this.contactsFile = join(opts.dataDir, "app-contacts.json");
     this.contacts = readJson<Partial<Record<HostId, number>>>(this.contactsFile) ?? {};
-    this.starts = new AppStartWatcher(() => opts.onChange());
+    this.starts = new AppStartWatcher(() => {
+      this.afterAppsStartedOrClosed();
+      opts.onChange();
+    });
     this.manager = new HostManager({
       roots: rootsForThisRun(),
       ledger: this.ledger,
@@ -292,7 +309,28 @@ export class AppsService {
     this.opts.log?.({ ev: "host_event", ...e });
     const message = hostEventMessage(e);
     if (message) this.opts.notify(message.title, message.body);
+    // Gave up on an app: look often, so a quick restart of it isn't missed.
+    if (e.kind === "lost") this.starts.setPace(GIVEN_UP_CHECK_MS);
     this.opts.onChange();
+  }
+
+  /** Watched apps seen running at the last look. */
+  private wasRunning: Partial<Record<WatchedApp, number>> = {};
+
+  /**
+   * An app Ringkeeper gave up on was just closed: put its entry back now, when
+   * the app can't overwrite it, so it's there when the app opens again. Only on
+   * a seen close (running, then not), never just because no app was found.
+   */
+  private afterAppsStartedOrClosed(): void {
+    const now = this.starts.times;
+    for (const id of WATCHED_APPS) {
+      if (this.wasRunning[id] !== undefined && now[id] === undefined && this.manager.givenUp().includes(id)) {
+        this.manager.restoreWhileClosed(id);
+      }
+    }
+    this.wasRunning = { ...now };
+    if (!this.manager.givenUp().some((id) => (WATCHED_APPS as readonly string[]).includes(id))) this.starts.setPace(NORMAL_CHECK_MS);
   }
 
   scan(): ImportScan {

@@ -81,14 +81,27 @@ export class AppStartWatcher {
     return this.latest;
   }
 
+  private everyMs = 20_000;
+
   start(everyMs = 20_000): void {
+    this.everyMs = everyMs;
     void this.refresh();
+    this.timer = setInterval(() => void this.refresh(), everyMs);
+    this.timer.unref();
+  }
+
+  /** Look more or less often from now on (only while started). */
+  setPace(everyMs: number): void {
+    if (!this.timer || everyMs === this.everyMs) return;
+    clearInterval(this.timer);
+    this.everyMs = everyMs;
     this.timer = setInterval(() => void this.refresh(), everyMs);
     this.timer.unref();
   }
 
   stop(): void {
     if (this.timer) clearInterval(this.timer);
+    this.timer = undefined;
   }
 
   async refresh(): Promise<void> {

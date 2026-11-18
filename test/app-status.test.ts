@@ -189,7 +189,13 @@ describe("connections brought in without a key", () => {
     const { hostEventMessage } = await import("../apps/desktop/src/main/apps.js");
     // Claude Desktop saving its settings from an old copy: already fixed, nothing to do.
     expect(hostEventMessage({ kind: "reconnected", host: "claude-desktop" })).toBeNull();
-    expect(hostEventMessage({ kind: "lost", host: "claude-desktop" })?.title).toBe("Claude Desktop keeps disconnecting");
+    // Gave up: the fix is a full restart, and Ringkeeper puts itself back once the app is closed.
+    expect(hostEventMessage({ kind: "lost", host: "claude-desktop" })).toEqual({
+      title: "Restart Claude Desktop to finish",
+      body: "Claude Desktop keeps saving its old settings, which leaves out Ringkeeper Connect. Quit Claude Desktop completely and open it again: Ringkeeper Connect puts itself back as soon as Claude Desktop is closed.",
+    });
+    // An app whose closing can't be seen: quit it, then Connect again.
+    expect(hostEventMessage({ kind: "lost", host: "kiro" })?.body).toContain("choose Connect next to it");
     expect(hostEventMessage({ kind: "moved", host: "claude-desktop", from: "a", to: "b" })?.body).toContain("Restart Claude Desktop");
     expect(hostEventMessage({ kind: "found", host: "cursor", name: "linear" })?.title).toBe("New connection found in Cursor");
   });

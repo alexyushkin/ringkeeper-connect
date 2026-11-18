@@ -388,6 +388,33 @@ export class HostManager {
     this.watched = [];
   }
 
+  /** Apps Ringkeeper stopped putting back (they kept removing the entry). */
+  givenUp(): HostId[] {
+    return [...this.gaveUp];
+  }
+
+  /**
+   * Call only while the app is closed: it can't overwrite its file then, so
+   * putting the entry back can't turn into a fight, and the app loads it on
+   * its next start. (An app open since before the setup keeps saving its old
+   * settings, which drops the entry, until it's restarted.)
+   */
+  restoreWhileClosed(id: HostId): boolean {
+    const loc = this.location(id);
+    if (!this.opts.ledger.host(id) || this.discoveredVia(loc)) return false;
+    const r = readHostConfig(loc.configPath, loc.format);
+    if (r.status === "unreadable" || (r.status === "ok" && RINGKEEPER_ENTRY in r.servers)) {
+      if (r.status === "ok") this.gaveUp.delete(id);
+      return false;
+    }
+    const res = this.connect([id], []);
+    if (!res[0]?.ok) return false;
+    this.gaveUp.delete(id);
+    this.repairs.delete(id);
+    this.opts.onEvent?.({ kind: "reconnected", host: id });
+    return true;
+  }
+
   /** Look at an app's file after it changed. Public for tests. */
   check(id: HostId, now = Date.now()): void {
     const loc = this.location(id);
