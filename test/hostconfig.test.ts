@@ -416,6 +416,35 @@ describe("watching the apps", () => {
     expect(m.events.map((e) => e.kind)).toEqual(["reconnected", "reconnected", "reconnected", "lost"]);
     expect(RINGKEEPER_ENTRY in JSON.parse(m.read(m.paths.desktop)).mcpServers).toBe(false);
   });
+
+  it("after giving up, puts the entry back once the app is closed, and starts counting afresh", () => {
+    const m = machine();
+    m.manager.connect(["claude-desktop"], []);
+    const t0 = Date.now();
+    for (let i = 0; i < 4; i++) {
+      fs.writeFileSync(m.paths.desktop, claudeDesktop);
+      m.manager.check("claude-desktop", t0 + i * 1000);
+    }
+    expect(m.manager.givenUp()).toEqual(["claude-desktop"]);
+
+    // Claude Desktop was quit (and saved its old settings once more on the way out).
+    fs.writeFileSync(m.paths.desktop, claudeDesktop);
+    expect(m.manager.restoreWhileClosed("claude-desktop")).toBe(true);
+    const after = JSON.parse(m.read(m.paths.desktop));
+    expect(after.mcpServers[RINGKEEPER_ENTRY]).toBeDefined();
+    expect(after.preferences).toEqual(JSON.parse(claudeDesktop).preferences); // the rest of the file untouched
+    expect(m.manager.givenUp()).toEqual([]);
+    expect(m.events.at(-1)?.kind).toBe("reconnected");
+
+    // Opened again with the entry: a later drop is repaired as usual, not ignored.
+    fs.writeFileSync(m.paths.desktop, claudeDesktop);
+    m.manager.check("claude-desktop", t0 + 60_000);
+    expect(RINGKEEPER_ENTRY in JSON.parse(m.read(m.paths.desktop)).mcpServers).toBe(true);
+
+    // Nothing to do when the entry is there, or for an app that was never set up.
+    expect(m.manager.restoreWhileClosed("claude-desktop")).toBe(false);
+    expect(m.manager.restoreWhileClosed("cursor")).toBe(false);
+  });
 });
 
 describe("Claude Desktop extensions", () => {
