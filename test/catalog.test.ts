@@ -22,7 +22,7 @@ describe("the catalog data", () => {
   it("puts every tool in a known group, and marks the ones not yet tried with a real sign-in as Beta", () => {
     for (const s of catalog.services) expect(GROUPS, s.id).toContain(s.group);
     const proven = catalog.services.filter((s) => !s.beta).map((s) => s.id).sort();
-    expect(proven).toEqual(["airtable", "n8n", "notion", "stripe", "supabase"]);
+    expect(proven).toEqual(["airtable", "calcom", "n8n", "notion", "stripe", "supabase"]);
   });
 
   it("uses only https vendor servers that sign in by themselves, or keys, or the client's own address", () => {

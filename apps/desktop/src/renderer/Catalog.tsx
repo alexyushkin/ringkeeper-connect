@@ -251,9 +251,12 @@ function ServiceForm(props: {
       )}
 
       {usesSignIn && (
-        <p className="muted small">
-          Next, your browser opens {service.name}. Sign in with {client.name}'s account and allow access.
-        </p>
+        <ol className="steps sign-in-steps">
+          <li>
+            In your browser, sign in to {service.name} with <strong>{client.name}'s</strong> account.
+          </li>
+          <li>Come back here and click Continue. {service.name} opens in your browser and asks you to allow access.</li>
+        </ol>
       )}
 
       <div className="modal-actions">
@@ -261,7 +264,7 @@ function ServiceForm(props: {
           Back
         </button>
         <button type="submit" className="primary" disabled={busy || !name.trim()}>
-          {usesSignIn ? "Add and sign in" : "Add tool"}
+          {usesSignIn ? "Continue" : "Add tool"}
         </button>
       </div>
     </form>
@@ -299,13 +302,17 @@ export function SignIn(props: { client: ClientView; connectionId: string; name: 
         Sign in to {props.name} for {props.client.name}
       </h2>
       {failed ? (
-        <p>Sign-in didn't finish. You can try again now, or later with "Sign in" next to the connection.</p>
+        <p>
+          Sign-in didn't finish. Make sure your browser is signed in to {props.name} with {props.client.name}'s account, then try
+          again. You can also do it later with "Sign in" next to the connection.
+        </p>
       ) : (
         <>
-          <p>Your browser opened the sign-in page. Finish there, then come back here.</p>
+          <p>Your browser opened {props.name}. Allow access there, then come back here.</p>
           <p className="muted small">
-            Use <strong>{props.client.name}'s</strong> account. If your browser is already signed in to a different account, sign out
-            there first, or paste this link into a private window:
+            If the page shows an error, or you weren't signed in yet: sign in to {props.name} with{" "}
+            <strong>{props.client.name}'s</strong> account, then paste this link into the browser's address bar. Signed in to a
+            different account? Sign out there first, or paste the link into a private window.
           </p>
           {link && (
             <div className="copy-row">

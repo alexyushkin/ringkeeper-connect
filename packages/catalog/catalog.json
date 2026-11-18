@@ -932,7 +932,6 @@
       "name": "Cal.com",
       "group": "Scheduling",
       "description": "See and manage the client's Cal.com bookings, event types and schedules.",
-      "beta": true,
       "options": [
         {
           "id": "oauth",

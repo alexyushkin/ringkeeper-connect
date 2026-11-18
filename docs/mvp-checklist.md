@@ -46,7 +46,9 @@ calls).
 
 For each one:
 
-1. **Add a tool > the tool > Add and sign in** (or paste the key).
+1. Sign in to the tool in your browser first, then **Add a tool > the tool > Continue** (or paste the
+   key). Cal.com shows "Authorization unavailable" if you sign in to it halfway through; signed in
+   first, it goes through by itself (checked).
 2. The sign-in page opens and finishes, and the tool shows **Ready**.
 3. In an AI app, list that client's tools and run one reading tool.
 4. Note anything odd (wrong permissions screen, extra steps), then remove its `beta` flag.
