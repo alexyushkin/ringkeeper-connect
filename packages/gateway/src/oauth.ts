@@ -10,7 +10,7 @@
 import http from "node:http";
 import { randomBytes } from "node:crypto";
 import type { AddressInfo } from "node:net";
-import { auth, type OAuthClientProvider } from "@modelcontextprotocol/sdk/client/auth.js";
+import { auth, discoverOAuthServerInfo, type OAuthClientProvider } from "@modelcontextprotocol/sdk/client/auth.js";
 import type { OAuthClientInformationMixed, OAuthClientMetadata, OAuthTokens } from "@modelcontextprotocol/sdk/shared/auth.js";
 
 export interface OAuthState {
@@ -207,5 +207,40 @@ export async function signIn(opts: SignInOptions): Promise<void> {
     clearTimeout(timer);
     server.close();
     server.closeAllConnections?.();
+  }
+}
+
+/**
+ * Does this web address need a sign-in that Ringkeeper Connect can do by itself
+ * (no key to make)? Only when the server refuses a call without one (401),
+ * names its sign-in service (RFC 9728), and that service lets a new app
+ * register (RFC 7591), the same as signIn() needs.
+ * Never throws: anything unclear is "no". `fetchFn` is for tests.
+ */
+export async function offersSignIn(serverUrl: string, opts: { timeoutMs?: number; fetchFn?: typeof fetch } = {}): Promise<boolean> {
+  let url: URL;
+  try {
+    url = new URL(serverUrl);
+  } catch {
+    return false;
+  }
+  if (url.protocol !== "https:") return false;
+  const base = opts.fetchFn ?? fetch;
+  const timeoutMs = opts.timeoutMs ?? 8000;
+  const fetchFn: typeof fetch = (input, init) => base(input, { ...init, signal: AbortSignal.timeout(timeoutMs) });
+  try {
+    // Only a server that refuses a call without sign-in: one that works without any key stays as it is.
+    const res = await fetchFn(url, {
+      method: "POST",
+      headers: { "content-type": "application/json", accept: "application/json, text/event-stream" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "ringkeeper-connect", version: "1" } } }),
+    });
+    await res.body?.cancel().catch(() => {});
+    if (res.status !== 401) return false;
+    const hinted = /resource_metadata="([^"]+)"/i.exec(res.headers.get("www-authenticate") ?? "")?.[1];
+    const info = await discoverOAuthServerInfo(url, { fetchFn, ...(hinted ? { resourceMetadataUrl: new URL(hinted) } : {}) });
+    return !!info.resourceMetadata?.authorization_servers?.length && !!info.authorizationServerMetadata?.registration_endpoint;
+  } catch {
+    return false;
   }
 }

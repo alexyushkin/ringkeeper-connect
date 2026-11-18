@@ -28,6 +28,7 @@ import { AppsError, AppsService, bridgeLaunch, bundledRuntimes } from "./apps.js
 import { bridgeHome } from "./bridge-copy.js";
 import { CatalogActionError, CatalogActions } from "./catalog.js";
 import { Updates } from "./updates.js";
+import { SignInFinder } from "./sign-in-finder.js";
 
 const dataDir = resolveDataDir();
 const files = dataFiles(dataDir);
@@ -47,6 +48,7 @@ let store: ClientStore;
 let apps: AppsService;
 let catalogActions: CatalogActions;
 let updates: Updates | undefined;
+let signIns: SignInFinder | undefined;
 let gateway: Gateway;
 let tray: Tray | undefined;
 let window: BrowserWindow | undefined;
@@ -172,11 +174,15 @@ async function start(): Promise<void> {
     args: app.isPackaged ? ["--background"] : [app.getAppPath(), "--background"],
   } satisfies LaunchInfo);
 
+  // Keyless web connections whose server supports sign-in get "Sign in" instead of "needs a key".
+  signIns = new SignInFinder({ store, log });
   store.onChange(() => {
     gateway.applyConfig(store.toGatewayConfig(), store.activeClientId);
     applyLoginItem();
     scheduleRefresh();
+    signIns?.schedule();
   });
+  signIns.schedule(3000);
 
   registerIpc();
   createTray();

@@ -33,7 +33,8 @@ describe("the catalog data", () => {
           expect(o.args.join(" "), `${s.id}/${o.id}`).toMatch(/==\d|@\d/);
           continue;
         }
-        if (o.auth === "oauth") expect(o.fields.filter((f) => f.secret || f.required), `${s.id}/${o.id}`).toEqual([]);
+        // Sign-in: no key to paste. It may ask for the client's own address (n8n), never for a secret.
+        if (o.auth === "oauth") expect(o.fields.filter((f) => f.secret || (f.required && !o.url.includes(`{{${f.id}}}`))), `${s.id}/${o.id}`).toEqual([]);
         else expect(Object.keys(o.headers ?? {}).length > 0 || o.url.includes("{{"), `${s.id}/${o.id}`).toBe(true);
       }
     }
@@ -81,6 +82,19 @@ describe("turning answers into a connection", () => {
       });
     }
     expect(() => buildConnection("n8n", "token", { N8N_URL: "http://acme.example.com", N8N_MCP_TOKEN: "x" })).toThrow(/https/);
+  });
+
+  it("n8n and Stripe: sign-in is offered first, so no key has to be made", () => {
+    expect(findService("n8n")!.options.map((o) => [o.id, !!o.recommended])).toEqual([["signin", true], ["token", false]]);
+    expect(buildConnection("n8n", "signin", { N8N_URL: "acme.app.n8n.cloud" })).toEqual({
+      kind: "remote",
+      name: "n8n",
+      url: "https://acme.app.n8n.cloud/mcp-server/http",
+      fields: [],
+      auth: "oauth",
+    });
+    expect(findService("stripe")!.options.map((o) => [o.id, !!o.recommended])).toEqual([["signin", true], ["agent-key", false]]);
+    expect(buildConnection("stripe", "signin", {})).toEqual({ kind: "remote", name: "Stripe", url: "https://mcp.stripe.com/", fields: [], auth: "oauth" });
   });
 
   it("Supabase: sign-in, with the optional project kept to the address only when given", () => {

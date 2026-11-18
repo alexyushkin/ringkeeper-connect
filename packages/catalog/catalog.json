@@ -12,9 +12,26 @@
       ],
       "options": [
         {
+          "id": "signin",
+          "label": "Sign in with n8n",
+          "recommended": true,
+          "kind": "remote",
+          "auth": "oauth",
+          "url": "{{N8N_URL}}",
+          "fields": [
+            {
+              "id": "N8N_URL",
+              "label": "The client's n8n address",
+              "placeholder": "https://yourname.app.n8n.cloud",
+              "help": "The address you open n8n at. You can also paste the full MCP address from n8n's Settings > Instance-level MCP > Connect a client.",
+              "transform": "n8n-mcp-url",
+              "required": true
+            }
+          ]
+        },
+        {
           "id": "token",
           "label": "Use n8n's MCP access token",
-          "recommended": true,
           "kind": "remote",
           "url": "{{N8N_URL}}",
           "headers": {
@@ -176,9 +193,17 @@
       ],
       "options": [
         {
+          "id": "signin",
+          "label": "Sign in with Stripe",
+          "recommended": true,
+          "kind": "remote",
+          "auth": "oauth",
+          "url": "https://mcp.stripe.com",
+          "fields": []
+        },
+        {
           "id": "agent-key",
           "label": "Use a restricted key with agent access",
-          "recommended": true,
           "kind": "remote",
           "url": "https://mcp.stripe.com",
           "headers": {

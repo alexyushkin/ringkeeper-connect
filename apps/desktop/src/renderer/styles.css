@@ -861,3 +861,15 @@ p.muted {
 .chip input[type="checkbox"] {
   width: auto;
 }
+/* Setup: add an online connector by its address. */
+.add-address {
+  display: flex;
+  gap: 8px;
+  margin: 6px 0;
+}
+.add-address input:first-child {
+  flex: 0 0 180px;
+}
+.add-address input:nth-child(2) {
+  flex: 1;
+}
