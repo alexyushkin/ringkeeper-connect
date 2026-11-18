@@ -798,6 +798,37 @@ p.muted {
 .chip.on {
   border-color: var(--accent);
 }
+/* Already in the chosen client: shown, not pickable. */
+.chip.connected {
+  cursor: default;
+  color: var(--ok, #1f9d55);
+  border-style: dashed;
+}
+/* Search plus "Select all / none" above a list. */
+.list-tools {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 6px 0 8px;
+}
+.list-tools input[type="search"] {
+  flex: 1;
+  max-width: 320px;
+}
+/* The client picker at the top of the setup page. */
+.target.top {
+  margin: 8px 0 18px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+}
+.target.top .client-search {
+  margin: 4px 0;
+}
+.candidates .status {
+  margin-left: auto;
+}
 .chip input {
   margin: 0;
 }

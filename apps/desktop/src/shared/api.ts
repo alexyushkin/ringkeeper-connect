@@ -69,6 +69,8 @@ export interface ImportCandidateView {
   /** Why it can't be brought in. */
   problem?: string;
   warnings: string[];
+  /** Clients that already have it in Ringkeeper Connect (same name or same address). */
+  inClients: Array<{ clientId: string; clientName: string; same: boolean }>;
 }
 
 /** An app Ringkeeper only reads connections from. */
@@ -92,6 +94,8 @@ export interface ImportScan {
   /** Other AI apps that were read (connections only brought in, never changed there). */
   sources: SourceView[];
   extensions: ExtensionView[];
+  /** Per client id: the catalog tools it already has. */
+  clientTools: Record<string, string[]>;
 }
 
 export interface SetupRequest {

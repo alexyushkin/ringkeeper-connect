@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { AppState, CatalogService, ClientView, HostId, HostView, ImportScan, Result, SetupOutcome } from "../shared/api";
+import { CLIENT_SEARCH_FROM, matchesWords } from "./search";
 
 type Run = <T>(p: Promise<Result<T>>) => Promise<{ value: T } | null>;
 
@@ -35,6 +36,9 @@ export function Setup(props: { clients: ClientView[]; hosts: HostView[]; run: Ru
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [target, setTarget] = useState<string>(props.clients[0]?.id ?? "new");
   const [newName, setNewName] = useState("Default");
+  const [clientQuery, setClientQuery] = useState("");
+  const [toolQuery, setToolQuery] = useState("");
+  const [webQuery, setWebQuery] = useState("");
   const [busy, setBusy] = useState(false);
   const [outcome, setOutcome] = useState<SetupOutcome | null>(null);
 
@@ -42,12 +46,14 @@ export function Setup(props: { clients: ClientView[]; hosts: HostView[]; run: Ru
     void run(window.ringkeeper.scanApps()).then((r) => {
       if (!r) return;
       setScan(r.value);
-      setChecked(new Set(r.value.candidates.filter((c) => !c.problem).map((c) => c.key)));
+      // Ticked: everything that can be brought in, except what the chosen client already has (even set up differently).
+      setChecked(new Set(r.value.candidates.filter((c) => !c.problem && !c.inClients.some((x) => x.clientId === target)).map((c) => c.key)));
       // The apps from the first release are ticked; newer ones are opt-in, unless already set up.
       const alreadyUsed: HostView["status"][] = ["added", "connected", "not_seeing", "missing"];
       setApps(new Set(r.value.hosts.filter((h) => h.status !== "not_installed" && h.status !== "unreadable" && (!h.optIn || alreadyUsed.includes(h.status))).map((h) => h.id)));
-      // Extensions whose service is in the catalog: offered ticked (their keys can't be copied).
-      setPicked(new Set(r.value.extensions.flatMap((e) => (e.toolId ? [e.toolId] : []))));
+      // Extensions whose service is in the catalog: offered ticked (their keys can't be copied), unless the client has it.
+      const has = new Set(r.value.clientTools[target] ?? []);
+      setPicked(new Set(r.value.extensions.flatMap((e) => (e.toolId && !has.has(e.toolId) ? [e.toolId] : []))));
     });
     void run(window.ringkeeper.catalogServices()).then((r) => r && setTools(r.value));
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -69,6 +75,37 @@ export function Setup(props: { clients: ClientView[]; hosts: HostView[]; run: Ru
   const unreadableSources = scan.sources.filter((s) => s.problems.length > 0);
   const extensionTools = new Set(scan.extensions.flatMap((e) => (e.toolId ? [e.toolId] : [])));
   const needsClient = checked.size > 0 || picked.size > 0;
+  const targetName = target === "new" ? newName.trim() || "the new client" : (props.clients.find((c) => c.id === target)?.name ?? "");
+  // What the chosen client already has: shown as Connected, and not ticked by default.
+  const inTarget = (c: ImportScan["candidates"][number]) => (target === "new" ? undefined : c.inClients.find((x) => x.clientId === target));
+  const targetTools = new Set(target === "new" ? [] : (scan.clientTools[target] ?? []));
+
+  const searchClients = props.clients.length >= CLIENT_SEARCH_FROM;
+  const clientOptions = props.clients.filter((c) => c.id === target || matchesWords(c.name, searchClients ? clientQuery : ""));
+  const shownCandidates = scan.candidates.filter((c) => matchesWords(`${c.name} ${c.service ?? ""} ${c.from.join(" ")}`, toolQuery));
+  const webTools = tools.filter((t) => !extensionTools.has(t.id));
+  const shownWebTools = webTools.filter((t) => matchesWords(`${t.name} ${t.group} ${(t.tags ?? []).join(" ")}`, webQuery));
+
+  function chooseClient(id: string) {
+    setTarget(id);
+    // The client is picked first (top of the page): start over with that client's defaults.
+    // Ticked: what it doesn't have yet. Nothing is added twice.
+    const has = new Set(id === "new" ? [] : (scan!.clientTools[id] ?? []));
+    setChecked(new Set(scan!.candidates.filter((c) => !c.problem && !c.inClients.some((x) => x.clientId === id)).map((c) => c.key)));
+    setPicked((s) => {
+      const fromExtensions = scan!.extensions.flatMap((e) => (e.toolId && !has.has(e.toolId) ? [e.toolId] : []));
+      return new Set([...[...s].filter((t) => !has.has(t) && !extensionTools.has(t)), ...fromExtensions]);
+    });
+  }
+  const setMany = (set: (f: (s: Set<string>) => Set<string>) => void, keys: string[], on: boolean) =>
+    set((s) => {
+      const n = new Set(s);
+      for (const k of keys) {
+        if (on) n.add(k);
+        else n.delete(k);
+      }
+      return n;
+    });
 
   async function connect() {
     setBusy(true);
@@ -84,6 +121,39 @@ export function Setup(props: { clients: ClientView[]; hosts: HostView[]; run: Ru
       <p className="lead">
         Ringkeeper Connect sits between your AI apps and your clients' tools, so each app needs just one connection: Ringkeeper Connect.
       </p>
+
+      {(usable.length > 0 || webTools.length > 0) && (
+        <div className="target top">
+          <label className="field">
+            <span>Client for the tools you bring in or pick below</span>
+            {searchClients && (
+              <input
+                className="client-search"
+                type="search"
+                placeholder="Search clients"
+                aria-label="Search clients"
+                value={clientQuery}
+                onChange={(e) => setClientQuery(e.target.value)}
+              />
+            )}
+            <select value={target} onChange={(e) => chooseClient(e.target.value)}>
+              {clientOptions.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+              <option value="new">A new client…</option>
+            </select>
+          </label>
+          {target === "new" && (
+            <label className="field">
+              <span>New client's name</span>
+              <input value={newName} onChange={(e) => setNewName(e.target.value)} />
+            </label>
+          )}
+          <p className="muted small">Tools this client already has show as Connected. You can copy tools to other clients later with "Copy to…".</p>
+        </div>
+      )}
 
       <h2>Your AI apps</h2>
       <p className="muted small">Ticked apps get Ringkeeper Connect. You can add the others later with "Connect" next to them.</p>
@@ -116,23 +186,45 @@ export function Setup(props: { clients: ClientView[]; hosts: HostView[]; run: Ru
           <p className="muted small">
             Ticked ones move into Ringkeeper Connect, so your AI apps reach them through it. Unticked ones stay where they are.
           </p>
+          <ListTools
+            query={toolQuery}
+            onQuery={setToolQuery}
+            placeholder="Search tools"
+            onAll={() => setMany(setChecked, shownCandidates.filter((c) => !c.problem && !inTarget(c)).map((c) => c.key), true)}
+            onNone={() => setMany(setChecked, shownCandidates.map((c) => c.key), false)}
+          />
           <ul className="candidates">
-            {scan.candidates.map((c) => (
-              <li key={c.key} className={c.problem ? "disabled" : ""}>
-                <label>
-                  <input type="checkbox" disabled={!!c.problem} checked={checked.has(c.key)} onChange={() => flip(setChecked, c.key)} />
-                  <span className="cand-name">{c.name}</span>
-                  {c.service && <span className="badge">{c.service}</span>}
-                  <span className="muted small">in {c.from.join(" and ")}</span>
-                </label>
-                {c.problem && <div className="problem warn">{c.problem}</div>}
-                {c.warnings.map((w) => (
-                  <div key={w} className="problem warn">
-                    {w}
-                  </div>
-                ))}
-              </li>
-            ))}
+            {shownCandidates.map((c) => {
+              const here = inTarget(c);
+              return (
+                <li key={c.key} className={c.problem ? "disabled" : ""}>
+                  <label>
+                    <input type="checkbox" disabled={!!c.problem} checked={checked.has(c.key)} onChange={() => flip(setChecked, c.key)} />
+                    <span className="cand-name">{c.name}</span>
+                    {c.service && <span className="badge">{c.service}</span>}
+                    <span className="muted small">in {c.from.join(" and ")}</span>
+                    {here?.same && (
+                      <span className="status ok" title={`${targetName} already has it`}>
+                        Connected
+                      </span>
+                    )}
+                  </label>
+                  {here && !here.same && <div className="problem warn">{targetName} already has a tool called "{c.name}", set up differently. Ticking this adds a second one.</div>}
+                  {!here && c.inClients.some((x) => !x.same) && (
+                    <div className="problem warn">
+                      {c.inClients.find((x) => !x.same)!.clientName} already has "{c.name}" set up differently. If that one works, use "Copy to…" on it instead of bringing this one in.
+                    </div>
+                  )}
+                  {c.problem && <div className="problem warn">{c.problem}</div>}
+                  {c.warnings.map((w) => (
+                    <div key={w} className="problem warn">
+                      {w}
+                    </div>
+                  ))}
+                </li>
+              );
+            })}
+            {shownCandidates.length === 0 && <li className="muted small">No tool matches "{toolQuery}".</li>}
           </ul>
         </>
       )}
@@ -159,9 +251,19 @@ export function Setup(props: { clients: ClientView[]; hosts: HostView[]; run: Ru
             {scan.extensions.map((e) => (
               <li key={e.name} className={e.toolId ? "" : "disabled"}>
                 <label>
-                  <input type="checkbox" disabled={!e.toolId} checked={!!e.toolId && picked.has(e.toolId)} onChange={() => e.toolId && flip(setPicked, e.toolId)} />
+                  <input
+                    type="checkbox"
+                    disabled={!e.toolId || targetTools.has(e.toolId)}
+                    checked={!!e.toolId && picked.has(e.toolId)}
+                    onChange={() => e.toolId && flip(setPicked, e.toolId)}
+                  />
                   <span className="cand-name">{e.name}</span>
                   {e.toolName ? <span className="muted small">as {e.toolName}</span> : <span className="muted small">not in the list of tools yet</span>}
+                  {e.toolId && targetTools.has(e.toolId) && (
+                    <span className="status ok" title={`${targetName} already has ${e.toolName}`}>
+                      Connected
+                    </span>
+                  )}
                 </label>
               </li>
             ))}
@@ -173,40 +275,29 @@ export function Setup(props: { clients: ClientView[]; hosts: HostView[]; run: Ru
         <>
           <h2>Do you also use any of these in Claude or ChatGPT on the web?</h2>
           <p className="muted small">Connectors added on the web stay in your online account, so Ringkeeper Connect can't see them. Tick the ones your clients use, and you'll add them next.</p>
+          <ListTools
+            query={webQuery}
+            onQuery={setWebQuery}
+            placeholder="Search, like CRM or WordPress"
+            onNone={() => setMany(setPicked, shownWebTools.map((t) => t.id), false)}
+          />
           <div className="tool-chips">
-            {tools
-              .filter((t) => !extensionTools.has(t.id))
-              .map((t) => (
+            {shownWebTools.map((t) =>
+              targetTools.has(t.id) ? (
+                <span key={t.id} className="chip connected" title={`${targetName} already has ${t.name}`}>
+                  ✓ {t.name}
+                </span>
+              ) : (
                 <label key={t.id} className={`chip ${picked.has(t.id) ? "on" : ""}`}>
                   <input type="checkbox" checked={picked.has(t.id)} onChange={() => flip(setPicked, t.id)} />
                   {t.name}
                 </label>
-              ))}
+              ),
+            )}
+            {shownWebTools.length === 0 && <span className="muted small">No tool matches "{webQuery}".</span>}
           </div>
+          {webTools.some((t) => targetTools.has(t.id)) && <p className="muted small">✓ {targetName} already has these.</p>}
         </>
-      )}
-
-      {needsClient && (usable.length > 0 || picked.size > 0) && (
-        <div className="target">
-          <label className="field">
-            <span>Put them in this client</span>
-            <select value={target} onChange={(e) => setTarget(e.target.value)}>
-              {props.clients.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-              <option value="new">A new client…</option>
-            </select>
-          </label>
-          {target === "new" && (
-            <label className="field">
-              <span>New client's name</span>
-              <input value={newName} onChange={(e) => setNewName(e.target.value)} />
-            </label>
-          )}
-          <p className="muted small">You can copy tools to other clients later with "Copy to…".</p>
-        </div>
       )}
       <p className="muted small">
         Ringkeeper Connect keeps a backup of each app's settings before changing them. "Restore original settings" undoes everything.
@@ -224,6 +315,23 @@ export function Setup(props: { clients: ClientView[]; hosts: HostView[]; run: Ru
           {busy ? "Connecting…" : apps.size > 0 ? "Connect apps" : "Continue"}
         </button>
       </div>
+    </div>
+  );
+}
+
+/** Search box plus "Select all" / "Select none" over a list (both act on what the search shows). */
+function ListTools(props: { query: string; onQuery: (q: string) => void; placeholder: string; onAll?: () => void; onNone: () => void }) {
+  return (
+    <div className="list-tools">
+      <input type="search" placeholder={props.placeholder} aria-label={props.placeholder} value={props.query} onChange={(e) => props.onQuery(e.target.value)} />
+      {props.onAll && (
+        <button type="button" className="link small" onClick={props.onAll}>
+          Select all
+        </button>
+      )}
+      <button type="button" className="link small" onClick={props.onNone}>
+        Select none
+      </button>
     </div>
   );
 }

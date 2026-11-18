@@ -200,6 +200,40 @@ describe("connections brought in without a key", () => {
     expect(hostEventMessage({ kind: "found", host: "cursor", name: "linear" })?.title).toBe("New connection found in Cursor");
   });
 
+  it("setup: knows which clients already have a found tool, and which catalog tools each client has", async () => {
+    const { whereAlready, addressWarnings, catalogToolsIn } = await import("../apps/desktop/src/main/apps.js");
+    const remote = (id: string, name: string, url: string) => ({ kind: "remote" as const, id, name, url, fields: [], missingKeys: [] });
+    const gi = {
+      id: "gi",
+      name: "General Informatics",
+      active: true,
+      connections: [
+        remote("1", "mass_home_comfort", "https://new-address.trycloudflare.com/api/mcp"),
+        remote("2", "Twilio", "https://example.com/x"),
+        { kind: "local" as const, id: "3", name: "playwright", command: "npx", args: ["-y", "@executeautomation/playwright-mcp-server"], fields: [], missingKeys: [] },
+      ],
+    };
+    const seaside = { id: "sea", name: "Seaside", active: false, connections: [remote("4", "linear", "https://mcp.linear.app/mcp/")] };
+
+    // Same name, different address: in General Informatics, but not set up the same way.
+    const old = { kind: "remote" as const, name: "mass_home_comfort", url: "https://chronicles-dance.trycloudflare.com/api/mcp", fields: [] };
+    expect(whereAlready(old, "mass_home_comfort", [gi, seaside])).toEqual([{ clientId: "gi", clientName: "General Informatics", same: false }]);
+    // Same program under another name; same address ignoring a trailing slash.
+    expect(whereAlready({ kind: "local", name: "pw", command: "npx", args: ["-y", "@executeautomation/playwright-mcp-server"], fields: [] }, "pw", [gi])).toEqual([
+      { clientId: "gi", clientName: "General Informatics", same: true },
+    ]);
+    expect(whereAlready({ kind: "remote", name: "Linear", url: "https://mcp.linear.app/mcp", fields: [] }, "Linear", [gi, seaside])).toEqual([
+      { clientId: "sea", clientName: "Seaside", same: true },
+    ]);
+
+    expect(addressWarnings(old)[0]).toContain("chronicles-dance.trycloudflare.com) is temporary");
+    expect(addressWarnings({ kind: "remote", name: "x", url: "https://mcp.notion.com/mcp", fields: [] })).toEqual([]);
+
+    // By name (Twilio) or by the tool's own address (Linear).
+    expect(catalogToolsIn(gi)).toContain("twilio");
+    expect(catalogToolsIn(seaside)).toEqual(["linear"]);
+  });
+
   it("'Request a tool' opens an email with the search in the subject and a short form", async () => {
     const { requestToolMailto, REQUEST_TOOL_EMAIL } = await import("../apps/desktop/src/main/catalog.js");
     expect(REQUEST_TOOL_EMAIL).toBe("requests@yushkin.us");
