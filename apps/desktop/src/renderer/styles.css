@@ -176,6 +176,18 @@ button:focus-visible {
   margin: 0;
   padding: 0;
 }
+/* Many clients: the list scrolls on its own, so the AI apps below stay in view. */
+.client-list.long {
+  max-height: 40vh;
+  overflow-y: auto;
+}
+.client-search {
+  width: 100%;
+  margin: 2px 0 6px;
+}
+.client-list .no-match {
+  padding: 8px;
+}
 .client-item {
   width: 100%;
   display: flex;

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { CatalogService, ClientView, Result } from "../shared/api";
+import { matchesWords } from "./search";
 
 type Run = <T>(p: Promise<Result<T>>) => Promise<{ value: T } | null>;
 const api = () => window.ringkeeper;
@@ -70,13 +71,7 @@ const GROUP_ORDER = [
 ];
 
 function matches(s: CatalogService, q: string): boolean {
-  if (!q) return true;
-  const hay = `${s.name} ${s.group} ${s.description} ${(s.tags ?? []).join(" ")}`.toLowerCase();
-  return q
-    .toLowerCase()
-    .split(/\s+/)
-    .filter(Boolean)
-    .every((w) => hay.includes(w));
+  return matchesWords(`${s.name} ${s.group} ${s.description} ${(s.tags ?? []).join(" ")}`, q);
 }
 
 /** Short facts and Beta, shown on a tile and above the form. */
