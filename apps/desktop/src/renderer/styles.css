@@ -511,6 +511,19 @@ p.muted {
   background: var(--panel);
   border-radius: 4px;
 }
+/* "Sign in first, then Continue": numbered, so the order is clear. */
+.sign-in-steps {
+  counter-reset: step;
+  margin: 12px 0 4px;
+  font-size: 13px;
+}
+.sign-in-steps li {
+  counter-increment: step;
+}
+.sign-in-steps li::before {
+  content: counter(step) ". ";
+  font-weight: 600;
+}
 .target {
   margin-top: 14px;
 }
