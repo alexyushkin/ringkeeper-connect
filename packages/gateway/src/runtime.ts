@@ -78,12 +78,29 @@ export function readJson<T>(path: string): T | null {
   }
 }
 
-/** Write to a temp file next to the target, then rename over it. */
+/**
+ * Write to a temp file next to the target, then rename over it. Windows can
+ * briefly lock a file that was just written (a virus scanner or the search
+ * indexer reading it), so the rename is retried for a moment.
+ */
 export function writeJsonAtomic(path: string, value: unknown, mode = 0o600): void {
   fs.mkdirSync(dirname(path), { recursive: true });
-  const tmp = `${path}.${process.pid}.${Date.now()}.tmp`;
+  const tmp = `${path}.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2, 8)}.tmp`;
   fs.writeFileSync(tmp, JSON.stringify(value, null, 2) + "\n", { mode });
-  fs.renameSync(tmp, path);
+  for (let attempt = 0; ; attempt++) {
+    try {
+      fs.renameSync(tmp, path);
+      return;
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code;
+      if ((code === "EPERM" || code === "EBUSY" || code === "EACCES") && attempt < 8) {
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 50 * (attempt + 1));
+        continue;
+      }
+      fs.rmSync(tmp, { force: true });
+      throw err;
+    }
+  }
 }
 
 export function loadOrCreateInstallSettings(dataDir: string): InstallSettings {
