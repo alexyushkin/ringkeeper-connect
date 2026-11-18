@@ -27,6 +27,7 @@ import { readJson, writeJsonAtomic } from "@ringkeeper/gateway";
 import { catalog, findService } from "@ringkeeper/catalog";
 import type { ConnectionInput } from "@ringkeeper/gateway";
 import { AppStartWatcher } from "./app-processes.js";
+import { ensureBridgeCopy } from "./bridge-copy.js";
 import type { HostView } from "../shared/api.js";
 import type { Cipher } from "@ringkeeper/gateway";
 import type { FoundConnection, ImportScan, SetupOutcome, SetupRequest } from "../shared/api.js";
@@ -55,11 +56,23 @@ export function bridgeLaunch(opts: {
   distDir: string;
   dataDirOverride?: string;
   runtimes?: BundledRuntimes;
+  /** Run the bridge from a copy in this folder, outside the install folder (see bridge-copy.ts). */
+  copyTo?: string;
+  warn?: (msg: string) => void;
 }): LaunchCommand {
   const env = opts.dataDirOverride ? { RINGKEEPER_DATA_DIR: opts.dataDirOverride } : undefined;
   const bridge = opts.packaged ? join(opts.resourcesPath, "bridge.mjs") : join(opts.distDir, "bridge.mjs");
   if (opts.runtimes?.nodeDir) {
     const node = process.platform === "win32" ? join(opts.runtimes.nodeDir, "node.exe") : join(opts.runtimes.nodeDir, "bin", "node");
+    if (opts.copyTo) {
+      try {
+        const copy = ensureBridgeCopy({ node, bridge }, opts.copyTo);
+        return { command: copy.node, args: [copy.bridge], env };
+      } catch (err) {
+        // Still works from the install folder; only updates will interrupt it.
+        opts.warn?.(`bridge copy failed: ${(err as NodeJS.ErrnoException).code ?? String(err)}`);
+      }
+    }
     return { command: node, args: [bridge], env };
   }
   if (opts.packaged) {
