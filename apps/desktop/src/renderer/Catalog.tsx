@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import type { CatalogService, ClientView, Result } from "../shared/api";
+import { NOT_APPROVED, type CatalogService, type ClientView, type Result } from "../shared/api";
 import { matchesWords } from "./search";
 
 type Run = <T>(p: Promise<Result<T>>) => Promise<{ value: T } | null>;
@@ -270,13 +270,15 @@ function ServiceForm(props: {
 export function SignIn(props: { client: ClientView; connectionId: string; name: string; run: Run; onClose: () => void }) {
   const [link, setLink] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
-  const [failed, setFailed] = useState(false);
+  // Why sign-in failed, shown here (not as a banner behind this window).
+  const [failed, setFailed] = useState<string | null>(null);
+  const canRetry = !failed?.includes(NOT_APPROVED);
 
   async function start() {
-    setFailed(false);
-    const r = await props.run(api().signIn(props.client.id, props.connectionId));
-    if (r) props.onClose();
-    else setFailed(true);
+    setFailed(null);
+    const r = await api().signIn(props.client.id, props.connectionId);
+    if (r.ok) props.onClose();
+    else setFailed(r.error);
   }
 
   useEffect(() => {
@@ -297,10 +299,15 @@ export function SignIn(props: { client: ClientView; connectionId: string; name: 
         Sign in to {props.name} for {props.client.name}
       </h2>
       {failed ? (
-        <p>
-          Sign-in didn't finish. Make sure your browser is signed in to {props.name} with {props.client.name}'s account, then try
-          again. You can also do it later with "Sign in" next to the connection.
-        </p>
+        <>
+          <p>{failed}</p>
+          {canRetry && (
+            <p className="muted small">
+              If the sign-in page showed an error: sign in to {props.name} in your browser with {props.client.name}'s account first, then try
+              again. You can also do it later with "Sign in" next to the connection.
+            </p>
+          )}
+        </>
       ) : (
         <>
           <p>Your browser opened {props.name}. Allow access there, then come back here.</p>
@@ -339,7 +346,7 @@ export function SignIn(props: { client: ClientView; connectionId: string; name: 
         >
           {failed ? "Close" : "Cancel"}
         </button>
-        {failed && (
+        {failed && canRetry && (
           <button className="primary" onClick={() => void start()}>
             Try again
           </button>

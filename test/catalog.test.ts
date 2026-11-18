@@ -6,12 +6,12 @@ describe("the catalog data", () => {
     expect(validateCatalog(catalog)).toEqual([]);
   });
 
-  it("covers the MVP's 35 tools plus Twilio, with no Google services", () => {
+  it("covers the MVP's tools plus Twilio (Meta Ads waits for an approved app of our own), with no Google services", () => {
     expect(catalog.services.map((s) => s.id).sort()).toEqual(
       [
         "n8n", "supabase", "airtable", "notion", "stripe",
         "neon", "netlify", "github", "apollo", "leadfeeder", "upwork", "retell",
-        "make", "zapier", "gohighlevel", "pipedrive", "monday", "close", "klaviyo", "meta-ads", "resend",
+        "make", "zapier", "gohighlevel", "pipedrive", "monday", "close", "klaviyo", "resend",
         "wordpress-com", "wordpress", "webflow", "wix", "paypal", "trello", "atlassian", "linear", "canva",
         "calendly", "calcom", "tavily", "apify", "elevenlabs", "twilio",
       ].sort(),

@@ -237,6 +237,6 @@ describe("signing in to a web connection", () => {
     cleanups.push(() => new Promise<void>((r) => plain.close(() => r())));
     await expect(
       signIn({ serverUrl: `http://127.0.0.1:${port}/mcp`, label: "Stripe for Initech", store: memoryStore(), key: "k", openBrowser: () => {} }),
-    ).rejects.toThrow(/doesn't offer sign-in that Ringkeeper Connect can use/);
+    ).rejects.toThrow(/doesn't offer a sign-in that Ringkeeper Connect can use. Use a key instead/);
   });
 });

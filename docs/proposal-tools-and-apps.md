@@ -111,7 +111,7 @@ client's own address. Grouped the way the "Add a tool" screen should group them.
 | | Sanity | Sign in | `https://mcp.sanity.io` | |
 | | Contentful | Sign in | `https://mcp.contentful.com/mcp` (EU: `mcp.eu.contentful.com`) | Install its app in the space first |
 | | Strapi, Payload | Address + key | The client's own | Server must be turned on |
-| Ads and SEO | Meta Ads | Sign in or token | `https://mcp.facebook.com/ads` | Other businesses' ads need Meta's app review |
+| Ads and SEO | Meta Ads | Needs our own approved app | `https://mcp.facebook.com/ads` | Its sign-in lets only apps Meta approved register (checked 2026-11-18); taken out of the MVP catalog |
 | | DataForSEO | Key | `https://mcp.dataforseo.com/mcp` | Basic auth (login:password) |
 | | Ahrefs | Sign in or key | `https://api.ahrefs.com/mcp/mcp` | Lite plan or higher |
 | | Semrush | Sign in or key | `https://mcp.semrush.com/v1/mcp` | API-enabled plan |
