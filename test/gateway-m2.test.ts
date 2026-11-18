@@ -219,6 +219,15 @@ describe("remote connections", () => {
       "Notion for Initech didn't accept the key. Update it in Ringkeeper Connect under Initech > Notion.",
     );
   });
+
+  it("recognises temporary tunnel addresses, which change on every restart", async () => {
+    const { temporaryHost } = await import("../packages/gateway/src/upstream.js");
+    expect(temporaryHost("https://chronicles-dance-provincial-columbus.trycloudflare.com/api/mcp")).toBe("chronicles-dance-provincial-columbus.trycloudflare.com");
+    expect(temporaryHost("https://Quiet-Fox-12.LOCA.LT/mcp")).toBe("quiet-fox-12.loca.lt");
+    expect(temporaryHost("https://mcp.notion.com/mcp")).toBeUndefined();
+    expect(temporaryHost("https://trycloudflare.com.example.com/mcp")).toBeUndefined();
+    expect(temporaryHost("not a web address")).toBeUndefined();
+  });
 });
 
 describe("who switched", () => {

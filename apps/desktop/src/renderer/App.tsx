@@ -335,7 +335,9 @@ function ClientPanel(props: {
               <li key={conn.id} className="connection">
                 <div className="connection-main">
                   <div className="connection-name">{conn.name}</div>
-                  <div className="connection-where">{conn.kind === "remote" ? conn.url : "Program on this computer"}</div>
+                  <div className="connection-where" title={conn.kind === "remote" ? conn.url : undefined}>
+                    {conn.kind === "remote" ? conn.url : "Program on this computer"}
+                  </div>
                   {problem && status.tone !== "ok" && <div className={`problem ${status.tone}`}>{problem}</div>}
                 </div>
                 <span className={`status ${status.tone}`}>{status.word}</span>

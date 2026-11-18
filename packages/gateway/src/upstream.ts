@@ -24,6 +24,19 @@ export interface UpstreamEnv {
 /** After a failed start, wait this long before trying again on the next request. */
 const RETRY_AFTER_MS = 30_000;
 
+/** Quick-tunnel services whose addresses are random and change on every restart. */
+const TEMPORARY_HOSTS = [".trycloudflare.com", ".loca.lt"];
+
+/** The address's host when it's one of those temporary ones. Exported for tests. */
+export function temporaryHost(url: string): string | undefined {
+  try {
+    const host = new URL(url).hostname.toLowerCase();
+    return TEMPORARY_HOSTS.some((suffix) => host.endsWith(suffix)) ? host : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export class Upstream {
   status: UpstreamStatus = "idle";
   /** Plain-language problem, safe to show the user and the model. */
@@ -162,6 +175,10 @@ export class Upstream {
       return `Couldn't start ${who}: the program "${this.conn.command}" isn't on this computer.`;
     }
     if (this.conn.kind === "remote" && /fetch failed|ECONNREFUSED|ENOTFOUND|ETIMEDOUT|network/i.test(String(err))) {
+      const host = temporaryHost(this.conn.url);
+      if (host) {
+        return `Couldn't reach ${who}. Its web address (${host}) is temporary and changes whenever it restarts. Ask whoever runs it for the new address, then update it under ${where}.`;
+      }
       return `Couldn't reach ${who}. Check your internet connection and the web address under ${where}.`;
     }
     if (this.conn.kind !== "remote" && /ENOTFOUND|EAI_AGAIN|ECONNREFUSED|ETIMEDOUT|getaddrinfo|network|registry\.npmjs|Failed to fetch|failed to download/i.test(this.stderrTail)) {

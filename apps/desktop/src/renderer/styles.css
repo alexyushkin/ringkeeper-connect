@@ -317,7 +317,8 @@ p.muted {
 }
 .connection {
   display: grid;
-  grid-template-columns: 1fr auto auto;
+  /* minmax(0, …): a long web address shrinks (with "…") instead of pushing the buttons out of the card. */
+  grid-template-columns: minmax(0, 1fr) auto auto;
   gap: 14px;
   align-items: center;
   background: var(--panel);
@@ -348,6 +349,16 @@ p.muted {
 .connection-actions {
   display: flex;
   gap: 6px;
+}
+/* A narrow window: buttons go under the name instead of squeezing it. */
+@media (max-width: 760px) {
+  .connection {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .connection-actions {
+    grid-column: 1 / -1;
+    justify-content: flex-end;
+  }
 }
 .status {
   font-size: 12px;
