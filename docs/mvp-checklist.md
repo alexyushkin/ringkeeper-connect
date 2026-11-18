@@ -67,3 +67,19 @@ with a key. Upwork's registration address looks like its sign-up page, so check 
   before the release, and send one from the beta to check it arrives.
 - **Fixtures:** replace the documented shapes in `test/fixtures/more-hosts.ts` with copies of real
   files (keys removed) as you check each app.
+
+## 4. Google (after the registration in docs/registered-apps.md)
+
+Needs a build made after the Google IDs are in the repository's Actions settings (before that, the
+Google account tile says its sign-in isn't in this version yet). With the published app:
+
+1. Add a tool > Google account, tick what it may do, Continue, and sign in with Google. Expect
+   Google's "unverified app" warning: Advanced > Go to Ringkeeper Connect.
+2. The tool shows Ready. In an AI app, list the client's tools and run a reading one (search
+   mail, list files, read a sheet).
+3. Only the ticked things are offered: with "Read mail" but not "Send mail", there's no tool that
+   sends mail.
+4. A second client with a different Google account (Google lets you pick one at sign-in): its tools
+   see only that account.
+5. Over an hour later, it still works (the app renews Google's one-hour access by itself), and a
+   week later too, without signing in again (the app is published, not in testing).

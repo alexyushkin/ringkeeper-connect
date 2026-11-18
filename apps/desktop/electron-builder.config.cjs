@@ -28,10 +28,12 @@ module.exports = {
   extraMetadata: { name: "ringkeeper-connect" },
   directories: { output: "release", buildResources: "build" },
   // Everything is bundled into dist/ by scripts/build-desktop.mjs, so no node_modules ship.
-  files: ["dist/**/*", "!dist/**/*.map", "!dist/bridge.mjs", "assets/**/*", "package.json", "!node_modules/**/*"],
+  files: ["dist/**/*", "!dist/**/*.map", "!dist/bridge.mjs", "!dist/tools.mjs", "assets/**/*", "package.json", "!node_modules/**/*"],
   extraResources: [
     // The bridge AI apps launch, and the Node/uv it and local connections run on.
     { from: "dist/bridge.mjs", to: "bridge.mjs" },
+    // Ringkeeper Connect's own tools (a Google account), run on that Node.
+    { from: "dist/tools.mjs", to: "tools.mjs" },
     { from: "runtimes/${platform}-${arch}", to: "runtimes", filter: ["**/*", "!.pinned"] },
   ],
   asar: true,

@@ -445,6 +445,25 @@ p.muted {
 .choice input {
   width: auto;
 }
+/* What the AI may do (a Google account): a long list of tick boxes, two columns where there's room. */
+.choice.access {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  column-gap: 16px;
+  max-height: 280px;
+  overflow-y: auto;
+}
+.choice.access legend {
+  grid-column: 1 / -1;
+}
+.choice.access label {
+  align-items: flex-start;
+}
+.choice.access .hint {
+  display: block;
+  font-size: 12px;
+  color: var(--muted);
+}
 .fields-head {
   display: flex;
   justify-content: space-between;

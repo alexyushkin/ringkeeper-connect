@@ -13,10 +13,17 @@ interface ConnectionBase {
 /** A program on this computer, talked to over stdin/stdout. */
 export interface LocalConnectionConfig extends ConnectionBase {
   kind?: "local";
+  /** BUILTIN_TOOLS_COMMAND runs Ringkeeper Connect's own tools program (args[0]: the service). */
   command: string;
   args?: string[];
   env?: Record<string, string>;
+  /** Signs in through a registered app; the program gets a fresh access token in RINGKEEPER_ACCESS_TOKEN. */
+  oauth?: { key: string; app?: string; scope?: string };
+  needsSignIn?: boolean;
 }
+
+/** The command that stands for Ringkeeper Connect's built-in tools program (packages/tools). */
+export const BUILTIN_TOOLS_COMMAND = "ringkeeper-tools";
 
 /** A server on the web, talked to over Streamable HTTP. */
 export interface RemoteConnectionConfig extends ConnectionBase {
@@ -25,8 +32,8 @@ export interface RemoteConnectionConfig extends ConnectionBase {
   /** "sse" for older servers; Streamable HTTP otherwise. */
   transport?: "sse";
   headers?: Record<string, string>;
-  /** Signs in with OAuth; tokens live in the OAuth state store under this key. */
-  oauth?: { key: string };
+  /** Signs in with OAuth; tokens live in the OAuth state store under this key. `app`: a registered app (Google, Microsoft); `scope`: permissions. */
+  oauth?: { key: string; app?: string; scope?: string };
   /** OAuth connection with no saved sign-in yet. */
   needsSignIn?: boolean;
 }
@@ -67,5 +74,5 @@ export function findClient(config: GatewayConfig, idOrName: string): ClientConfi
 
 /** Changes when anything that affects how the connection runs changes (including keys). In memory only. */
 export function connectionFingerprint(c: ConnectionConfig): string {
-  return JSON.stringify(c.kind === "remote" ? [c.kind, c.url, c.transport, c.headers, c.missingKeys, c.oauth?.key, c.needsSignIn] : ["local", c.command, c.args, c.env, c.missingKeys]);
+  return JSON.stringify(c.kind === "remote" ? [c.kind, c.url, c.transport, c.headers, c.missingKeys, c.oauth?.key, c.oauth?.app, c.oauth?.scope, c.needsSignIn] : ["local", c.command, c.args, c.env, c.missingKeys, c.oauth?.key, c.oauth?.app, c.oauth?.scope, c.needsSignIn]);
 }

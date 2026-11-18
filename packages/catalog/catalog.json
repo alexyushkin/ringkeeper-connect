@@ -161,6 +161,132 @@
       ]
     },
     {
+      "id": "google",
+      "name": "Google account",
+      "group": "Work and projects",
+      "description": "Gmail, Drive, Calendar, Sheets, Docs, Search Console, Analytics and YouTube for one of the client's Google accounts.",
+      "beta": true,
+      "notes": [
+        "You choose what the AI may do. To change it later, remove the tool and add it again.",
+        "Google shows a warning that it hasn't checked Ringkeeper Connect yet. Choose Advanced, then Go to Ringkeeper Connect."
+      ],
+      "options": [
+        {
+          "id": "signin",
+          "label": "Sign in with Google",
+          "recommended": true,
+          "kind": "local",
+          "command": "ringkeeper-tools",
+          "args": [
+            "google"
+          ],
+          "auth": "oauth",
+          "app": "google",
+          "scope": "openid email",
+          "fields": [],
+          "access": [
+            {
+              "id": "mail_read",
+              "label": "Read mail",
+              "scope": "https://www.googleapis.com/auth/gmail.readonly",
+              "default": true
+            },
+            {
+              "id": "mail_drafts",
+              "label": "Write drafts",
+              "scope": "https://www.googleapis.com/auth/gmail.compose",
+              "default": true
+            },
+            {
+              "id": "mail_send",
+              "label": "Send mail",
+              "scope": "https://www.googleapis.com/auth/gmail.send"
+            },
+            {
+              "id": "mail_trash",
+              "label": "Move mail to the trash",
+              "scope": "https://www.googleapis.com/auth/gmail.modify"
+            },
+            {
+              "id": "drive_files",
+              "label": "Drive: files it creates or is given",
+              "scope": "https://www.googleapis.com/auth/drive.file",
+              "default": true
+            },
+            {
+              "id": "drive_read_all",
+              "label": "Drive: read all files",
+              "scope": "https://www.googleapis.com/auth/drive.readonly",
+              "note": "Google warns more strongly about this one."
+            },
+            {
+              "id": "calendar_read",
+              "label": "Calendar: read events",
+              "scope": "https://www.googleapis.com/auth/calendar.events.readonly",
+              "default": true
+            },
+            {
+              "id": "calendar_write",
+              "label": "Calendar: add and change events",
+              "scope": "https://www.googleapis.com/auth/calendar.events"
+            },
+            {
+              "id": "sheets_read",
+              "label": "Sheets: read",
+              "scope": "https://www.googleapis.com/auth/spreadsheets.readonly",
+              "default": true
+            },
+            {
+              "id": "sheets_write",
+              "label": "Sheets: read and edit",
+              "scope": "https://www.googleapis.com/auth/spreadsheets"
+            },
+            {
+              "id": "docs_read",
+              "label": "Docs: read",
+              "scope": "https://www.googleapis.com/auth/documents.readonly",
+              "default": true
+            },
+            {
+              "id": "docs_write",
+              "label": "Docs: read, create and edit",
+              "scope": "https://www.googleapis.com/auth/documents"
+            },
+            {
+              "id": "search_console_read",
+              "label": "Search Console: read",
+              "scope": "https://www.googleapis.com/auth/webmasters.readonly"
+            },
+            {
+              "id": "analytics_read",
+              "label": "Analytics: read",
+              "scope": "https://www.googleapis.com/auth/analytics.readonly"
+            },
+            {
+              "id": "youtube_read",
+              "label": "YouTube: read videos and comments",
+              "scope": "https://www.googleapis.com/auth/youtube.readonly"
+            },
+            {
+              "id": "youtube_upload",
+              "label": "YouTube: upload videos",
+              "scope": "https://www.googleapis.com/auth/youtube.upload"
+            },
+            {
+              "id": "youtube_manage",
+              "label": "YouTube: edit and delete videos, reply to comments",
+              "scope": "https://www.googleapis.com/auth/youtube.force-ssl"
+            },
+            {
+              "id": "youtube_analytics",
+              "label": "YouTube: read analytics",
+              "scope": "https://www.googleapis.com/auth/yt-analytics.readonly"
+            }
+          ]
+        }
+      ]
+    },
+    {
       "id": "notion",
       "name": "Notion",
       "group": "Work and projects",

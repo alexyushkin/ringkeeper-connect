@@ -9,7 +9,8 @@ import { ToolListChangedNotificationSchema, type CallToolResult, type Tool } fro
 import { UnauthorizedError } from "@modelcontextprotocol/sdk/client/auth.js";
 import { OAuthError } from "@modelcontextprotocol/sdk/server/auth/errors.js";
 import type { ClientConfig, ConnectionConfig } from "./config.js";
-import { StoredOAuthProvider, type OAuthStateStore } from "./oauth.js";
+import { NeedsSignInError, StoredOAuthProvider, directAccessToken, type OAuthStateStore, type RegisteredApp } from "./oauth.js";
+import { BUILTIN_TOOLS_COMMAND } from "./config.js";
 import { resolveLaunch, type BundledRuntimes } from "./runtimes.js";
 import type { Logger } from "./log.js";
 
@@ -19,7 +20,14 @@ export type UpstreamStatus = "idle" | "starting" | "ready" | "error" | "needs_ke
 export interface UpstreamEnv {
   runtimes?: BundledRuntimes;
   oauthStore?: OAuthStateStore;
+  /** Ringkeeper Connect's registered apps (Google, Microsoft), by id; those this build has. */
+  apps?: Record<string, RegisteredApp>;
+  /** Path of the built-in tools program (tools.mjs), run with the bundled Node. */
+  toolsProgram?: string;
 }
+
+/** Restart a program whose access token has less than this left, so it never runs with an expired one. */
+const TOKEN_RENEW_BEFORE_MS = 2 * 60_000;
 
 /** After a failed start, wait this long before trying again on the next request. */
 const RETRY_AFTER_MS = 30_000;
@@ -60,6 +68,8 @@ export class Upstream {
   private oauth?: StoredOAuthProvider;
   /** Last lines the program printed, to explain a failed start (e.g. an offline download). */
   private stderrTail = "";
+  /** When the access token a signed-in program was started with runs out. */
+  private tokenExpiresAt?: number;
 
   constructor(
     readonly owner: ClientConfig,
@@ -73,7 +83,11 @@ export class Upstream {
     if (conn.missingKeys?.length) {
       this.status = "needs_key";
       this.error = `${conn.name} for ${owner.name} needs ${conn.missingKeys.join(" and ")}. Add it in Ringkeeper Connect under ${owner.name} > ${conn.name}.`;
-    } else if (conn.kind === "remote" && conn.needsSignIn) {
+    } else if (conn.oauth?.app && !env.apps?.[conn.oauth.app]) {
+      // Needs a registered app this version of Ringkeeper Connect doesn't have.
+      this.status = "needs_signin";
+      this.error = `${conn.name} for ${owner.name} needs a newer version of Ringkeeper Connect. Update it, then sign in under ${owner.name} > ${conn.name}.`;
+    } else if (conn.needsSignIn) {
       this.status = "needs_signin";
       this.error = this.signInMessage(false);
     }
@@ -92,8 +106,16 @@ export class Upstream {
   /** Start if not started (or retry a failed start after a pause). Resolves when settled. */
   ensureStarted(): Promise<void> {
     this.lastUsed = Date.now();
-    if (this.status === "needs_key" || this.status === "needs_signin" || this.status === "ready") return Promise.resolve();
     if (this.starting) return this.starting;
+    // A program started with an access token that's about to run out: restart it with a fresh one.
+    if (this.status === "ready" && this.tokenExpiresAt !== undefined && this.tokenExpiresAt - Date.now() < TOKEN_RENEW_BEFORE_MS) {
+      this.log({ ev: "upstream_token_renew", client: this.owner.id, conn: this.conn.id });
+      this.starting = this.stop()
+        .then(() => this.start())
+        .finally(() => (this.starting = undefined));
+      return this.starting;
+    }
+    if (this.status === "needs_key" || this.status === "needs_signin" || this.status === "ready") return Promise.resolve();
     if (this.status === "error" && Date.now() - this.failedAt < RETRY_AFTER_MS) return Promise.resolve();
     this.starting = this.start().finally(() => (this.starting = undefined));
     return this.starting;
@@ -104,18 +126,35 @@ export class Upstream {
     await Promise.race([this.ensureStarted(), new Promise((r) => setTimeout(r, timeoutMs))]);
   }
 
-  private makeTransport(): Transport {
+  private async makeTransport(): Promise<Transport> {
     const c = this.conn;
     if (c.kind === "remote") {
       const headers = c.headers ?? {};
       if (c.transport === "sse") {
         return new SSEClientTransport(new URL(c.url), { requestInit: { headers }, eventSourceInit: { fetch: (u, init) => fetch(u, { ...init, headers: { ...(init?.headers as Record<string, string>), ...headers } }) } });
       }
-      this.oauth = c.oauth && this.env.oauthStore ? new StoredOAuthProvider(this.env.oauthStore, c.oauth.key) : undefined;
+      this.oauth = c.oauth && this.env.oauthStore ? new StoredOAuthProvider(this.env.oauthStore, c.oauth.key, c.oauth.app ? this.env.apps?.[c.oauth.app] : undefined) : undefined;
       return new StreamableHTTPClientTransport(new URL(c.url), { requestInit: { headers }, ...(this.oauth ? { authProvider: this.oauth } : {}) });
     }
+    const env: Record<string, string> = { ...(c.env ?? {}) };
+    let command = c.command;
+    let args = c.args ?? [];
+    if (command === BUILTIN_TOOLS_COMMAND) {
+      if (!this.env.toolsProgram) throw new Error("built-in tools program missing");
+      command = "node";
+      args = [this.env.toolsProgram, ...args];
+    }
+    if (c.oauth) {
+      // Signed in through a registered app: a current access token, renewed first if it's about to run out.
+      const app = c.oauth.app ? this.env.apps?.[c.oauth.app] : undefined;
+      if (!app || !this.env.oauthStore) throw new NeedsSignInError();
+      const fresh = await directAccessToken(this.env.oauthStore, c.oauth.key, app, c.oauth.scope);
+      env.RINGKEEPER_ACCESS_TOKEN = fresh.token;
+      this.secretsToRedact.push(fresh.token);
+      this.tokenExpiresAt = fresh.expiresAt;
+    }
     // npx / node / uvx run on the copies bundled with Ringkeeper Connect when present.
-    const launch = resolveLaunch(c.command, withSettings(c.args ?? [], c.env ?? {}), { ...getDefaultEnvironment(), ...(c.env ?? {}) }, this.env.runtimes ?? {});
+    const launch = resolveLaunch(command, withSettings(args, env), { ...getDefaultEnvironment(), ...env }, this.env.runtimes ?? {});
     const t = new StdioClientTransport({ command: launch.command, args: launch.args, env: launch.env, stderr: "pipe" });
     this.stderrTail = "";
     // Must drain stderr or a chatty server blocks once the pipe buffer fills.
@@ -146,7 +185,7 @@ export class Upstream {
       }
     };
     try {
-      await client.connect(this.makeTransport());
+      await client.connect(await this.makeTransport());
       this.client = client;
       await this.refreshTools();
       this.status = "ready";
@@ -155,7 +194,7 @@ export class Upstream {
       await client.close().catch(() => {});
       this.client = undefined;
       // Any refusal from the vendor's sign-in service (expired, revoked, unknown app) means: sign in again.
-      if (err instanceof UnauthorizedError || (this.oauth && err instanceof OAuthError) || this.oauth?.needsSignIn) {
+      if (err instanceof UnauthorizedError || err instanceof NeedsSignInError || (this.oauth && err instanceof OAuthError) || this.oauth?.needsSignIn) {
         this.status = "needs_signin";
         this.error = this.signInMessage(true);
       } else {
@@ -223,6 +262,7 @@ export class Upstream {
 
   async stop(): Promise<void> {
     const wasRunning = this.client;
+    this.tokenExpiresAt = undefined;
     this.status = this.conn.missingKeys?.length ? "needs_key" : "stopped";
     this.client = undefined;
     this.tools = [];

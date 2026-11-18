@@ -331,7 +331,9 @@ function ClientPanel(props: {
         <ul className="connections">
           {client.connections.map((conn) => {
             const s = props.statuses.find((x) => x.clientId === client.id && x.connectionId === conn.id);
-            const notSignedIn = conn.kind === "remote" && conn.auth === "oauth" && !conn.signedIn;
+            const notSignedIn = conn.auth === "oauth" && !conn.signedIn;
+            // Ringkeeper Connect's own tools (a Google account): nothing to edit but what it may do, set when added.
+            const builtIn = conn.kind === "local" && conn.command === "ringkeeper-tools";
             const status = STATUS[conn.missingKeys.length ? "needs_key" : notSignedIn ? "needs_signin" : (s?.status ?? "idle")] ?? STATUS.idle!;
             // Inside the app, say what to do here rather than repeating "in Ringkeeper Connect".
             const problem = conn.missingKeys.length
@@ -344,18 +346,18 @@ function ClientPanel(props: {
                 <div className="connection-main">
                   <div className="connection-name">{conn.name}</div>
                   <div className="connection-where" title={conn.kind === "remote" ? conn.url : undefined}>
-                    {conn.kind === "remote" ? conn.url : "Program on this computer"}
+                    {conn.kind === "remote" ? conn.url : builtIn ? "Built into Ringkeeper Connect" : "Program on this computer"}
                   </div>
                   {problem && status.tone !== "ok" && <div className={`problem ${status.tone}`}>{problem}</div>}
                 </div>
                 <span className={`status ${status.tone}`}>{status.word}</span>
                 <div className="connection-actions">
-                  {conn.kind === "remote" && conn.auth === "oauth" && (s?.status === "needs_signin" || !conn.signedIn) && (
+                  {conn.auth === "oauth" && (s?.status === "needs_signin" || !conn.signedIn) && (
                     <button className="primary" onClick={() => props.onSignIn(conn)}>
                       Sign in
                     </button>
                   )}
-                  <button onClick={() => props.onEditConnection(conn)}>Edit</button>
+                  {!builtIn && <button onClick={() => props.onEditConnection(conn)}>Edit</button>}
                   {props.clients.length > 1 && <button onClick={() => props.onCopyConnection(conn)}>Copy to…</button>}
                   <button className="danger-quiet" onClick={() => props.onRemoveConnection(conn)}>
                     Remove
