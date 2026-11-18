@@ -242,7 +242,6 @@
       "name": "Neon",
       "group": "Data",
       "description": "Query and manage the client's Neon Postgres databases.",
-      "beta": true,
       "notes": [
         "The AI's database changes run as the database owner unless you pick a smaller role when you sign in. For a live database, consider a role that can only read."
       ],
@@ -285,7 +284,6 @@
       "name": "Netlify",
       "group": "Developers",
       "description": "Deploy and manage the client's Netlify sites.",
-      "beta": true,
       "notes": [
         "The AI can deploy sites and change their settings. Sign in with an account that only reaches this client's team."
       ],
@@ -306,7 +304,6 @@
       "name": "GitHub",
       "group": "Developers",
       "description": "Read and work on the client's GitHub repositories, issues and pull requests.",
-      "beta": true,
       "notes": [
         "GitHub doesn't let apps sign in by themselves here, so it uses a token. A fine-grained token limited to the client's repositories is safest."
       ],
@@ -417,7 +414,6 @@
       "name": "Upwork",
       "group": "Other",
       "description": "Search jobs and talent, and manage proposals, contracts and messages on Upwork.",
-      "beta": true,
       "notes": [
         "The AI can send proposals and messages for the account you sign in with, so check what it plans before saying yes."
       ],
@@ -479,7 +475,6 @@
       "tags": [
         "Uses credits"
       ],
-      "beta": true,
       "notes": [
         "Texts and calls it makes are charged to the client's Twilio account.",
         "This is Twilio's own early version. It covers Twilio's main features: texts, calls and phone numbers."
@@ -1099,7 +1094,6 @@
       "tags": [
         "Uses credits"
       ],
-      "beta": true,
       "notes": [
         "Speech, voice clones and calls use the client's ElevenLabs credits.",
         "Audio it makes is saved on this computer, in the Desktop folder."
