@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import logo from "./assets/logo.png";
 import { AppsSection, FoundBanner, Setup } from "./Setup";
 import { AddFromCatalog, SignIn } from "./Catalog";
+import { CLIENT_SEARCH_FROM, matchesWords } from "./search";
 import type { AppState, ClientView, ConnectionInput, ConnectionView, RingkeeperApi, Result } from "../shared/api";
 
 declare global {
@@ -32,6 +33,7 @@ export function App() {
   // Setup stays on screen until the user leaves it, even after it marks itself done.
   const [showSetup, setShowSetup] = useState(false);
   const [hint, setHint] = useState<string | null>(null);
+  const [clientQuery, setClientQuery] = useState("");
 
   useEffect(() => {
     void api.getState().then((s) => {
@@ -48,6 +50,10 @@ export function App() {
 
   const clients = state?.clients ?? [];
   const selected = clients.find((c) => c.id === selectedId) ?? clients.find((c) => c.active) ?? clients[0];
+  // A search box once the list is long; a short list needs none.
+  const searchable = clients.length >= CLIENT_SEARCH_FROM;
+  const query = searchable ? clientQuery.trim() : "";
+  const shownClients = clients.filter((c) => matchesWords(c.name, query));
 
   /** Run an action; show its plain-language error if it fails. */
   async function run<T>(p: Promise<Result<T>>): Promise<Done<T> | null> {
@@ -95,8 +101,22 @@ export function App() {
           Ringkeeper Connect
         </div>
         <div className="sidebar-label">Clients</div>
-        <ul className="client-list">
-          {clients.map((c) => (
+        {searchable && (
+          <input
+            className="client-search"
+            type="search"
+            placeholder="Search clients"
+            aria-label="Search clients"
+            value={clientQuery}
+            onChange={(e) => setClientQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && shownClients[0]) setSelectedId(shownClients[0].id);
+              if (e.key === "Escape") setClientQuery("");
+            }}
+          />
+        )}
+        <ul className={`client-list ${searchable ? "long" : ""}`}>
+          {shownClients.map((c) => (
             <li key={c.id}>
               <button className={`client-item ${selected?.id === c.id ? "selected" : ""}`} onClick={() => setSelectedId(c.id)}>
                 <span className="client-name">{c.name}</span>
@@ -104,6 +124,7 @@ export function App() {
               </button>
             </li>
           ))}
+          {shownClients.length === 0 && <li className="muted small no-match">No client matches "{query}".</li>}
         </ul>
         <button className="add-client" onClick={() => setDialog({ kind: "add-client" })}>
           + Add client
