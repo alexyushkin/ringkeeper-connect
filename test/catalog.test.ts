@@ -6,7 +6,7 @@ describe("the catalog data", () => {
     expect(validateCatalog(catalog)).toEqual([]);
   });
 
-  it("covers the MVP's tools plus Twilio (Meta Ads waits for an approved app of our own), with no Google services", () => {
+  it("covers the MVP's tools, Twilio and the official servers Ringkeeper has (Meta Ads waits for an approved app of our own), with no Google services", () => {
     expect(catalog.services.map((s) => s.id).sort()).toEqual(
       [
         "n8n", "supabase", "airtable", "notion", "stripe",
@@ -14,6 +14,8 @@ describe("the catalog data", () => {
         "make", "zapier", "gohighlevel", "pipedrive", "monday", "close", "klaviyo", "resend",
         "wordpress-com", "wordpress", "webflow", "wix", "paypal", "trello", "atlassian", "linear", "canva",
         "calendly", "calcom", "tavily", "apify", "elevenlabs", "twilio",
+        "sentry", "cloudflare", "posthog", "attio", "freshbooks", "zoho-books", "odoo", "sanity", "contentful", "strapi", "payload",
+        "mollie", "paddle", "gocardless", "pipeboard",
       ].sort(),
     );
     expect(JSON.stringify(catalog)).not.toMatch(/google/i);
@@ -95,6 +97,22 @@ describe("turning answers into a connection", () => {
     });
     expect(findService("stripe")!.options.map((o) => [o.id, !!o.recommended])).toEqual([["signin", true], ["agent-key", false]]);
     expect(buildConnection("stripe", "signin", {})).toEqual({ kind: "remote", name: "Stripe", url: "https://mcp.stripe.com/", fields: [], auth: "oauth" });
+  });
+
+  it("servers from Ringkeeper: the client's own address checked, keys kept secret in their own format", () => {
+    expect(buildConnection("odoo", "signin", { ODOO_URL: "https://acme.odoo.com/mcp" })).toEqual({ kind: "remote", name: "Odoo", url: "https://acme.odoo.com/mcp", fields: [], auth: "oauth" });
+    expect(() => buildConnection("odoo", "signin", { ODOO_URL: "http://acme.odoo.com/mcp" })).toThrow();
+    expect(() => buildConnection("odoo", "signin", { ODOO_URL: "https://acme.odoo.com" })).toThrow();
+    expect(buildConnection("strapi", "token", { STRAPI_URL: "https://cms.example.com/mcp", STRAPI_TOKEN: "st_1" })).toEqual({
+      kind: "remote",
+      name: "Strapi",
+      url: "https://cms.example.com/mcp",
+      fields: [{ name: "Authorization", value: "Bearer st_1", secret: true }],
+    });
+    expect(buildConnection("payload", "key", { PAYLOAD_URL: "https://cms.example.com/api/mcp", PAYLOAD_KEY: "k1" }).fields).toEqual([{ name: "Authorization", value: "users API-Key k1", secret: true }]);
+    expect(buildConnection("sentry", "token", { SENTRY_TOKEN: "sntryu_1" }).fields).toEqual([{ name: "Authorization", value: "Sentry-Bearer sntryu_1", secret: true }]);
+    expect(buildConnection("notion", "token", { NOTION_TOKEN: "ntn_1" }).fields).toEqual([{ name: "Authorization", value: "Bearer ntn_1", secret: true }]);
+    expect(buildConnection("contentful", "signin-eu", {})).toMatchObject({ url: "https://mcp.eu.contentful.com/mcp", auth: "oauth" });
   });
 
   it("Supabase: sign-in, with the optional project kept to the address only when given", () => {

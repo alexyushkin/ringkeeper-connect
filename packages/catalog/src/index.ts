@@ -56,6 +56,7 @@ export const GROUPS = [
   "Marketing and email",
   "Websites",
   "Payments",
+  "Accounting",
   "Work and projects",
   "Scheduling",
   "Developers",

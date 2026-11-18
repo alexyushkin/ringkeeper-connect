@@ -177,6 +177,28 @@
           "auth": "oauth",
           "url": "https://mcp.notion.com/mcp",
           "fields": []
+        },
+        {
+          "id": "token",
+          "label": "Use an MCP token (Business and Enterprise plans)",
+          "kind": "remote",
+          "url": "https://mcp.notion.com/mcp",
+          "headers": {
+            "Authorization": "Bearer {{NOTION_TOKEN}}"
+          },
+          "fields": [
+            {
+              "id": "NOTION_TOKEN",
+              "label": "MCP token",
+              "secret": true,
+              "required": true,
+              "help": "A workspace owner creates an MCP token.",
+              "where": {
+                "label": "How to get one (Notion docs)",
+                "url": "https://developers.notion.com/guides/mcp/get-started-with-mcp"
+              }
+            }
+          ]
         }
       ]
     },
@@ -1124,6 +1146,409 @@
               }
             }
           ]
+        }
+      ]
+    },
+    {
+      "id": "sentry",
+      "name": "Sentry",
+      "group": "Developers",
+      "description": "See the client's Sentry errors, issues and releases.",
+      "beta": true,
+      "options": [
+        {
+          "id": "signin",
+          "label": "Sign in",
+          "recommended": true,
+          "kind": "remote",
+          "auth": "oauth",
+          "url": "https://mcp.sentry.dev/mcp",
+          "fields": []
+        },
+        {
+          "id": "token",
+          "label": "Use a user auth token",
+          "kind": "remote",
+          "url": "https://mcp.sentry.dev/mcp",
+          "headers": {
+            "Authorization": "Sentry-Bearer {{SENTRY_TOKEN}}"
+          },
+          "fields": [
+            {
+              "id": "SENTRY_TOKEN",
+              "label": "User auth token",
+              "secret": true,
+              "required": true,
+              "help": "In Sentry: Settings > Account > API > Auth Tokens. Give it read access to the projects you want.",
+              "where": {
+                "label": "Open Sentry auth tokens",
+                "url": "https://sentry.io/settings/account/api/auth-tokens/"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "cloudflare",
+      "name": "Cloudflare",
+      "group": "Developers",
+      "description": "Manage the client's Cloudflare sites, DNS and Workers.",
+      "beta": true,
+      "notes": [
+        "You choose its permissions when you sign in. An empty answer may mean a permission is missing."
+      ],
+      "options": [
+        {
+          "id": "signin",
+          "label": "Sign in",
+          "recommended": true,
+          "kind": "remote",
+          "auth": "oauth",
+          "url": "https://mcp.cloudflare.com/mcp",
+          "fields": []
+        },
+        {
+          "id": "token",
+          "label": "Use an API token",
+          "kind": "remote",
+          "url": "https://mcp.cloudflare.com/mcp",
+          "headers": {
+            "Authorization": "Bearer {{CLOUDFLARE_TOKEN}}"
+          },
+          "fields": [
+            {
+              "id": "CLOUDFLARE_TOKEN",
+              "label": "API token",
+              "secret": true,
+              "required": true,
+              "help": "Create an account API token with only the permissions the AI needs.",
+              "where": {
+                "label": "Open Cloudflare API tokens",
+                "url": "https://dash.cloudflare.com/profile/api-tokens"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "posthog",
+      "name": "PostHog",
+      "group": "Developers",
+      "description": "Read the client's PostHog analytics, insights and feature flags.",
+      "beta": true,
+      "options": [
+        {
+          "id": "signin",
+          "label": "Sign in",
+          "recommended": true,
+          "kind": "remote",
+          "auth": "oauth",
+          "url": "https://mcp.posthog.com/mcp",
+          "fields": []
+        }
+      ]
+    },
+    {
+      "id": "attio",
+      "name": "Attio",
+      "group": "CRM and sales",
+      "description": "Work with the client's Attio records, lists and notes.",
+      "beta": true,
+      "notes": [
+        "It reaches what your Attio user can see."
+      ],
+      "options": [
+        {
+          "id": "signin",
+          "label": "Sign in",
+          "recommended": true,
+          "kind": "remote",
+          "auth": "oauth",
+          "url": "https://mcp.attio.com/mcp",
+          "fields": []
+        }
+      ]
+    },
+    {
+      "id": "freshbooks",
+      "name": "FreshBooks",
+      "group": "Accounting",
+      "description": "Read the client's FreshBooks invoices, clients and expenses.",
+      "beta": true,
+      "notes": [
+        "FreshBooks' connection only reads for now. One sign-in reaches every business on the login."
+      ],
+      "options": [
+        {
+          "id": "signin",
+          "label": "Sign in",
+          "recommended": true,
+          "kind": "remote",
+          "auth": "oauth",
+          "url": "https://mcp.freshbooks.com/v1",
+          "fields": []
+        }
+      ]
+    },
+    {
+      "id": "zoho-books",
+      "name": "Zoho Books",
+      "group": "Accounting",
+      "description": "Work with the client's Zoho Books invoices, bills and contacts.",
+      "beta": true,
+      "notes": [
+        "This is Zoho's US address."
+      ],
+      "options": [
+        {
+          "id": "signin",
+          "label": "Sign in",
+          "recommended": true,
+          "kind": "remote",
+          "auth": "oauth",
+          "url": "https://claude-zohobooks.zohomcp.com/mcp/message",
+          "fields": []
+        }
+      ]
+    },
+    {
+      "id": "odoo",
+      "name": "Odoo",
+      "group": "Accounting",
+      "description": "Work with the client's Odoo records.",
+      "beta": true,
+      "options": [
+        {
+          "id": "signin",
+          "label": "Sign in",
+          "recommended": true,
+          "kind": "remote",
+          "auth": "oauth",
+          "url": "{{ODOO_URL}}",
+          "fields": [
+            {
+              "id": "ODOO_URL",
+              "label": "The client's Odoo address, plus /mcp",
+              "placeholder": "https://acme.odoo.com/mcp",
+              "required": true,
+              "pattern": "^https://[^\\s/]+(/[^\\s]*)?/mcp$",
+              "patternHint": "Like https://acme.odoo.com/mcp",
+              "help": "It needs Odoo 20 or saas-19.4, with Allow Dynamic Client Registration ticked in Odoo's MCP settings."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sanity",
+      "name": "Sanity",
+      "group": "Websites",
+      "description": "Work with the client's Sanity content.",
+      "beta": true,
+      "options": [
+        {
+          "id": "signin",
+          "label": "Sign in",
+          "recommended": true,
+          "kind": "remote",
+          "auth": "oauth",
+          "url": "https://mcp.sanity.io",
+          "fields": []
+        }
+      ]
+    },
+    {
+      "id": "contentful",
+      "name": "Contentful",
+      "group": "Websites",
+      "description": "Work with the client's Contentful content.",
+      "beta": true,
+      "notes": [
+        "Install the Contentful MCP app in the space first."
+      ],
+      "options": [
+        {
+          "id": "signin",
+          "label": "Sign in",
+          "recommended": true,
+          "kind": "remote",
+          "auth": "oauth",
+          "url": "https://mcp.contentful.com/mcp",
+          "fields": []
+        },
+        {
+          "id": "signin-eu",
+          "label": "Sign in (space in Europe)",
+          "kind": "remote",
+          "auth": "oauth",
+          "url": "https://mcp.eu.contentful.com/mcp",
+          "fields": []
+        }
+      ]
+    },
+    {
+      "id": "strapi",
+      "name": "Strapi",
+      "group": "Websites",
+      "description": "Work with the content on the client's Strapi site.",
+      "beta": true,
+      "options": [
+        {
+          "id": "token",
+          "label": "Use an Admin API token",
+          "recommended": true,
+          "kind": "remote",
+          "url": "{{STRAPI_URL}}",
+          "headers": {
+            "Authorization": "Bearer {{STRAPI_TOKEN}}"
+          },
+          "fields": [
+            {
+              "id": "STRAPI_URL",
+              "label": "The site's MCP address",
+              "placeholder": "https://cms.example.com/mcp",
+              "required": true,
+              "pattern": "^https://.+",
+              "patternHint": "It starts with https://"
+            },
+            {
+              "id": "STRAPI_TOKEN",
+              "label": "Admin API token",
+              "secret": true,
+              "required": true,
+              "help": "In Strapi's admin: Settings > API Tokens. Strapi's MCP server must be turned on (Strapi 5.47 or later).",
+              "where": {
+                "label": "How to turn it on (Strapi docs)",
+                "url": "https://docs.strapi.io/"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "payload",
+      "name": "Payload",
+      "group": "Websites",
+      "description": "Work with the content on the client's Payload site.",
+      "beta": true,
+      "options": [
+        {
+          "id": "key",
+          "label": "Use a user API key",
+          "recommended": true,
+          "kind": "remote",
+          "url": "{{PAYLOAD_URL}}",
+          "headers": {
+            "Authorization": "users API-Key {{PAYLOAD_KEY}}"
+          },
+          "fields": [
+            {
+              "id": "PAYLOAD_URL",
+              "label": "The site's MCP address",
+              "placeholder": "https://cms.example.com/api/mcp",
+              "required": true,
+              "pattern": "^https://.+",
+              "patternHint": "It starts with https://"
+            },
+            {
+              "id": "PAYLOAD_KEY",
+              "label": "User API key",
+              "secret": true,
+              "required": true,
+              "help": "Add the MCP plugin (@payloadcms/plugin-mcp) to the site and turn on an API key for a user in the users collection.",
+              "where": {
+                "label": "How to set it up (Payload docs)",
+                "url": "https://payloadcms.com/docs"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "mollie",
+      "name": "Mollie",
+      "group": "Payments",
+      "description": "See and manage the client's Mollie payments and refunds.",
+      "beta": true,
+      "options": [
+        {
+          "id": "signin",
+          "label": "Sign in",
+          "recommended": true,
+          "kind": "remote",
+          "auth": "oauth",
+          "url": "https://mcp.mollie.com/mcp",
+          "fields": []
+        }
+      ]
+    },
+    {
+      "id": "paddle",
+      "name": "Paddle",
+      "group": "Payments",
+      "description": "See and manage the client's Paddle subscriptions and transactions.",
+      "beta": true,
+      "notes": [
+        "Paddle starts read-only: an admin raises it under Connectors, then MCP."
+      ],
+      "options": [
+        {
+          "id": "signin",
+          "label": "Sign in",
+          "recommended": true,
+          "kind": "remote",
+          "auth": "oauth",
+          "url": "https://mcp.paddle.com/mcp",
+          "fields": []
+        }
+      ]
+    },
+    {
+      "id": "gocardless",
+      "name": "GoCardless",
+      "group": "Payments",
+      "description": "See and manage the client's GoCardless payments and mandates.",
+      "beta": true,
+      "notes": [
+        "You pick Sandbox or Live, and what it may do, when you sign in."
+      ],
+      "options": [
+        {
+          "id": "signin",
+          "label": "Sign in",
+          "recommended": true,
+          "kind": "remote",
+          "auth": "oauth",
+          "url": "https://mcp.gocardless.com",
+          "fields": []
+        }
+      ]
+    },
+    {
+      "id": "pipeboard",
+      "name": "Meta Ads (Pipeboard)",
+      "group": "Marketing and email",
+      "description": "Report on and manage the client's Meta (Facebook and Instagram) ads, through Pipeboard.",
+      "tags": [
+        "Third party"
+      ],
+      "beta": true,
+      "notes": [
+        "Pipeboard is a third party, not Meta. Its free tier allows 30 calls a week."
+      ],
+      "options": [
+        {
+          "id": "signin",
+          "label": "Sign in",
+          "recommended": true,
+          "kind": "remote",
+          "auth": "oauth",
+          "url": "https://mcp.pipeboard.co/meta-ads-mcp",
+          "fields": []
         }
       ]
     }
