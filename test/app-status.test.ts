@@ -175,3 +175,27 @@ describe("an AI app contacting Ringkeeper", () => {
     expect(g.contacts).toEqual([expect.objectContaining({ hostName: "claude-code" })]);
   });
 });
+
+describe("connections brought in without a key", () => {
+  it("are marked for sign-in when their address is a catalog tool that signs in, and left alone otherwise", async () => {
+    const { withSignIn } = await import("../apps/desktop/src/main/apps.js");
+    expect(withSignIn({ kind: "remote", name: "linear", url: "https://mcp.linear.app/mcp", fields: [] })).toMatchObject({ auth: "oauth" });
+    expect(withSignIn({ kind: "remote", name: "x", url: "https://public.example.com/mcp", fields: [] })).not.toHaveProperty("auth");
+    expect(withSignIn({ kind: "remote", name: "n", url: "https://mcp.notion.com/mcp", fields: [{ name: "Authorization", value: "Bearer x", secret: true }] })).not.toHaveProperty("auth");
+    expect(withSignIn({ kind: "local", name: "l", command: "npx", args: [], fields: [] })).not.toHaveProperty("auth");
+  });
+
+  it("'Request a tool' opens an email with the search in the subject and a short form", async () => {
+    const { requestToolMailto, REQUEST_TOOL_EMAIL } = await import("../apps/desktop/src/main/catalog.js");
+    expect(REQUEST_TOOL_EMAIL).toBe("requests@yushkin.us");
+    const url = new URL(requestToolMailto("  Fresh\nBooks "));
+    expect(url.protocol).toBe("mailto:");
+    expect(url.pathname).toBe("requests@yushkin.us");
+    expect(url.searchParams.get("subject")).toBe("Tool request: Fresh Books");
+    const body = url.searchParams.get("body")!;
+    expect(body).toContain("Tool name: Fresh Books");
+    expect(body).toContain("What I'd like the AI to do with it:");
+    expect(body).toContain("How to reach me:");
+    expect(new URL(requestToolMailto("")).searchParams.get("subject")).toBe("Tool request: ");
+  });
+});

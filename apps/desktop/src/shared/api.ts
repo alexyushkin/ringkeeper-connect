@@ -8,7 +8,7 @@ export type { CatalogService };
 
 export type { ClientView, ConnectionInput, ConnectionView, Settings, ConnectionStatus };
 
-export type HostId = "claude-desktop" | "cursor" | "claude-code";
+export type HostId = "claude-desktop" | "cursor" | "claude-code" | "vscode" | "kiro" | "antigravity" | "codex";
 
 /**
  * Whether an AI app really uses Ringkeeper:
@@ -32,6 +32,10 @@ export interface HostView {
   lastContactAt?: number;
   /** Plain steps to check it's working. */
   howToCheck: string[];
+  /** Added after the first release: not ticked in the wizard unless picked. */
+  optIn: boolean;
+  /** The app finds Ringkeeper through this other app's settings (so it has no entry of its own). */
+  viaLabel?: string;
 }
 
 /** A connection found in an AI app that the user hasn't decided about yet. */
@@ -67,9 +71,27 @@ export interface ImportCandidateView {
   warnings: string[];
 }
 
+/** An app Ringkeeper only reads connections from. */
+export interface SourceView {
+  label: string;
+  count: number;
+  /** Files that couldn't be read, each with a plain reason. */
+  problems: string[];
+}
+
+/** A Claude Desktop extension, and the catalog tool for the same service if there is one. */
+export interface ExtensionView {
+  name: string;
+  toolId?: string;
+  toolName?: string;
+}
+
 export interface ImportScan {
   hosts: HostView[];
   candidates: ImportCandidateView[];
+  /** Other AI apps that were read (connections only brought in, never changed there). */
+  sources: SourceView[];
+  extensions: ExtensionView[];
 }
 
 export interface SetupRequest {
@@ -77,6 +99,10 @@ export interface SetupRequest {
   client: { id: string } | { newName: string };
   /** Candidate keys to bring in. */
   take: string[];
+  /** The AI apps to set up. */
+  hosts: HostId[];
+  /** Catalog tools to add next (from extensions or web connectors); each still needs a sign-in or key. */
+  tools: string[];
 }
 
 export interface SetupOutcome {
@@ -87,6 +113,9 @@ export interface SetupOutcome {
   restart: string[];
   /** Plain-language warnings about built-in connectors or extensions for the same services. */
   overlaps: string[];
+  /** The client the tools went to, and the catalog tools still to add for it. */
+  clientId: string;
+  pendingTools: string[];
 }
 
 /** Every call resolves; failures carry a plain-language message instead of throwing. */
@@ -123,6 +152,10 @@ export interface RingkeeperApi {
   signIn(clientId: string, connectionId: string): Promise<Result>;
   cancelSignIn(): Promise<Result>;
   openLink(url: string): Promise<Result>;
+  /** Stop suggesting a picked tool for a client. */
+  dismissPendingTool(clientId: string, toolId: string): Promise<Result>;
+  /** Opens an email (or the contact page) to ask for a tool that isn't in the catalog. */
+  requestTool(searched: string): Promise<Result>;
   restartToUpdate(): Promise<Result>;
   /** The sign-in address, sent while a sign-in waits, for a "copy link" fallback. */
   onSignInLink(listener: (url: string) => void): () => void;

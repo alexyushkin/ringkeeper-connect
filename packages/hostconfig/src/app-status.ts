@@ -1,5 +1,6 @@
 // Whether an AI app really uses Ringkeeper Connect. Writing our entry into
 // its settings proves nothing; only the app's bridge contacting us does.
+import type { HostId } from "./hosts.js";
 import type { HostView } from "./manager.js";
 
 /**
@@ -30,6 +31,7 @@ export function appStatus(
       return view.status;
     case "entry_missing":
       return "missing";
+    case "via_other":
     case "entry_present": {
       const writtenAt = view.entryWrittenAt;
       if (lastContactAt !== undefined && lastContactAt >= (writtenAt ?? 0)) return "connected";
@@ -44,10 +46,13 @@ export function appStatus(
 }
 
 /** Which AI app a connecting client is, from the name it reports (fallback when the bridge didn't say). */
-export function appForClientName(name: string | undefined): "claude-desktop" | "cursor" | "claude-code" | undefined {
+export function appForClientName(name: string | undefined): HostId | undefined {
   if (!name) return undefined;
   if (name === "claude-code") return "claude-code";
   if (name.startsWith("cursor")) return "cursor";
   if (name === "claude-ai" || name.startsWith("local-agent-mode-")) return "claude-desktop";
+  // VS Code can start Ringkeeper from Claude Desktop's or Cursor's settings, so its own name wins over the entry's.
+  if (name === "Visual Studio Code" || name === "Visual Studio Code - Insiders") return "vscode";
+  if (name.startsWith("codex")) return "codex";
   return undefined;
 }

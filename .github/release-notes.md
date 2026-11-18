@@ -17,7 +17,7 @@
 
 ## After installing
 
-Ringkeeper Connect finds Claude Desktop, Cursor and Claude Code and offers to bring in the connections already set up in them. Click **Connect apps**, then restart Claude Desktop. It backs up your apps' settings first; **Restore original settings** in the app, or uninstalling, puts them back.
+Ringkeeper Connect finds your AI apps (Claude Desktop, Cursor, Claude Code, VS Code, Kiro, Antigravity and Codex) and offers to bring in the connections already set up in them and in other AI apps. Tick the apps to use, click **Connect apps**, then restart them. It backs up your apps' settings first; **Restore original settings** in the app, or uninstalling, puts them back.
 
 Need help setting it up for your clients? <https://yushkin.us> or [LinkedIn](https://www.linkedin.com/in/alexey-yushkin).
 

@@ -2,11 +2,14 @@
 // new ones, and puts everything back on Restore.
 import fs from "node:fs";
 import { isDeepStrictEqual } from "node:util";
+import { join } from "node:path";
 import { parse } from "jsonc-parser";
-import { editHostConfig, readHostConfig, writeAtomic, HostConfigError, type Change, type ServerMap } from "./config-file.js";
-import { HOST_LABELS, locateHosts, type HostId, type HostLocation, type Roots } from "./hosts.js";
+import { editHostConfig, readHostConfig, serversInText, writeAtomic, HostConfigError, type Change, type ConfigFormat, type ServerMap } from "./config-file.js";
+import { HOST_LABELS, locateHosts, vscodeUserDir, type HostId, type HostLocation, type Roots } from "./hosts.js";
 import { RINGKEEPER_ENTRY, buildCandidates, type Candidate, type FoundEntry, type MapContext } from "./import.js";
 import type { Ledger } from "./ledger.js";
+import { listDesktopExtensions, type DesktopExtension } from "./extensions.js";
+import { scanReadOnly, type SourceSeen } from "./sources.js";
 
 /** How AI apps start the bridge. */
 export interface LaunchCommand {
@@ -22,7 +25,7 @@ export interface LaunchCommand {
  * - entry_missing: we set the app up before, but our entry is gone (the app rewrote its file)
  * - not_connected: never set up
  */
-export type HostStatus = "not_installed" | "not_connected" | "entry_present" | "entry_missing" | "unreadable";
+export type HostStatus = "not_installed" | "not_connected" | "entry_present" | "entry_missing" | "unreadable" | "via_other";
 
 export interface HostView {
   id: HostId;
@@ -38,6 +41,10 @@ export interface HostView {
   note?: string;
   /** When our entry was last added or changed meaningfully (ms), if known. */
   entryWrittenAt?: number;
+  /** Not ticked in the wizard unless the user picks it. */
+  optIn: boolean;
+  /** The app already finds Ringkeeper through this other app's settings, so we add no entry of our own. */
+  via?: HostId;
 }
 
 export type HostMove = { host: HostId; from: string; to: string; ok: boolean; error?: string };
@@ -93,50 +100,105 @@ export class HostManager {
     const l = this.opts.launch();
     // RINGKEEPER_APP tells the bridge which app launched it, so Ringkeeper
     // knows that app really uses it (not just that its settings mention it).
-    return {
-      ...(loc.entryStyle === "typed" ? { type: "stdio" } : {}),
-      command: l.command,
-      args: l.args,
-      env: { ...(l.env ?? {}), RINGKEEPER_APP: loc.id },
-    };
+    const env = { ...(l.env ?? {}), RINGKEEPER_APP: loc.id };
+    switch (loc.entryStyle) {
+      case "typed":
+        return { type: "stdio", command: l.command, args: l.args, env };
+      case "copilot":
+        // VS Code's and Copilot CLI's file: every tool switched on.
+        return { type: "stdio", command: l.command, args: l.args, env, tools: ["*"] };
+      case "codex":
+        // Codex gives a program 10 seconds by default; starting Ringkeeper can take longer.
+        return { command: l.command, args: l.args, env, startup_timeout_sec: 30 };
+      default:
+        return { command: l.command, args: l.args, env };
+    }
+  }
+
+  /**
+   * VS Code can read Claude Desktop's and Cursor's settings itself
+   * (chat.mcp.discovery.enabled). When it does and one of them has our entry,
+   * a second entry in VS Code's own file would show Ringkeeper twice.
+   */
+  discoveredVia(loc: HostLocation): HostId | undefined {
+    if (loc.id !== "vscode") return undefined;
+    let settings: Record<string, unknown> | undefined;
+    try {
+      const text = fs.readFileSync(join(vscodeUserDir(this.opts.roots), "settings.json"), "utf8").replace(/^﻿/, "");
+      settings = parse(text, [], { allowTrailingComma: true, disallowComments: false }) as Record<string, unknown> | undefined;
+    } catch {
+      return undefined;
+    }
+    const value = settings?.["chat.mcp.discovery.enabled"];
+    const sources: HostId[] = [];
+    if (value === true) sources.push("claude-desktop", "cursor");
+    else if (value && typeof value === "object") {
+      const v = value as Record<string, unknown>;
+      if (v["claude-desktop"] === true) sources.push("claude-desktop");
+      if (v["cursor-global"] === true) sources.push("cursor");
+    }
+    for (const id of sources) {
+      const other = this.location(id);
+      const r = readHostConfig(other.configPath, other.format);
+      if (r.status === "ok" && RINGKEEPER_ENTRY in r.servers) return id;
+    }
+    return undefined;
   }
 
   views(): HostView[] {
     return this.locations().map((loc) => {
       const ledger = this.opts.ledger.host(loc.id);
+      const via = this.discoveredVia(loc);
       const base = {
         id: loc.id,
         label: loc.label,
+        optIn: loc.optIn,
+        ...(via ? { via } : {}),
         configPath: loc.configPath,
         ...(loc.note ? { note: loc.note } : {}),
         ...(ledger?.entryWrittenAt ? { entryWrittenAt: ledger.entryWrittenAt } : {}),
       };
       if (!loc.installed && !loc.exists) return { ...base, status: "not_installed" as const, otherConnections: [] };
-      const r = readHostConfig(loc.configPath);
+      const r = readHostConfig(loc.configPath, loc.format);
       if (r.status === "unreadable") {
         return { ...base, status: "unreadable" as const, problem: `Ringkeeper Connect can't read ${loc.label}'s settings: ${r.reason}.`, otherConnections: [] };
       }
       const servers = r.status === "ok" ? r.servers : {};
       const others = Object.keys(servers).filter((n) => n !== RINGKEEPER_ENTRY);
-      const status = RINGKEEPER_ENTRY in servers ? "entry_present" : ledger ? "entry_missing" : "not_connected";
+      const status = RINGKEEPER_ENTRY in servers ? "entry_present" : via ? "via_other" : ledger ? "entry_missing" : "not_connected";
       return { ...base, status: status as HostStatus, otherConnections: others };
     });
   }
 
   /** Everything the wizard could bring in, merged across apps. */
-  scan(): { candidates: Candidate[]; unreadable: HostView[] } {
+  scan(): { candidates: Candidate[]; unreadable: HostView[]; seen: SourceSeen[] } {
     const found: FoundEntry[] = [];
     const unreadable: HostView[] = [];
     for (const v of this.views()) {
       if (v.status === "unreadable") unreadable.push(v);
       if (v.status === "not_installed" || v.status === "unreadable") continue;
-      const r = readHostConfig(this.location(v.id).configPath);
+      const loc = this.location(v.id);
+      const r = readHostConfig(loc.configPath, loc.format);
       if (r.status !== "ok") continue;
       for (const [name, value] of Object.entries(r.servers)) {
         if (name !== RINGKEEPER_ENTRY) found.push({ host: v.id, name, value });
       }
     }
-    return { candidates: buildCandidates(found, this.opts.ctx), unreadable };
+    // Apps we only read from come after the ones we set up, so those keep the plain names.
+    const readOnly = scanReadOnly(this.opts.roots, RINGKEEPER_ENTRY);
+    found.push(...readOnly.found);
+    return { candidates: buildCandidates(found, this.opts.ctx), unreadable, seen: readOnly.seen };
+  }
+
+  /** Claude Desktop's extensions, wherever this install keeps them. */
+  desktopExtensions(): DesktopExtension[] {
+    const loc = this.location("claude-desktop");
+    const r = this.opts.roots;
+    const more =
+      r.platform === "win32"
+        ? [join(r.appData ?? join(r.home, "AppData", "Roaming"), "Claude"), ...storeClaudeFolders(r)]
+        : [join(r.home, "Library", "Application Support", "Claude")];
+    return listDesktopExtensions(loc.configPath, more);
   }
 
   /** Edit one app's file with backups and a ledger record. */
@@ -153,12 +215,12 @@ export class HostManager {
           entryChanged = !!ours && ours.op === "set" && entryEssence(servers[RINGKEEPER_ENTRY]) !== entryEssence(ours.value);
           return changes;
         },
-        { createIfMissing: true, onBeforeWrite: (before) => this.opts.ledger.beforeWrite(loc.id, loc.configPath, before) },
+        { createIfMissing: true, format: loc.format, onBeforeWrite: (before) => this.opts.ledger.beforeWrite(loc.id, loc.configPath, before) },
       );
       if (res.changed) {
         this.opts.ledger.afterWrite(loc.id, res.after, lastTaken.map((t) => ({ name: t.name, value: t.value })), entryChanged);
       }
-      this.known.set(loc.id, new Set(Object.keys(readServers(loc.configPath))));
+      this.known.set(loc.id, new Set(Object.keys(readServers(loc))));
       return { host: loc.id, ok: true, taken: lastTaken };
     } catch (err) {
       const msg = err instanceof HostConfigError ? err.message : `Couldn't save ${loc.label}'s settings. Nothing was changed.`;
@@ -170,12 +232,34 @@ export class HostManager {
    * Point apps at Ringkeeper Connect, taking the chosen connections out of
    * them (the caller adds those to a client).
    */
-  connect(hosts: HostId[], take: Array<{ host: HostId; name: string }>): HostResult[] {
+  connect(hosts: HostId[], take: Array<{ host: string; name: string }>): HostResult[] {
     const results: HostResult[] = [];
-    for (const id of hosts) {
+    // VS Code last: whether it already finds us through Claude Desktop's or
+    // Cursor's settings depends on what was just written there.
+    const ordered = [...new Set(hosts)].sort((a, b) => Number(a === "vscode") - Number(b === "vscode"));
+    for (const id of ordered) {
       const loc = this.location(id);
       if (!loc.installed && !loc.exists) continue;
       const mine = new Set(take.filter((t) => t.host === id).map((t) => t.name));
+      const via = this.discoveredVia(loc);
+      if (via) {
+        // Never a second entry: take ours out if we added one before, and move connections as asked.
+        const r = readHostConfig(loc.configPath, loc.format);
+        const needsEdit = r.status === "ok" && (RINGKEEPER_ENTRY in r.servers || [...mine].some((n) => n in r.servers));
+        results.push(
+          needsEdit
+            ? this.edit(
+                loc,
+                (servers) => [
+                  ...[...mine].filter((n) => n in servers).map((name) => ({ op: "remove" as const, name })),
+                  ...(RINGKEEPER_ENTRY in servers ? [{ op: "remove" as const, name: RINGKEEPER_ENTRY }] : []),
+                ],
+                (servers) => [...mine].filter((n) => n in servers).map((name) => ({ host: id, name, value: servers[name] })),
+              )
+            : { host: id, ok: true, taken: [] },
+        );
+        continue;
+      }
       const entry = this.entryFor(loc);
       results.push(
         this.edit(
@@ -216,7 +300,7 @@ export class HostManager {
       const loc = this.location(id);
       if (h.path === loc.configPath || !loc.installed) continue;
       // Never leave the app with no entry at all: check the new file first.
-      if (readHostConfig(loc.configPath).status === "unreadable") {
+      if (readHostConfig(loc.configPath, loc.format).status === "unreadable") {
         moves.push({
           host: id,
           from: h.path,
@@ -253,9 +337,10 @@ export class HostManager {
     if (!h) return { host: id, ok: true };
     const label = HOST_LABELS[id];
     try {
-      const current = readHostConfig(h.path);
+      const format = this.location(id).format;
+      const current = readHostConfig(h.path, format);
       const currentText = current.status === "ok" ? current.text : null;
-      const originalServers = h.originalText === null ? {} : parseServers(h.originalText);
+      const originalServers = h.originalText === null ? {} : serversInText(h.originalText, format);
       const everythingTakenWasThere = h.taken.every((t) => isDeepStrictEqual(originalServers[t.name], t.value));
 
       if ((currentText !== null && currentText === h.lastWrittenText && everythingTakenWasThere) || current.status === "unreadable") {
@@ -275,7 +360,7 @@ export class HostManager {
             for (const t of h.taken) if (!(t.name in servers)) changes.push({ op: "set", name: t.name, value: t.value });
             return changes;
           },
-          { onBeforeWrite: (before) => this.opts.ledger.beforeWrite(id, h.path, before) },
+          { format, onBeforeWrite: (before) => this.opts.ledger.beforeWrite(id, h.path, before) },
         );
       }
       this.opts.ledger.forgetHost(id);
@@ -292,7 +377,7 @@ export class HostManager {
   watch(intervalMs = 1500): void {
     this.stop();
     for (const loc of this.locations()) {
-      this.known.set(loc.id, new Set(Object.keys(readServers(loc.configPath))));
+      this.known.set(loc.id, new Set(Object.keys(readServers(loc))));
       fs.watchFile(loc.configPath, { interval: intervalMs }, () => this.check(loc.id));
       this.watched.push(loc.configPath);
     }
@@ -306,14 +391,15 @@ export class HostManager {
   /** Look at an app's file after it changed. Public for tests. */
   check(id: HostId, now = Date.now()): void {
     const loc = this.location(id);
-    const r = readHostConfig(loc.configPath);
+    const r = readHostConfig(loc.configPath, loc.format);
     if (r.status === "unreadable") return; // the app may be mid-write; look again next time
     const ledgerHost = this.opts.ledger.host(id);
     if (r.status === "ok" && ledgerHost && r.text === ledgerHost.lastWrittenText) return; // our own write
     const servers = r.status === "ok" ? r.servers : {};
 
     // The app dropped us (some Claude Desktop versions rewrite the whole file): put us back, but don't fight it forever.
-    if (ledgerHost && !(RINGKEEPER_ENTRY in servers) && !this.gaveUp.has(id)) {
+    // (Not when the app finds us through another app's settings: then we took our entry out ourselves.)
+    if (ledgerHost && !(RINGKEEPER_ENTRY in servers) && !this.gaveUp.has(id) && !this.discoveredVia(loc)) {
       const recent = (this.repairs.get(id) ?? []).filter((t) => now - t < REPAIR_WINDOW_MS);
       if (recent.length >= MAX_REPAIRS_IN_WINDOW) {
         this.gaveUp.add(id);
@@ -327,7 +413,7 @@ export class HostManager {
     }
 
     const before = this.known.get(id) ?? new Set<string>();
-    const nowNames = new Set(Object.keys(readServers(loc.configPath)));
+    const nowNames = new Set(Object.keys(readServers(loc)));
     for (const name of nowNames) {
       if (name === RINGKEEPER_ENTRY || before.has(name) || this.opts.ledger.isIgnored(id, name)) continue;
       // Only ask about apps Ringkeeper is connected to; otherwise the user hasn't set us up there.
@@ -337,13 +423,20 @@ export class HostManager {
   }
 }
 
-function readServers(path: string): ServerMap {
-  const r = readHostConfig(path);
+function readServers(loc: { configPath: string; format: ConfigFormat }): ServerMap {
+  const r = readHostConfig(loc.configPath, loc.format);
   return r.status === "ok" ? r.servers : {};
 }
 
-/** Servers in a file's text; tolerant of comments, like the apps themselves (Cursor allows them). */
-function parseServers(text: string): ServerMap {
-  const parsed = parse(text.replace(/^﻿/, ""), [], { allowTrailingComma: true, disallowComments: false }) as { mcpServers?: ServerMap } | undefined;
-  return parsed && typeof parsed.mcpServers === "object" && parsed.mcpServers ? parsed.mcpServers : {};
+/** Claude Desktop's Store (MSIX) folders, where its extensions may live. */
+function storeClaudeFolders(r: Roots): string[] {
+  const packages = join(r.localAppData ?? join(r.home, "AppData", "Local"), "Packages");
+  try {
+    return fs
+      .readdirSync(packages)
+      .filter((d) => /^(Anthropic(PBC)?\.)?Claude_/i.test(d))
+      .map((d) => join(packages, d, "LocalCache", "Roaming", "Claude"));
+  } catch {
+    return [];
+  }
 }

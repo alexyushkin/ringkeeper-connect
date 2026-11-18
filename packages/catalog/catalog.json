@@ -1,10 +1,11 @@
 {
   "version": 1,
-  "checked": "2026-11-16",
+  "checked": "2026-11-17",
   "services": [
     {
       "id": "n8n",
       "name": "n8n",
+      "group": "Automations",
       "description": "Run and build the client's n8n workflows.",
       "notes": [
         "In n8n, an owner or admin turns on MCP access under Settings > Instance-level MCP, then switches on each workflow the AI may use. Workflows that aren't switched on stay invisible."
@@ -16,7 +17,9 @@
           "recommended": true,
           "kind": "remote",
           "url": "{{N8N_URL}}",
-          "headers": { "Authorization": "Bearer {{N8N_MCP_TOKEN}}" },
+          "headers": {
+            "Authorization": "Bearer {{N8N_MCP_TOKEN}}"
+          },
           "fields": [
             {
               "id": "N8N_URL",
@@ -32,7 +35,10 @@
               "secret": true,
               "required": true,
               "help": "In n8n: Settings > Instance-level MCP > Connect a client > API key. Making a new token replaces the old one.",
-              "where": { "label": "How to get it (n8n guide)", "url": "https://docs.n8n.io/advanced-ai/accessing-n8n-mcp-server/" }
+              "where": {
+                "label": "How to get it (n8n guide)",
+                "url": "https://docs.n8n.io/advanced-ai/accessing-n8n-mcp-server/"
+              }
             }
           ]
         }
@@ -41,8 +47,11 @@
     {
       "id": "supabase",
       "name": "Supabase",
+      "group": "Data",
       "description": "Query and manage the client's Supabase projects.",
-      "notes": ["When signing in, pick the client's organization, the one that owns their project."],
+      "notes": [
+        "When signing in, pick the client's organization, the one that owns their project."
+      ],
       "options": [
         {
           "id": "oauth",
@@ -51,7 +60,9 @@
           "kind": "remote",
           "auth": "oauth",
           "url": "https://mcp.supabase.com/mcp",
-          "query": { "project_ref": "{{PROJECT_REF}}" },
+          "query": {
+            "project_ref": "{{PROJECT_REF}}"
+          },
           "fields": [
             {
               "id": "PROJECT_REF",
@@ -66,8 +77,12 @@
           "label": "Use an access token",
           "kind": "remote",
           "url": "https://mcp.supabase.com/mcp",
-          "query": { "project_ref": "{{PROJECT_REF}}" },
-          "headers": { "Authorization": "Bearer {{SUPABASE_ACCESS_TOKEN}}" },
+          "query": {
+            "project_ref": "{{PROJECT_REF}}"
+          },
+          "headers": {
+            "Authorization": "Bearer {{SUPABASE_ACCESS_TOKEN}}"
+          },
           "fields": [
             {
               "id": "SUPABASE_ACCESS_TOKEN",
@@ -75,7 +90,10 @@
               "secret": true,
               "required": true,
               "help": "Create one while signed in as the client's Supabase account.",
-              "where": { "label": "Open Supabase access tokens", "url": "https://supabase.com/dashboard/account/tokens" }
+              "where": {
+                "label": "Open Supabase access tokens",
+                "url": "https://supabase.com/dashboard/account/tokens"
+              }
             },
             {
               "id": "PROJECT_REF",
@@ -89,6 +107,7 @@
     {
       "id": "airtable",
       "name": "Airtable",
+      "group": "Data",
       "description": "Read and update the client's Airtable bases.",
       "options": [
         {
@@ -105,7 +124,9 @@
           "label": "Use a personal access token",
           "kind": "remote",
           "url": "https://mcp.airtable.com/mcp",
-          "headers": { "Authorization": "Bearer {{AIRTABLE_PAT}}" },
+          "headers": {
+            "Authorization": "Bearer {{AIRTABLE_PAT}}"
+          },
           "fields": [
             {
               "id": "AIRTABLE_PAT",
@@ -125,8 +146,11 @@
     {
       "id": "notion",
       "name": "Notion",
+      "group": "Work and projects",
       "description": "Search, read and write the client's Notion pages.",
-      "notes": ["Sign in with the client's Notion account and choose their workspace. Guests can't connect, and a workspace admin can turn this off."],
+      "notes": [
+        "Sign in with the client's Notion account and choose their workspace. Guests can't connect, and a workspace admin can turn this off."
+      ],
       "options": [
         {
           "id": "oauth",
@@ -142,7 +166,11 @@
     {
       "id": "stripe",
       "name": "Stripe",
+      "group": "Payments",
       "description": "Look up and manage the client's Stripe customers, payments and invoices.",
+      "tags": [
+        "Moves money"
+      ],
       "notes": [
         "Some actions, like refunds, wait for a person to approve them in the Stripe Dashboard. After approving, ask the AI to try again."
       ],
@@ -153,7 +181,9 @@
           "recommended": true,
           "kind": "remote",
           "url": "https://mcp.stripe.com",
-          "headers": { "Authorization": "Bearer {{STRIPE_AGENT_KEY}}" },
+          "headers": {
+            "Authorization": "Bearer {{STRIPE_AGENT_KEY}}"
+          },
           "fields": [
             {
               "id": "STRIPE_AGENT_KEY",
@@ -168,9 +198,862 @@
                   "pattern": "^sk_",
                   "message": "That's a secret key. Stripe no longer accepts those for AI tools. Create a restricted key with agent access instead (it starts with rk_live_)."
                 },
-                { "pattern": "^pk_", "message": "That's a publishable key, which can't do anything here. Create a restricted key with agent access instead (it starts with rk_live_)." }
+                {
+                  "pattern": "^pk_",
+                  "message": "That's a publishable key, which can't do anything here. Create a restricted key with agent access instead (it starts with rk_live_)."
+                }
               ],
-              "where": { "label": "Open Stripe API keys", "url": "https://dashboard.stripe.com/apikeys" }
+              "where": {
+                "label": "Open Stripe API keys",
+                "url": "https://dashboard.stripe.com/apikeys"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "neon",
+      "name": "Neon",
+      "group": "Data",
+      "description": "Query and manage the client's Neon Postgres databases.",
+      "beta": true,
+      "notes": [
+        "The AI's database changes run as the database owner unless you pick a smaller role when you sign in. For a live database, consider a role that can only read."
+      ],
+      "options": [
+        {
+          "id": "oauth",
+          "label": "Sign in with Neon",
+          "recommended": true,
+          "kind": "remote",
+          "auth": "oauth",
+          "url": "https://mcp.neon.tech/mcp",
+          "fields": []
+        },
+        {
+          "id": "token",
+          "label": "Use an API key",
+          "kind": "remote",
+          "url": "https://mcp.neon.tech/mcp",
+          "headers": {
+            "Authorization": "Bearer {{NEON_API_KEY}}"
+          },
+          "fields": [
+            {
+              "id": "NEON_API_KEY",
+              "label": "API key",
+              "secret": true,
+              "required": true,
+              "help": "Create one while signed in to the client's Neon account, ideally limited to the client's organization.",
+              "where": {
+                "label": "Open Neon API keys",
+                "url": "https://console.neon.tech/app/settings/api-keys"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "netlify",
+      "name": "Netlify",
+      "group": "Developers",
+      "description": "Deploy and manage the client's Netlify sites.",
+      "beta": true,
+      "notes": [
+        "The AI can deploy sites and change their settings. Sign in with an account that only reaches this client's team."
+      ],
+      "options": [
+        {
+          "id": "oauth",
+          "label": "Sign in with Netlify",
+          "recommended": true,
+          "kind": "remote",
+          "auth": "oauth",
+          "url": "https://mcp.netlify.com/mcp",
+          "fields": []
+        }
+      ]
+    },
+    {
+      "id": "github",
+      "name": "GitHub",
+      "group": "Developers",
+      "description": "Read and work on the client's GitHub repositories, issues and pull requests.",
+      "beta": true,
+      "notes": [
+        "GitHub doesn't let apps sign in by themselves here, so it uses a token. A fine-grained token limited to the client's repositories is safest."
+      ],
+      "options": [
+        {
+          "id": "token",
+          "label": "Use a fine-grained token",
+          "recommended": true,
+          "kind": "remote",
+          "url": "https://api.githubcopilot.com/mcp/",
+          "headers": {
+            "Authorization": "Bearer {{GITHUB_TOKEN}}"
+          },
+          "fields": [
+            {
+              "id": "GITHUB_TOKEN",
+              "label": "Fine-grained token",
+              "secret": true,
+              "required": true,
+              "help": "Create it for the client's organization, choose only their repositories, and give it the permissions the AI needs. It starts with github_pat_.",
+              "pattern": "^(github_pat_|ghp_)[A-Za-z0-9_]+$",
+              "patternHint": "That doesn't look like a GitHub token. It should start with github_pat_.",
+              "where": {
+                "label": "Create a fine-grained token",
+                "url": "https://github.com/settings/personal-access-tokens/new"
+              }
+            }
+          ]
+        },
+        {
+          "id": "token-readonly",
+          "label": "Use a token, read only",
+          "kind": "remote",
+          "url": "https://api.githubcopilot.com/mcp/readonly",
+          "headers": {
+            "Authorization": "Bearer {{GITHUB_TOKEN}}"
+          },
+          "fields": [
+            {
+              "id": "GITHUB_TOKEN",
+              "label": "Fine-grained token",
+              "secret": true,
+              "required": true,
+              "help": "The AI can look but not change anything, whatever the token allows. It starts with github_pat_.",
+              "pattern": "^(github_pat_|ghp_)[A-Za-z0-9_]+$",
+              "patternHint": "That doesn't look like a GitHub token. It should start with github_pat_.",
+              "where": {
+                "label": "Create a fine-grained token",
+                "url": "https://github.com/settings/personal-access-tokens/new"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "apollo",
+      "name": "Apollo",
+      "group": "CRM and sales",
+      "description": "Find and enrich contacts and companies in the client's Apollo account.",
+      "tags": [
+        "Uses credits"
+      ],
+      "beta": true,
+      "notes": [
+        "Some actions, like revealing emails or phone numbers, use the client's Apollo credits."
+      ],
+      "options": [
+        {
+          "id": "oauth",
+          "label": "Sign in with Apollo",
+          "recommended": true,
+          "kind": "remote",
+          "auth": "oauth",
+          "url": "https://mcp.apollo.io/mcp",
+          "fields": []
+        }
+      ]
+    },
+    {
+      "id": "leadfeeder",
+      "name": "Leadfeeder",
+      "group": "CRM and sales",
+      "description": "See which companies visit the client's website, with Leadfeeder by Dealfront.",
+      "tags": [
+        "Paid plan",
+        "Uses credits"
+      ],
+      "beta": true,
+      "notes": [
+        "Needs a paid Leadfeeder plan: on the free plan only sign-in works.",
+        "Sign in as a user who has the Manage API keys and Use API permissions. Some lookups use credits."
+      ],
+      "options": [
+        {
+          "id": "oauth",
+          "label": "Sign in with Leadfeeder",
+          "recommended": true,
+          "kind": "remote",
+          "auth": "oauth",
+          "url": "https://mcp.leadfeeder.com/mcp",
+          "fields": []
+        }
+      ]
+    },
+    {
+      "id": "upwork",
+      "name": "Upwork",
+      "group": "Other",
+      "description": "Search jobs and talent, and manage proposals, contracts and messages on Upwork.",
+      "beta": true,
+      "notes": [
+        "The AI can send proposals and messages for the account you sign in with, so check what it plans before saying yes."
+      ],
+      "options": [
+        {
+          "id": "oauth",
+          "label": "Sign in with Upwork",
+          "recommended": true,
+          "kind": "remote",
+          "auth": "oauth",
+          "url": "https://mcp.upwork.com/mcp",
+          "fields": []
+        }
+      ]
+    },
+    {
+      "id": "retell",
+      "name": "Retell AI",
+      "group": "Voice and research",
+      "description": "Manage the client's Retell voice agents, phone numbers and calls.",
+      "tags": [
+        "Places real calls"
+      ],
+      "beta": true,
+      "notes": [
+        "The AI can place real phone calls and buy numbers, which cost money. Use one key per client workspace."
+      ],
+      "options": [
+        {
+          "id": "key",
+          "label": "Use an API key",
+          "recommended": true,
+          "kind": "remote",
+          "url": "https://mcp.retellai.com",
+          "headers": {
+            "Authorization": "Bearer {{RETELL_API_KEY}}"
+          },
+          "fields": [
+            {
+              "id": "RETELL_API_KEY",
+              "label": "API key",
+              "secret": true,
+              "required": true,
+              "help": "In the client's Retell dashboard: Settings > API Keys > create a key.",
+              "where": {
+                "label": "Open the Retell dashboard",
+                "url": "https://dashboard.retellai.com/"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "make",
+      "name": "Make",
+      "group": "Automations",
+      "description": "Run the client's Make scenarios and see how they went.",
+      "beta": true,
+      "options": [
+        {
+          "id": "oauth",
+          "label": "Sign in with Make",
+          "recommended": true,
+          "kind": "remote",
+          "auth": "oauth",
+          "url": "https://mcp.make.com",
+          "fields": []
+        }
+      ]
+    },
+    {
+      "id": "zapier",
+      "name": "Zapier",
+      "group": "Automations",
+      "description": "Use the actions set up in the client's Zapier account.",
+      "tags": [
+        "Uses Zapier tasks"
+      ],
+      "beta": true,
+      "notes": [
+        "In Zapier, choose which actions the AI may use. Each action it runs uses Zapier tasks."
+      ],
+      "options": [
+        {
+          "id": "oauth",
+          "label": "Sign in with Zapier",
+          "recommended": true,
+          "kind": "remote",
+          "auth": "oauth",
+          "url": "https://mcp.zapier.com/api/v1/connect",
+          "fields": []
+        }
+      ]
+    },
+    {
+      "id": "gohighlevel",
+      "name": "GoHighLevel",
+      "group": "CRM and sales",
+      "description": "Work with contacts, conversations, opportunities and calendars in the client's GoHighLevel sub-account.",
+      "beta": true,
+      "notes": [
+        "You pick the sub-account when you sign in. Sign in once per client sub-account."
+      ],
+      "options": [
+        {
+          "id": "oauth",
+          "label": "Sign in with GoHighLevel",
+          "recommended": true,
+          "kind": "remote",
+          "auth": "oauth",
+          "url": "https://services.leadconnectorhq.com/mcp/anthropic/v2",
+          "fields": []
+        }
+      ]
+    },
+    {
+      "id": "pipedrive",
+      "name": "Pipedrive",
+      "group": "CRM and sales",
+      "description": "Work with the client's Pipedrive deals, people, organizations and activities.",
+      "beta": true,
+      "options": [
+        {
+          "id": "oauth",
+          "label": "Sign in with Pipedrive",
+          "recommended": true,
+          "kind": "remote",
+          "auth": "oauth",
+          "url": "https://mcp.pipedrive.ai/mcp",
+          "fields": []
+        }
+      ]
+    },
+    {
+      "id": "monday",
+      "name": "monday.com",
+      "group": "CRM and sales",
+      "description": "Read and update the client's monday.com boards and items.",
+      "tags": [
+        "Beta at monday.com"
+      ],
+      "beta": true,
+      "notes": [
+        "monday.com's server is in beta. One of its tools can do anything the monday.com API allows, so check what the AI plans before saying yes."
+      ],
+      "options": [
+        {
+          "id": "oauth",
+          "label": "Sign in with monday.com",
+          "recommended": true,
+          "kind": "remote",
+          "auth": "oauth",
+          "url": "https://mcp.monday.com/mcp",
+          "fields": []
+        }
+      ]
+    },
+    {
+      "id": "close",
+      "name": "Close",
+      "group": "CRM and sales",
+      "description": "Work with the client's Close leads, contacts, opportunities and tasks.",
+      "beta": true,
+      "notes": [
+        "You choose what the AI may do when you sign in."
+      ],
+      "options": [
+        {
+          "id": "oauth",
+          "label": "Sign in with Close",
+          "recommended": true,
+          "kind": "remote",
+          "auth": "oauth",
+          "url": "https://mcp.close.com/mcp",
+          "fields": []
+        }
+      ]
+    },
+    {
+      "id": "klaviyo",
+      "name": "Klaviyo",
+      "group": "Marketing and email",
+      "description": "Work with the client's Klaviyo profiles, lists, campaigns and flows.",
+      "beta": true,
+      "notes": [
+        "Sign in as an Owner, Admin or Manager of the client's Klaviyo account."
+      ],
+      "options": [
+        {
+          "id": "oauth",
+          "label": "Sign in with Klaviyo",
+          "recommended": true,
+          "kind": "remote",
+          "auth": "oauth",
+          "url": "https://mcp.klaviyo.com/mcp",
+          "fields": []
+        }
+      ]
+    },
+    {
+      "id": "meta-ads",
+      "name": "Meta Ads",
+      "group": "Marketing and email",
+      "description": "Report on and manage the client's Facebook and Instagram ads.",
+      "tags": [
+        "Can spend money"
+      ],
+      "beta": true,
+      "notes": [
+        "Changes to budgets, bids and live ads spend the client's money, so check what the AI plans before saying yes.",
+        "Sign in with a Facebook profile that has access to the client's ad account."
+      ],
+      "options": [
+        {
+          "id": "oauth",
+          "label": "Sign in with Meta Ads",
+          "recommended": true,
+          "kind": "remote",
+          "auth": "oauth",
+          "url": "https://mcp.facebook.com/ads",
+          "fields": []
+        }
+      ]
+    },
+    {
+      "id": "resend",
+      "name": "Resend",
+      "group": "Marketing and email",
+      "description": "Send email and manage domains, contacts and broadcasts in the client's Resend account.",
+      "tags": [
+        "Sends email"
+      ],
+      "beta": true,
+      "notes": [
+        "The AI can send real email from the client's domains."
+      ],
+      "options": [
+        {
+          "id": "oauth",
+          "label": "Sign in with Resend",
+          "recommended": true,
+          "kind": "remote",
+          "auth": "oauth",
+          "url": "https://mcp.resend.com/mcp",
+          "fields": []
+        },
+        {
+          "id": "key",
+          "label": "Use an API key",
+          "kind": "remote",
+          "url": "https://mcp.resend.com/mcp",
+          "headers": {
+            "Authorization": "Bearer {{RESEND_API_KEY}}"
+          },
+          "fields": [
+            {
+              "id": "RESEND_API_KEY",
+              "label": "API key",
+              "secret": true,
+              "required": true,
+              "help": "Create one in the client's Resend account. It starts with re_.",
+              "pattern": "^re_[A-Za-z0-9_]+$",
+              "patternHint": "That doesn't look like a Resend key. It should start with re_.",
+              "where": {
+                "label": "Open Resend API keys",
+                "url": "https://resend.com/api-keys"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "wordpress-com",
+      "name": "WordPress.com",
+      "group": "Websites",
+      "description": "Read and write posts, pages and comments on the client's WordPress.com sites.",
+      "beta": true,
+      "notes": [
+        "One sign-in reaches every site on that WordPress.com account. Choose Read only when you sign in if that's all you need."
+      ],
+      "options": [
+        {
+          "id": "oauth",
+          "label": "Sign in with WordPress.com",
+          "recommended": true,
+          "kind": "remote",
+          "auth": "oauth",
+          "url": "https://public-api.wordpress.com/wpcom/v2/mcp/v1",
+          "fields": []
+        }
+      ]
+    },
+    {
+      "id": "wordpress",
+      "name": "WordPress (own site)",
+      "group": "Websites",
+      "description": "Read and write posts and pages on a WordPress site the client hosts themselves.",
+      "tags": [
+        "Needs a plugin"
+      ],
+      "beta": true,
+      "notes": [
+        "The site needs WordPress 6.9 or later with the WordPress MCP Adapter plugin installed.",
+        "Use an application password (Users > Profile > Application passwords), not the account's real password."
+      ],
+      "options": [
+        {
+          "id": "app-password",
+          "label": "Use an application password",
+          "recommended": true,
+          "kind": "remote",
+          "url": "{{WP_MCP_URL}}",
+          "headers": {
+            "Authorization": "Basic {{basic:WP_USER:WP_APP_PASSWORD}}"
+          },
+          "fields": [
+            {
+              "id": "WP_MCP_URL",
+              "label": "The site's MCP address",
+              "placeholder": "https://example.com/wp-json/mcp/mcp-adapter-default-server",
+              "help": "The MCP Adapter plugin shows it. It's usually the site address followed by /wp-json/mcp/mcp-adapter-default-server.",
+              "pattern": "^https://\\S+$",
+              "patternHint": "Use the full address that starts with https://",
+              "required": true
+            },
+            {
+              "id": "WP_USER",
+              "label": "WordPress username",
+              "required": true,
+              "help": "The user the application password belongs to."
+            },
+            {
+              "id": "WP_APP_PASSWORD",
+              "label": "Application password",
+              "secret": true,
+              "required": true,
+              "help": "In the client's WordPress admin: Users > Profile > Application passwords > Add new.",
+              "where": {
+                "label": "How to make one (WordPress)",
+                "url": "https://make.wordpress.org/core/2020/11/05/application-passwords-integration-guide/"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "webflow",
+      "name": "Webflow",
+      "group": "Websites",
+      "description": "Read and update the client's Webflow sites, pages and CMS items.",
+      "beta": true,
+      "notes": [
+        "You pick which sites the AI may use when you sign in."
+      ],
+      "options": [
+        {
+          "id": "oauth",
+          "label": "Sign in with Webflow",
+          "recommended": true,
+          "kind": "remote",
+          "auth": "oauth",
+          "url": "https://mcp.webflow.com/mcp",
+          "fields": []
+        }
+      ]
+    },
+    {
+      "id": "wix",
+      "name": "Wix",
+      "group": "Websites",
+      "description": "Manage the client's Wix site: content, products, bookings and more.",
+      "beta": true,
+      "notes": [
+        "Two of Wix's tools can call any part of the Wix API, so check what the AI plans before saying yes."
+      ],
+      "options": [
+        {
+          "id": "oauth",
+          "label": "Sign in with Wix",
+          "recommended": true,
+          "kind": "remote",
+          "auth": "oauth",
+          "url": "https://mcp.wix.com/mcp",
+          "fields": []
+        }
+      ]
+    },
+    {
+      "id": "paypal",
+      "name": "PayPal",
+      "group": "Payments",
+      "description": "Look up and manage the client's PayPal invoices, orders, payments and disputes.",
+      "tags": [
+        "Moves money"
+      ],
+      "beta": true,
+      "notes": [
+        "Refunds and payouts move real money. Try it with a PayPal sandbox account first."
+      ],
+      "options": [
+        {
+          "id": "oauth",
+          "label": "Sign in with PayPal",
+          "recommended": true,
+          "kind": "remote",
+          "auth": "oauth",
+          "url": "https://mcp.paypal.com/mcp",
+          "fields": []
+        }
+      ]
+    },
+    {
+      "id": "trello",
+      "name": "Trello",
+      "group": "Work and projects",
+      "description": "Read and update the client's Trello boards, lists and cards.",
+      "beta": true,
+      "options": [
+        {
+          "id": "oauth",
+          "label": "Sign in with Trello",
+          "recommended": true,
+          "kind": "remote",
+          "auth": "oauth",
+          "url": "https://mcp.trello.com/v1",
+          "fields": []
+        }
+      ]
+    },
+    {
+      "id": "atlassian",
+      "name": "Jira and Confluence",
+      "group": "Work and projects",
+      "description": "Work with the client's Jira issues and Confluence pages.",
+      "tags": [
+        "Uses Rovo credits"
+      ],
+      "beta": true,
+      "notes": [
+        "You pick the client's Atlassian site when you sign in. The AI's requests use the site's Rovo credits."
+      ],
+      "options": [
+        {
+          "id": "oauth",
+          "label": "Sign in with Jira and Confluence",
+          "recommended": true,
+          "kind": "remote",
+          "auth": "oauth",
+          "url": "https://mcp.atlassian.com/v2/mcp",
+          "fields": []
+        }
+      ]
+    },
+    {
+      "id": "linear",
+      "name": "Linear",
+      "group": "Work and projects",
+      "description": "Work with the client's Linear issues, projects and cycles.",
+      "beta": true,
+      "options": [
+        {
+          "id": "oauth",
+          "label": "Sign in with Linear",
+          "recommended": true,
+          "kind": "remote",
+          "auth": "oauth",
+          "url": "https://mcp.linear.app/mcp",
+          "fields": []
+        },
+        {
+          "id": "key",
+          "label": "Use an API key",
+          "kind": "remote",
+          "url": "https://mcp.linear.app/mcp",
+          "headers": {
+            "Authorization": "Bearer {{LINEAR_API_KEY}}"
+          },
+          "fields": [
+            {
+              "id": "LINEAR_API_KEY",
+              "label": "API key",
+              "secret": true,
+              "required": true,
+              "help": "Create a personal API key while signed in to the client's Linear workspace. It starts with lin_api_.",
+              "pattern": "^lin_api_[A-Za-z0-9]+$",
+              "patternHint": "That doesn't look like a Linear key. It should start with lin_api_.",
+              "where": {
+                "label": "Open Linear security settings",
+                "url": "https://linear.app/settings/account/security"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "canva",
+      "name": "Canva",
+      "group": "Work and projects",
+      "description": "Find, create and edit designs in the client's Canva account.",
+      "beta": true,
+      "options": [
+        {
+          "id": "oauth",
+          "label": "Sign in with Canva",
+          "recommended": true,
+          "kind": "remote",
+          "auth": "oauth",
+          "url": "https://mcp.canva.com/mcp",
+          "fields": []
+        }
+      ]
+    },
+    {
+      "id": "calendly",
+      "name": "Calendly",
+      "group": "Scheduling",
+      "description": "See and manage the client's Calendly event types, bookings and availability.",
+      "beta": true,
+      "options": [
+        {
+          "id": "oauth",
+          "label": "Sign in with Calendly",
+          "recommended": true,
+          "kind": "remote",
+          "auth": "oauth",
+          "url": "https://mcp.calendly.com",
+          "fields": []
+        }
+      ]
+    },
+    {
+      "id": "calcom",
+      "name": "Cal.com",
+      "group": "Scheduling",
+      "description": "See and manage the client's Cal.com bookings, event types and schedules.",
+      "beta": true,
+      "options": [
+        {
+          "id": "oauth",
+          "label": "Sign in with Cal.com",
+          "recommended": true,
+          "kind": "remote",
+          "auth": "oauth",
+          "url": "https://mcp.cal.com/mcp",
+          "fields": []
+        }
+      ]
+    },
+    {
+      "id": "tavily",
+      "name": "Tavily",
+      "group": "Voice and research",
+      "description": "Search the web and read pages, with Tavily.",
+      "tags": [
+        "Uses credits"
+      ],
+      "beta": true,
+      "notes": [
+        "Each search uses Tavily credits."
+      ],
+      "options": [
+        {
+          "id": "oauth",
+          "label": "Sign in with Tavily",
+          "recommended": true,
+          "kind": "remote",
+          "auth": "oauth",
+          "url": "https://mcp.tavily.com/mcp/",
+          "fields": []
+        }
+      ]
+    },
+    {
+      "id": "apify",
+      "name": "Apify",
+      "group": "Voice and research",
+      "description": "Run Apify scrapers and other Actors, and read their results.",
+      "tags": [
+        "Uses credits"
+      ],
+      "beta": true,
+      "notes": [
+        "Running an Actor uses the account's Apify credits."
+      ],
+      "options": [
+        {
+          "id": "oauth",
+          "label": "Sign in with Apify",
+          "recommended": true,
+          "kind": "remote",
+          "auth": "oauth",
+          "url": "https://mcp.apify.com",
+          "fields": []
+        },
+        {
+          "id": "key",
+          "label": "Use an API token",
+          "kind": "remote",
+          "url": "https://mcp.apify.com",
+          "headers": {
+            "Authorization": "Bearer {{APIFY_TOKEN}}"
+          },
+          "fields": [
+            {
+              "id": "APIFY_TOKEN",
+              "label": "API token",
+              "secret": true,
+              "required": true,
+              "help": "In Apify: Settings > API & Integrations. It starts with apify_api_.",
+              "pattern": "^apify_api_[A-Za-z0-9]+$",
+              "patternHint": "That doesn't look like an Apify token. It should start with apify_api_.",
+              "where": {
+                "label": "Open Apify integrations",
+                "url": "https://console.apify.com/settings/integrations"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "elevenlabs",
+      "name": "ElevenLabs",
+      "group": "Voice and research",
+      "description": "Make speech, clone voices and manage voice agents and calls in the client's ElevenLabs account.",
+      "tags": [
+        "Uses credits"
+      ],
+      "beta": true,
+      "notes": [
+        "Speech, voice clones and calls use the client's ElevenLabs credits.",
+        "Audio it makes is saved on this computer, in the Desktop folder."
+      ],
+      "options": [
+        {
+          "id": "key",
+          "label": "Use an API key",
+          "recommended": true,
+          "kind": "local",
+          "command": "uvx",
+          "args": [
+            "elevenlabs-mcp==0.12.2"
+          ],
+          "env": {
+            "ELEVENLABS_API_KEY": "{{ELEVENLABS_API_KEY}}"
+          },
+          "fields": [
+            {
+              "id": "ELEVENLABS_API_KEY",
+              "label": "API key",
+              "secret": true,
+              "required": true,
+              "help": "In the client's ElevenLabs account: Developers > API keys > Create key. Give it only the permissions the AI needs.",
+              "where": {
+                "label": "Open ElevenLabs API keys",
+                "url": "https://elevenlabs.io/app/developers/api-keys"
+              }
             }
           ]
         }

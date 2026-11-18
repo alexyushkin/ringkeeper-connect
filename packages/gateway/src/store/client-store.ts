@@ -50,6 +50,11 @@ export interface Settings {
   startAtLogin: boolean;
   /** The "bring in what your apps already use" wizard was offered for an empty first client. */
   bringInOffered: boolean;
+  /**
+   * Catalog tools the user picked in the wizard (from Claude Desktop extensions
+   * or web connectors) that still need a sign-in or key, per client.
+   */
+  pendingTools: Array<{ clientId: string; toolId: string }>;
 }
 
 interface StoreFile {
@@ -59,7 +64,7 @@ interface StoreFile {
   settings: Settings;
 }
 
-export const DEFAULT_SETTINGS: Settings = { requireClientArg: true, dynamicHosts: [...DEFAULT_DYNAMIC_HOSTS], setupDone: false, startAtLogin: true, bringInOffered: false };
+export const DEFAULT_SETTINGS: Settings = { requireClientArg: true, dynamicHosts: [...DEFAULT_DYNAMIC_HOSTS], setupDone: false, startAtLogin: true, bringInOffered: false, pendingTools: [] };
 
 // ---------- inputs and views (what the UI sends and sees) ----------
 

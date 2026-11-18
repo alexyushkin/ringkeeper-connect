@@ -32,6 +32,8 @@ const api: RingkeeperApi = {
   signIn: call("signIn") as RingkeeperApi["signIn"],
   cancelSignIn: call("cancelSignIn") as RingkeeperApi["cancelSignIn"],
   openLink: call("openLink") as RingkeeperApi["openLink"],
+  requestTool: call("requestTool") as RingkeeperApi["requestTool"],
+  dismissPendingTool: call("dismissPendingTool") as RingkeeperApi["dismissPendingTool"],
   restartToUpdate: call("restartToUpdate") as RingkeeperApi["restartToUpdate"],
   onSignInLink: (listener) => {
     const handler = (_e: unknown, url: string) => listener(url);

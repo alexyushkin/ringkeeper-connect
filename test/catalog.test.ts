@@ -1,14 +1,60 @@
 import { describe, expect, it } from "vitest";
-import { CatalogInputError, buildConnection, catalog, findService, validateCatalog } from "../packages/catalog/src/index.js";
+import { CatalogInputError, GROUPS, buildConnection, catalog, findService, validateCatalog } from "../packages/catalog/src/index.js";
 
 describe("the catalog data", () => {
   it("is consistent: every placeholder has a field, links and addresses are https, patterns compile", () => {
     expect(validateCatalog(catalog)).toEqual([]);
   });
 
-  it("covers the v1 services, with no Google services", () => {
-    expect(catalog.services.map((s) => s.id)).toEqual(["n8n", "supabase", "airtable", "notion", "stripe"]);
+  it("covers the MVP's 35 tools, with no Google services", () => {
+    expect(catalog.services.map((s) => s.id).sort()).toEqual(
+      [
+        "n8n", "supabase", "airtable", "notion", "stripe",
+        "neon", "netlify", "github", "apollo", "leadfeeder", "upwork", "retell",
+        "make", "zapier", "gohighlevel", "pipedrive", "monday", "close", "klaviyo", "meta-ads", "resend",
+        "wordpress-com", "wordpress", "webflow", "wix", "paypal", "trello", "atlassian", "linear", "canva",
+        "calendly", "calcom", "tavily", "apify", "elevenlabs",
+      ].sort(),
+    );
     expect(JSON.stringify(catalog)).not.toMatch(/google/i);
+  });
+
+  it("puts every tool in a known group, and marks the ones not yet tried with a real sign-in as Beta", () => {
+    for (const s of catalog.services) expect(GROUPS, s.id).toContain(s.group);
+    const proven = catalog.services.filter((s) => !s.beta).map((s) => s.id).sort();
+    expect(proven).toEqual(["airtable", "n8n", "notion", "stripe", "supabase"]);
+  });
+
+  it("uses only https vendor servers that sign in by themselves, or keys, or the client's own address", () => {
+    for (const s of catalog.services) {
+      for (const o of s.options) {
+        if (o.kind === "local") {
+          // A program on this computer: pinned to one version.
+          expect(o.args.join(" "), `${s.id}/${o.id}`).toMatch(/==\d|@\d/);
+          continue;
+        }
+        if (o.auth === "oauth") expect(o.fields.filter((f) => f.secret || f.required), `${s.id}/${o.id}`).toEqual([]);
+        else expect(Object.keys(o.headers ?? {}).length > 0 || o.url.includes("{{"), `${s.id}/${o.id}`).toBe(true);
+      }
+    }
+  });
+
+  it("validation catches an unknown group, a long tag and a Basic template without fields", () => {
+    const bad = {
+      version: 1 as const,
+      checked: "x",
+      services: [
+        {
+          id: "x",
+          name: "X",
+          group: "Nope" as never,
+          description: "",
+          tags: ["This tag is far too long to fit on a tile"],
+          options: [{ id: "o", label: "o", kind: "remote" as const, url: "https://x", headers: { Authorization: "Basic {{basic:U:P}}" }, fields: [] }],
+        },
+      ],
+    };
+    expect(validateCatalog(bad)).toEqual(["x: unknown group Nope", 'x: tag "This tag is far too long to fit on a tile" must be short', "x/o: {{U}} has no field", "x/o: {{P}} has no field"]);
   });
 
   it("prefers sign-in where the vendor's sign-in works for any app", () => {
@@ -60,5 +106,38 @@ describe("turning answers into a connection", () => {
 
   it("uses the name the user gives, e.g. a second Airtable", () => {
     expect(buildConnection("airtable", "oauth", {}, "Airtable (marketing)").name).toBe("Airtable (marketing)");
+  });
+
+  it("WordPress (own site): sends the username and application password as one secret Basic credential", () => {
+    const c = buildConnection("wordpress", "app-password", {
+      WP_MCP_URL: "https://acme.example/wp-json/mcp/mcp-adapter-default-server",
+      WP_USER: "pat",
+      WP_APP_PASSWORD: "abcd efgh ijkl mnop",
+    });
+    expect(c).toEqual({
+      kind: "remote",
+      name: "WordPress (own site)",
+      url: "https://acme.example/wp-json/mcp/mcp-adapter-default-server",
+      fields: [{ name: "Authorization", value: `Basic ${Buffer.from("pat:abcd efgh ijkl mnop").toString("base64")}`, secret: true }],
+    });
+    expect(() => buildConnection("wordpress", "app-password", { WP_MCP_URL: "http://acme.example/mcp", WP_USER: "pat", WP_APP_PASSWORD: "x" })).toThrow(/https/);
+  });
+
+  it("GitHub: a token, with a read-only choice that uses GitHub's read-only address", () => {
+    expect(buildConnection("github", "token-readonly", { GITHUB_TOKEN: "github_pat_ABC123" })).toMatchObject({
+      url: "https://api.githubcopilot.com/mcp/readonly",
+      fields: [{ name: "Authorization", value: "Bearer github_pat_ABC123", secret: true }],
+    });
+    expect(() => buildConnection("github", "token", { GITHUB_TOKEN: "hello" })).toThrow(/github_pat_/);
+  });
+
+  it("ElevenLabs: runs ElevenLabs' own program, pinned, with the key kept secret", () => {
+    expect(buildConnection("elevenlabs", "key", { ELEVENLABS_API_KEY: "sk_123" })).toEqual({
+      kind: "local",
+      name: "ElevenLabs",
+      command: "uvx",
+      args: ["elevenlabs-mcp==0.12.2"],
+      fields: [{ name: "ELEVENLABS_API_KEY", value: "sk_123", secret: true }],
+    });
   });
 });

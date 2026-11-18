@@ -4,6 +4,7 @@
 import fs from "node:fs";
 import { join } from "node:path";
 import { SecretStorageUnavailableError, type Cipher } from "@ringkeeper/gateway";
+import { writeAtomic } from "./config-file.js";
 import type { HostId } from "./hosts.js";
 
 export interface TakenEntry {
@@ -66,10 +67,7 @@ export class Ledger {
 
   private save(): void {
     if (!this.cipher.isAvailable()) throw new SecretStorageUnavailableError();
-    fs.mkdirSync(join(this.file, ".."), { recursive: true });
-    const tmp = `${this.file}.${process.pid}.tmp`;
-    fs.writeFileSync(tmp, this.cipher.encrypt(JSON.stringify(this.data)), { mode: 0o600 });
-    fs.renameSync(tmp, this.file);
+    writeAtomic(this.file, this.cipher.encrypt(JSON.stringify(this.data)), 0o600);
   }
 
   host(id: HostId): HostLedger | undefined {
@@ -124,7 +122,10 @@ export class Ledger {
     const dir = join(this.backupDir, id);
     fs.mkdirSync(dir, { recursive: true });
     const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-    fs.writeFileSync(join(dir, `${stamp}.enc`), this.cipher.encrypt(text), { mode: 0o600 });
+    // Two backups in the same millisecond must not overwrite each other.
+    let name = `${stamp}.enc`;
+    for (let n = 2; fs.existsSync(join(dir, name)); n++) name = `${stamp}~${String(n).padStart(2, "0")}.enc`; // sorts after the first
+    writeAtomic(join(dir, name), this.cipher.encrypt(text), 0o600);
     const all = fs.readdirSync(dir).filter((f) => f.endsWith(".enc")).sort();
     for (const old of all.slice(0, Math.max(0, all.length - MAX_BACKUPS_PER_HOST))) fs.rmSync(join(dir, old), { force: true });
   }

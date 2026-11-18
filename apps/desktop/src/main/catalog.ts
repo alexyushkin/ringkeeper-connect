@@ -5,6 +5,18 @@ import { SignInError, StoreError, oauthKey, signIn, type ClientStore, type Gatew
 
 export class CatalogActionError extends Error {}
 
+/** Where "Request a tool" goes. Empty address: the public contact page instead. */
+export const REQUEST_TOOL_EMAIL = "requests@yushkin.us";
+export const REQUEST_TOOL_PAGE = "https://yushkin.us";
+
+/** The email "Request a tool" opens: what was searched goes in the subject and the first line. */
+export function requestToolMailto(searched: string, email = REQUEST_TOOL_EMAIL): string {
+  const what = String(searched ?? "").slice(0, 80).replace(/\s+/g, " ").trim();
+  const subject = `Tool request: ${what}`;
+  const body = [`Tool name: ${what}`, "What I'd like the AI to do with it: ", "How to reach me: ", ""].join("\r\n");
+  return `mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+}
+
 /** Every link the catalog may open; nothing else is opened from the window. */
 const allowedLinks = new Set(catalog.services.flatMap((s) => s.options.flatMap((o) => o.fields.flatMap((f) => (f.where ? [f.where.url] : [])))));
 
@@ -72,6 +84,11 @@ export class CatalogActions {
 
   cancelSignIn(): void {
     this.signingIn?.abort();
+  }
+
+  /** "Request a tool": an email with the search filled in, or the contact page until an address is set. */
+  requestTool(searched: string): void {
+    this.deps.openExternal(REQUEST_TOOL_EMAIL ? requestToolMailto(searched) : REQUEST_TOOL_PAGE);
   }
 
   openLink(url: string): void {

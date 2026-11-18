@@ -10,7 +10,8 @@ import {
   HOST_LABELS,
   HostManager,
   Ledger,
-  listDesktopExtensions,
+  SOURCE_LABELS,
+  isHostId,
   mapEntry,
   readHostConfig,
   systemRoots,
@@ -23,6 +24,8 @@ import {
   appStatus,
 } from "@ringkeeper/hostconfig";
 import { readJson, writeJsonAtomic } from "@ringkeeper/gateway";
+import { catalog, findService } from "@ringkeeper/catalog";
+import type { ConnectionInput } from "@ringkeeper/gateway";
 import { AppStartWatcher } from "./app-processes.js";
 import type { HostView } from "../shared/api.js";
 import type { Cipher } from "@ringkeeper/gateway";
@@ -89,6 +92,10 @@ const RESTART_HINT: Record<HostId, string> = {
   "claude-desktop": "Claude Desktop: quit it from its icon near the clock (or the menu bar on a Mac), then open it again.",
   cursor: "Cursor: if it's open, close and reopen it.",
   "claude-code": "Claude Code: new sessions pick it up automatically.",
+  vscode: "VS Code: reload the window (Ctrl+Shift+P, then Developer: Reload Window) or restart it. Copilot CLI picks it up in a new session.",
+  kiro: "Kiro: it picks up the change by itself; if not, restart Kiro.",
+  antigravity: "Antigravity: restart it (in the command-line tool, type /mcp to reload).",
+  codex: "Codex / ChatGPT: restart the ChatGPT desktop app or the Codex extension, or start a new Codex session. ChatGPT uses Ringkeeper Connect only in Codex, not in regular chats.",
 };
 
 /** Plain steps to check that an AI app really uses Ringkeeper. */
@@ -107,6 +114,26 @@ export const HOW_TO_CHECK: Record<HostId, string[]> = {
     "Start a new Claude Code session (close the terminal or tab and run claude again).",
     "Type /mcp. \"ringkeeper-connect\" should be listed as connected.",
     "This page turns to Connected as soon as a session uses it.",
+  ],
+  vscode: [
+    "Reload VS Code: press Ctrl+Shift+P (Cmd+Shift+P on a Mac), type Reload Window, and press Enter.",
+    "Open Copilot Chat in Agent mode and click the tools icon. \"ringkeeper-connect\" should be listed; start it if asked.",
+    "This page turns to Connected once VS Code uses it.",
+  ],
+  kiro: [
+    "In Kiro, open the Kiro panel and look under MCP Servers. \"ringkeeper-connect\" should be listed and running.",
+    "If it isn't, restart Kiro.",
+    "This page turns to Connected once Kiro uses it.",
+  ],
+  antigravity: [
+    "Restart Antigravity. In the command-line tool, type /mcp to reload instead.",
+    "Open Antigravity's MCP servers list: \"ringkeeper-connect\" should be there.",
+    "This page turns to Connected once Antigravity uses it.",
+  ],
+  codex: [
+    "ChatGPT uses Ringkeeper Connect only in Codex, not in regular chats.",
+    "Restart the ChatGPT desktop app (or the Codex extension in your editor), then open Codex. In the command-line tool, start a new session.",
+    "In Codex, type /mcp: \"ringkeeper-connect\" should be listed. This page turns to Connected once Codex uses it.",
   ],
 };
 
@@ -171,8 +198,8 @@ export class AppsService {
 
   /** The bridge of some app contacted us: remember it, by app. */
   recordContact(contact: { app?: string; hostName?: string; at: number }): void {
-    const known = ["claude-desktop", "cursor", "claude-code"] as const;
-    const id = (known as readonly string[]).includes(contact.app ?? "") ? (contact.app as HostId) : appForClientName(contact.hostName);
+    // The app's own name wins: VS Code may start Ringkeeper from Claude Desktop's settings.
+    const id = appForClientName(contact.hostName) ?? (contact.app && isHostId(contact.app) ? contact.app : undefined);
     if (!id) return;
     this.contacts[id] = contact.at;
     try {
@@ -191,13 +218,15 @@ export class AppsService {
     return this.manager.views().map((v) => ({
       id: v.id,
       label: v.label,
-      status: appStatus(v, this.contacts[v.id], v.id === "claude-code" ? undefined : starts[v.id], now),
+      status: appStatus(v, this.contacts[v.id], v.id === "claude-desktop" || v.id === "cursor" ? starts[v.id] : undefined, now),
       problem: v.problem,
       note: v.note,
       configPath: v.configPath,
       otherConnections: v.otherConnections,
       lastContactAt: this.contacts[v.id],
       howToCheck: HOW_TO_CHECK[v.id],
+      optIn: v.optIn,
+      ...(v.via ? { viaLabel: HOST_LABELS[v.via] } : {}),
     }));
   }
 
@@ -243,18 +272,28 @@ export class AppsService {
   }
 
   scan(): ImportScan {
-    const { candidates } = this.manager.scan();
+    const { candidates, seen } = this.manager.scan();
     this.lastScan = new Map(candidates.map((c) => [c.key, c]));
     return {
       hosts: this.hosts(),
       candidates: candidates.map((c) => ({
         key: c.key,
         name: c.name,
-        from: [...new Set(c.sources.map((s) => HOST_LABELS[s.host]))],
+        from: [...new Set(c.sources.map((s) => SOURCE_LABELS[s.host]))],
         service: c.service?.label,
         problem: c.problem,
-        warnings: c.warnings,
+        warnings: [
+          ...c.warnings,
+          ...(c.sources.every((s) => !isHostId(s.host))
+            ? [`It will stay in ${[...new Set(c.sources.map((s) => SOURCE_LABELS[s.host]))].join(" and ")} too: Ringkeeper Connect only reads that app's settings.`]
+            : []),
+        ],
       })),
+      sources: seen.map((s) => ({ label: s.label, count: s.count, problems: s.problems })),
+      extensions: this.manager.desktopExtensions().map((e) => {
+        const tool = e.service ? findService(e.service.id) : undefined;
+        return { name: e.name, ...(tool ? { toolId: tool.id, toolName: tool.name } : {}) };
+      }),
     };
   }
 
@@ -273,38 +312,46 @@ export class AppsService {
     const problems: string[] = [];
     for (const cand of chosen) {
       try {
-        added.push({ cand, connId: store.addConnection(clientId, cand.input!).id });
+        added.push({ cand, connId: store.addConnection(clientId, withSignIn(cand.input!)).id });
       } catch (err) {
         problems.push(`${cand.name}: ${err instanceof Error ? err.message : String(err)}`);
       }
     }
 
+    // Only the apps the user ticked (the newer ones are opt-in), and only if they can be read.
+    const wanted = new Set(req.hosts ?? []);
     const installed = this.manager
       .views()
-      .filter((h) => h.status !== "not_installed" && h.status !== "unreadable")
+      .filter((h) => wanted.has(h.id) && h.status !== "not_installed" && h.status !== "unreadable")
       .map((h) => h.id);
-    const take = added.flatMap((a) => a.cand.sources);
+    // Connections from apps we only read from are copied, never taken out of them.
+    const take = added.flatMap((a) => a.cand.sources).filter((s) => isHostId(s.host));
     const results = this.manager.connect(installed, take);
     const failedHosts = new Set(results.filter((r) => !r.ok).map((r) => r.host));
     for (const r of results) if (!r.ok && r.error) problems.push(r.error);
 
     for (const a of added) {
-      if (a.cand.sources.every((s) => failedHosts.has(s.host))) store.removeConnection(clientId, a.connId);
+      if (a.cand.sources.every((s) => isHostId(s.host) && failedHosts.has(s.host))) store.removeConnection(clientId, a.connId);
     }
     // Remember what the user chose to leave in the apps, so the watcher doesn't ask about it.
     const takenKeys = new Set(added.map((a) => a.cand.key));
     for (const cand of this.lastScan.values()) {
-      if (!takenKeys.has(cand.key)) for (const s of cand.sources) this.manager.ignore(s.host, s.name);
+      if (!takenKeys.has(cand.key)) for (const s of cand.sources) if (isHostId(s.host)) this.manager.ignore(s.host, s.name);
     }
 
-    store.updateSettings({ setupDone: true });
+    // Tools picked from Claude Desktop extensions or web connectors: added next, with a sign-in or key.
+    const pickedTools = [...new Set(req.tools ?? [])].filter((t) => findService(t));
+    const pending = (store.settings.pendingTools ?? []).filter((p) => !(p.clientId === clientId && pickedTools.includes(p.toolId)));
+    store.updateSettings({ setupDone: true, pendingTools: [...pending, ...pickedTools.map((toolId) => ({ clientId, toolId }))] });
     const connected = results.filter((r) => r.ok).map((r) => r.host);
     this.opts.onChange();
     return {
-      imported: added.filter((a) => !a.cand.sources.every((s) => failedHosts.has(s.host))).map((a) => a.cand.name),
+      imported: added.filter((a) => !a.cand.sources.every((s) => isHostId(s.host) && failedHosts.has(s.host))).map((a) => a.cand.name),
       problems,
       restart: connected.map((h) => RESTART_HINT[h]),
       overlaps: this.overlapWarnings(added.map((a) => a.cand)),
+      clientId,
+      pendingTools: pickedTools,
     };
   }
 
@@ -314,8 +361,7 @@ export class AppsService {
     for (const c of cands) if (c.service) services.set(c.service.id, c.service.label);
     if (!services.size) return [];
     const warnings: string[] = [];
-    const desktop = this.manager.locations().find((l) => l.id === "claude-desktop");
-    for (const ext of desktop ? listDesktopExtensions(desktop.configPath) : []) {
+    for (const ext of this.manager.desktopExtensions()) {
       if (ext.service && services.has(ext.service.id)) {
         warnings.push(
           `You also have the "${ext.name}" extension in Claude Desktop. Claude might use it, and your own ${ext.service.label} account, instead of your client's. Turn it off in Claude Desktop under Settings > Extensions, or keep it only for your own work.`,
@@ -343,7 +389,7 @@ export class AppsService {
   /** Move a connection found in an app into a client. */
   moveFound(host: HostId, name: string, clientId: string): void {
     const loc = this.manager.locations().find((l) => l.id === host)!;
-    const r = readHostConfig(loc.configPath);
+    const r = readHostConfig(loc.configPath, loc.format);
     const value = r.status === "ok" ? r.servers[name] : undefined;
     if (value === undefined) {
       this.dropFound(host, name);
@@ -351,7 +397,7 @@ export class AppsService {
     }
     const mapped = mapEntry(name, value, host, { env: process.env, home: homedir(), pathSeparator: sep });
     if (!mapped.input) throw new AppsError(mapped.problem ?? `"${name}" can't be brought in.`);
-    const conn = this.opts.store.addConnection(clientId, mapped.input);
+    const conn = this.opts.store.addConnection(clientId, withSignIn(mapped.input));
     const res = this.manager.moveIn(host, name);
     if (!res.ok) {
       this.opts.store.removeConnection(clientId, conn.id);
@@ -379,4 +425,31 @@ export class AppsService {
       problems: results.filter((r) => !r.ok).map((r) => r.error!),
     };
   }
+}
+
+/**
+ * A web connection brought in from another app with no key: that app signed in
+ * to it itself, and the sign-in can't be copied. When the address is a catalog
+ * tool that uses sign-in (Linear, Notion...), mark it so Ringkeeper offers
+ * "Sign in" instead of saying the key was refused. Others are left as they are.
+ */
+export function withSignIn(input: ConnectionInput): ConnectionInput {
+  if (input.kind !== "remote" || input.auth || input.fields.length) return input;
+  let origin: string;
+  try {
+    origin = new URL(input.url).origin;
+  } catch {
+    return input;
+  }
+  const signsIn = catalog.services.some((s) =>
+    s.options.some((o) => {
+      if (o.kind !== "remote" || o.auth !== "oauth" || o.url.includes("{{")) return false;
+      try {
+        return new URL(o.url).origin === origin;
+      } catch {
+        return false;
+      }
+    }),
+  );
+  return signsIn ? { ...input, auth: "oauth" } : input;
 }

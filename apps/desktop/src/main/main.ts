@@ -295,6 +295,13 @@ function trayAppWord(h: HostView): string {
   }
 }
 
+/** A tool picked in the wizard is no longer pending once it's added (or dismissed). */
+function dropPendingTool(clientId: string, toolId: string): void {
+  const pending = store.settings.pendingTools ?? [];
+  const next = pending.filter((p) => !(p.clientId === clientId && p.toolId === toolId));
+  if (next.length !== pending.length) store.updateSettings({ pendingTools: next });
+}
+
 function refreshTray(): void {
   if (!tray) return;
   const clients = store.list();
@@ -406,11 +413,16 @@ function registerIpc(): void {
       else void shell.openPath(dirname(p));
     },
     catalogServices: () => catalogActions.services(),
-    addFromCatalog: (clientId: string, serviceId: string, optionId: string, answers: Record<string, string>, name?: string) =>
-      catalogActions.add(clientId, serviceId, optionId, answers, name),
+    addFromCatalog: (clientId: string, serviceId: string, optionId: string, answers: Record<string, string>, name?: string) => {
+      const added = catalogActions.add(clientId, serviceId, optionId, answers, name);
+      dropPendingTool(clientId, serviceId);
+      return added;
+    },
     signIn: (clientId: string, connectionId: string) => catalogActions.signIn(clientId, connectionId),
     cancelSignIn: () => catalogActions.cancelSignIn(),
     openLink: (url: string) => catalogActions.openLink(url),
+    requestTool: (searched: string) => catalogActions.requestTool(searched),
+    dismissPendingTool: (clientId: string, toolId: string) => dropPendingTool(clientId, toolId),
     restartToUpdate: () => updates?.restartToUpdate(),
   };
 
