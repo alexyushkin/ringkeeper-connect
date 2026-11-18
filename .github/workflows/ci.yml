@@ -41,9 +41,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - { os: windows-latest, args: "--win --dir --publish never", runtimes: win32-x64 }
-          - { os: macos-15, args: "--mac --dir --arm64 --publish never", runtimes: darwin-arm64 }
+        # Building on a Mac waits for one of GitHub's few Mac machines and is often cancelled after
+        # 15 minutes without starting. So pull requests build on Windows only (the Mac tests above
+        # still run on every pull request); every push to main builds on both.
+        include: ${{ fromJSON(github.event_name == 'push' && '[{"os":"windows-latest","args":"--win --dir --publish never","runtimes":"win32-x64"},{"os":"macos-15","args":"--mac --dir --arm64 --publish never","runtimes":"darwin-arm64"}]' || '[{"os":"windows-latest","args":"--win --dir --publish never","runtimes":"win32-x64"}]') }}
     runs-on: ${{ matrix.os }}
     env:
       # CI packaging is a smoke test: never sign, never look for a certificate.
