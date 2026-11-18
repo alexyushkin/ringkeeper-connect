@@ -24,6 +24,16 @@ export interface UpstreamEnv {
 /** After a failed start, wait this long before trying again on the next request. */
 const RETRY_AFTER_MS = 30_000;
 
+/**
+ * Programs that only take a key as an argument (Twilio) get `${NAME}` there:
+ * filled in from the connection's own settings (kept secret) just before
+ * starting, so the key is never saved in the plain list of arguments. Only
+ * the connection's own settings, never this computer's environment. Exported for tests.
+ */
+export function withSettings(args: string[], env: Record<string, string>): string[] {
+  return args.map((a) => a.replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (whole, name: string) => (Object.hasOwn(env, name) ? env[name]! : whole)));
+}
+
 /** Quick-tunnel services whose addresses are random and change on every restart. */
 const TEMPORARY_HOSTS = [".trycloudflare.com", ".loca.lt"];
 
@@ -105,7 +115,7 @@ export class Upstream {
       return new StreamableHTTPClientTransport(new URL(c.url), { requestInit: { headers }, ...(this.oauth ? { authProvider: this.oauth } : {}) });
     }
     // npx / node / uvx run on the copies bundled with Ringkeeper Connect when present.
-    const launch = resolveLaunch(c.command, c.args ?? [], { ...getDefaultEnvironment(), ...(c.env ?? {}) }, this.env.runtimes ?? {});
+    const launch = resolveLaunch(c.command, withSettings(c.args ?? [], c.env ?? {}), { ...getDefaultEnvironment(), ...(c.env ?? {}) }, this.env.runtimes ?? {});
     const t = new StdioClientTransport({ command: launch.command, args: launch.args, env: launch.env, stderr: "pipe" });
     this.stderrTail = "";
     // Must drain stderr or a chatty server blocks once the pipe buffer fills.

@@ -109,6 +109,13 @@ export function validateCatalog(c: Catalog): string[] {
       const templates = o.kind === "remote" ? [o.url, ...Object.values(o.query ?? {}), ...Object.values(o.headers ?? {})] : [o.command, ...o.args, ...Object.values(o.env ?? {})];
       for (const t of templates) for (const id of refs(t)) if (!fieldIds.has(id)) problems.push(`${s.id}/${o.id}: {{${id}}} has no field`);
       if (o.kind === "remote" && !o.url.includes("{{") && !o.url.startsWith("https://")) problems.push(`${s.id}/${o.id}: address must be https`);
+      if (o.kind === "local") {
+        // The command and arguments are saved as plain text: a secret goes in `env` (kept secret)
+        // and, if the program wants it as an argument, is referred to there as ${NAME}.
+        const secrets = new Set(o.fields.filter((f) => f.secret).map((f) => f.id));
+        for (const t of [o.command, ...o.args]) for (const id of refs(t)) if (secrets.has(id)) problems.push(`${s.id}/${o.id}: secret {{${id}}} in the command or arguments`);
+        for (const a of o.args) for (const m of a.matchAll(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g)) if (!(m[1]! in (o.env ?? {}))) problems.push(`${s.id}/${o.id}: \${${m[1]}} isn't one of its settings`);
+      }
       for (const f of o.fields) {
         if (f.where && !f.where.url.startsWith("https://")) problems.push(`${s.id}/${o.id}/${f.id}: link must be https`);
         for (const r of [f.pattern, ...(f.reject ?? []).map((x) => x.pattern)]) {

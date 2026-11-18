@@ -220,6 +220,13 @@ describe("remote connections", () => {
     );
   });
 
+  it("fills a program's ${NAME} arguments from its own settings only, just before starting it", async () => {
+    const { withSettings } = await import("../packages/gateway/src/upstream.js");
+    expect(withSettings(["-s", "${TWILIO_API_SECRET}", "--x=${A}${A}"], { TWILIO_API_SECRET: "s3cret", A: "1" })).toEqual(["-s", "s3cret", "--x=11"]);
+    // Not one of its settings (e.g. the computer's PATH): left as written.
+    expect(withSettings(["${PATH}", "${workspaceFolder}", "plain"], {})).toEqual(["${PATH}", "${workspaceFolder}", "plain"]);
+  });
+
   it("recognises temporary tunnel addresses, which change on every restart", async () => {
     const { temporaryHost } = await import("../packages/gateway/src/upstream.js");
     expect(temporaryHost("https://chronicles-dance-provincial-columbus.trycloudflare.com/api/mcp")).toBe("chronicles-dance-provincial-columbus.trycloudflare.com");
