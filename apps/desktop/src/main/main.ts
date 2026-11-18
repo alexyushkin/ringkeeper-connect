@@ -4,6 +4,7 @@ import fs from "node:fs";
 import { dirname, join } from "node:path";
 import { BrowserWindow, Menu, Notification, Tray, app, dialog, ipcMain, nativeImage, nativeTheme, safeStorage, shell } from "electron";
 import {
+  APP_DIR_NAME,
   ClientStore,
   Gateway,
   SecretStorageUnavailableError,
@@ -24,6 +25,7 @@ import {
 import { HostConfigError } from "@ringkeeper/hostconfig";
 import { IPC, type ApiMethod, type AppState, type HostView, type Result } from "../shared/api.js";
 import { AppsError, AppsService, bridgeLaunch, bundledRuntimes } from "./apps.js";
+import { bridgeHome } from "./bridge-copy.js";
 import { CatalogActionError, CatalogActions } from "./catalog.js";
 import { Updates } from "./updates.js";
 
@@ -97,18 +99,30 @@ async function start(): Promise<void> {
     showSignInLink: (url) => window?.webContents.send(IPC.signInLink, url),
     onChange: () => scheduleRefresh(),
   });
+  // AI apps run the bridge from a copy here, so installing an update doesn't stop it.
+  const bridgeDir = bridgeHome({
+    platform: process.platform,
+    dataDir,
+    dataDirOverride: process.env.RINGKEEPER_DATA_DIR,
+    localAppData: process.env.LOCALAPPDATA,
+    appDirName: APP_DIR_NAME,
+  });
+  let launchCommand: ReturnType<typeof bridgeLaunch> | undefined;
   apps = new AppsService({
     dataDir,
     cipher,
     store,
+    // Worked out once per run: it may copy Node the first time.
     launch: () =>
-      bridgeLaunch({
+      (launchCommand ??= bridgeLaunch({
         packaged: app.isPackaged,
         resourcesPath: process.resourcesPath,
         distDir: __dirname,
         dataDirOverride: process.env.RINGKEEPER_DATA_DIR,
         runtimes,
-      }),
+        copyTo: bridgeDir,
+        warn: (msg) => log({ ev: "bridge_copy_failed", error: msg }),
+      })),
     onChange: () => scheduleRefresh(),
     notify,
   });
@@ -117,6 +131,14 @@ async function start(): Promise<void> {
   if (process.argv.includes("--restore")) {
     const r = apps.restore();
     log({ ev: "restore_on_uninstall", restored: r.restored, problems: r.problems });
+    // The bridge copy isn't needed anymore. If an AI app still runs it, Windows keeps that file and it stays behind.
+    if (!r.problems.length) {
+      try {
+        fs.rmSync(bridgeDir, { recursive: true, force: true, maxRetries: 2 });
+      } catch {
+        // Best effort.
+      }
+    }
     app.exit(r.problems.length ? 1 : 0);
     return;
   }
