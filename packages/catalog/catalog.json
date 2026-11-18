@@ -694,31 +694,6 @@
       ]
     },
     {
-      "id": "meta-ads",
-      "name": "Meta Ads",
-      "group": "Marketing and email",
-      "description": "Report on and manage the client's Facebook and Instagram ads.",
-      "tags": [
-        "Can spend money"
-      ],
-      "beta": true,
-      "notes": [
-        "Changes to budgets, bids and live ads spend the client's money, so check what the AI plans before saying yes.",
-        "Sign in with a Facebook profile that has access to the client's ad account."
-      ],
-      "options": [
-        {
-          "id": "oauth",
-          "label": "Sign in with Meta Ads",
-          "recommended": true,
-          "kind": "remote",
-          "auth": "oauth",
-          "url": "https://mcp.facebook.com/ads",
-          "fields": []
-        }
-      ]
-    },
-    {
       "id": "resend",
       "name": "Resend",
       "group": "Marketing and email",

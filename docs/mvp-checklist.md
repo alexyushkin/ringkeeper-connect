@@ -39,10 +39,13 @@ GitHub (a fine-grained token).
 Klaviyo, Resend, WordPress.com, Webflow, Wix, PayPal (sandbox), Trello, Jira and Confluence, Linear,
 Canva, Calendly, Cal.com, Tavily, Apify, ElevenLabs (API key; runs ElevenLabs' own program).
 
-**Needs something more:** GoHighLevel (paid or trial agency account), Meta Ads (an ad account; other
-businesses' ads need Meta's app review), WordPress (own site: WordPress 6.9+ with the MCP Adapter
+**Needs something more:** GoHighLevel (paid or trial agency account), WordPress (own site: WordPress 6.9+ with the MCP Adapter
 plugin), Leadfeeder (paid plan for anything past sign-in), Retell AI (an account with credits for
 calls).
+
+**Taken out:** Meta Ads. Its sign-in server lets only apps Meta approved register ("Dynamic registration
+is not available for this client"), so it needs Ringkeeper's own Meta-approved app first (with Google,
+HubSpot and the rest in "later").
 
 For each one:
 

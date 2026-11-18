@@ -265,6 +265,8 @@ function ClientPanel(props: {
     void props.run(api.catalogServices()).then((r) => r && setToolNames(Object.fromEntries(r.value.map((s) => [s.id, s.name]))));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.pendingTools.join(",")]);
+  // Only tools still in the catalog (one may have been taken out, like Meta Ads).
+  const pending = props.pendingTools.filter((id) => id in toolNames);
   return (
     <section>
       <header className="client-header">
@@ -289,11 +291,11 @@ function ClientPanel(props: {
         </div>
       </header>
 
-      {props.pendingTools.length > 0 && (
+      {pending.length > 0 && (
         <div className="notice info pending-tools">
           <strong>Still to add for {client.name}:</strong>
           <ul>
-            {props.pendingTools.map((id) => (
+            {pending.map((id) => (
               <li key={id}>
                 <span>{toolNames[id] ?? id}</span>
                 <button className="link" onClick={() => props.onAddTool(id)}>

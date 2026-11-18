@@ -27,6 +27,9 @@ export interface OAuthStateStore {
 
 export class SignInError extends Error {}
 
+/** Starts the message for a service that only lets apps it approved sign in: trying again can't help. */
+export const NOT_APPROVED = "only lets apps it has approved sign in";
+
 function metadata(redirectUrl: string): OAuthClientMetadata {
   return {
     client_name: "Ringkeeper Connect",
@@ -189,10 +192,9 @@ export async function signIn(opts: SignInOptions): Promise<void> {
     let first: string;
     try {
       first = await auth(provider, { serverUrl: opts.serverUrl, fetchFn: opts.fetchFn });
-    } catch (err) {
-      throw new SignInError(
-        `${opts.label} doesn't offer sign-in that Ringkeeper Connect can use (${err instanceof Error ? err.message : String(err)}). Use a key instead, if the service offers one.`,
-      );
+    } catch {
+      // No details from the service in the message: they're technical and not something the user can act on.
+      throw new SignInError(await whySignInFailed(opts.label, opts.serverUrl, !!provider?.client, opts.fetchFn));
     }
     if (first !== "AUTHORIZED") {
       const code = await codeArrived;
@@ -208,6 +210,23 @@ export async function signIn(opts: SignInOptions): Promise<void> {
     server.close();
     server.closeAllConnections?.();
   }
+}
+
+/** Plain reason for a sign-in that failed before the browser part. Exported for tests. */
+export async function whySignInFailed(label: string, serverUrl: string, registered: boolean, fetchFn?: typeof fetch): Promise<string> {
+  if (registered) return `${label}'s sign-in page couldn't be opened. Try again in a few minutes.`;
+  let offersRegistration = false;
+  try {
+    const base = fetchFn ?? fetch;
+    const timed: typeof fetch = (input, init) => base(input, { ...init, signal: AbortSignal.timeout(8000) });
+    offersRegistration = !!(await discoverOAuthServerInfo(serverUrl, { fetchFn: timed })).authorizationServerMetadata?.registration_endpoint;
+  } catch {
+    offersRegistration = false;
+  }
+  return offersRegistration
+    ? // It lets apps register, but refused this one: some services allow only apps they approved (Meta).
+      `${label} ${NOT_APPROVED}, and Ringkeeper Connect isn't one of them yet, so this sign-in can't work. Nothing was changed. Use "Request a tool" to tell us you need it.`
+    : `${label} doesn't offer a sign-in that Ringkeeper Connect can use. Use a key instead, if the service offers one.`;
 }
 
 /**

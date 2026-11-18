@@ -175,3 +175,6 @@ export const IPC = {
 } as const;
 
 export type ApiMethod = Exclude<keyof RingkeeperApi, "onStateChanged" | "getState" | "onSignInLink">;
+
+/** In a sign-in error: the service only lets apps it approved sign in, so trying again can't help (same text as the gateway's NOT_APPROVED). */
+export const NOT_APPROVED = "only lets apps it has approved sign in";
