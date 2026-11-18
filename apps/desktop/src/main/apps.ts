@@ -5,7 +5,7 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import { homedir } from "node:os";
 import { join, sep } from "node:path";
-import { runtimesPresent, type BundledRuntimes, type ClientStore } from "@ringkeeper/gateway";
+import { runtimesPresent, type BundledRuntimes, type ClientStore, type Logger } from "@ringkeeper/gateway";
 import {
   HOST_LABELS,
   HostManager,
@@ -150,6 +150,32 @@ export const HOW_TO_CHECK: Record<HostId, string[]> = {
   ],
 };
 
+/**
+ * What to tell the user about something that happened to an app's settings,
+ * or null to say nothing. Every event is logged either way.
+ */
+export function hostEventMessage(e: HostEvent): { title: string; body: string } | null {
+  const app = HOST_LABELS[e.host];
+  switch (e.kind) {
+    case "found":
+      return { title: `New connection found in ${app}`, body: `"${e.name}" was added to ${app}. Open Ringkeeper Connect to choose which client it belongs to.` };
+    case "reconnected":
+      // Already fixed, nothing for the user to do. Typically Claude Desktop, open since before the
+      // setup, saving its settings from its old copy; the app's status says if a restart is still needed.
+      return null;
+    case "moved":
+      return {
+        title: `${app} now uses the right settings`,
+        body: `${app} reads its settings from a different place than before, so Ringkeeper Connect moved its entry there and undid its changes in the old one. Restart ${app} to finish.`,
+      };
+    case "lost":
+      return {
+        title: `${app} keeps disconnecting`,
+        body: `${app} keeps removing Ringkeeper Connect from its settings. Open Ringkeeper Connect and choose Connect next to ${app}.`,
+      };
+  }
+}
+
 export class AppsService {
   readonly manager: HostManager;
   private readonly ledger: Ledger;
@@ -169,6 +195,7 @@ export class AppsService {
       launch: () => LaunchCommand;
       onChange: () => void;
       notify: (title: string, body: string) => void;
+      log?: Logger;
     },
   ) {
     this.ledger = new Ledger(opts.dataDir, opts.cipher);
@@ -259,28 +286,12 @@ export class AppsService {
   }
 
   private onEvent(e: HostEvent): void {
-    const app = HOST_LABELS[e.host];
-    if (e.kind === "found") {
-      if (!this.found.some((f) => f.host === e.host && f.name === e.name)) {
-        this.found.push({ host: e.host, hostLabel: app, name: e.name });
-      }
-      this.opts.notify(`New connection found in ${app}`, `"${e.name}" was added to ${app}. Open Ringkeeper Connect to choose which client it belongs to.`);
-    } else if (e.kind === "reconnected") {
-      this.opts.notify(
-        `${app} was reconnected`,
-        `${app} removed Ringkeeper Connect from its settings, so it was put back. If your clients' tools are missing, restart ${app}.`,
-      );
-    } else if (e.kind === "moved") {
-      this.opts.notify(
-        `${app} now uses the right settings`,
-        `${app} reads its settings from a different place than before, so Ringkeeper Connect moved its entry there and undid its changes in the old one. Restart ${app} to finish.`,
-      );
-    } else {
-      this.opts.notify(
-        `${app} keeps disconnecting`,
-        `${app} keeps removing Ringkeeper Connect from its settings. Open Ringkeeper Connect and choose Connect next to ${app}.`,
-      );
+    if (e.kind === "found" && !this.found.some((f) => f.host === e.host && f.name === e.name)) {
+      this.found.push({ host: e.host, hostLabel: HOST_LABELS[e.host], name: e.name });
     }
+    this.opts.log?.({ ev: "host_event", ...e });
+    const message = hostEventMessage(e);
+    if (message) this.opts.notify(message.title, message.body);
     this.opts.onChange();
   }
 
