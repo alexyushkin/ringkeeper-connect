@@ -63,6 +63,7 @@ const GROUP_ORDER = [
   "Marketing and email",
   "Websites",
   "Payments",
+  "Accounting",
   "Work and projects",
   "Scheduling",
   "Developers",
