@@ -21,6 +21,7 @@ import {
   type GatewayConfig,
 } from "./config.js";
 import { Upstream, type UpstreamEnv, type UpstreamStatus } from "./upstream.js";
+import { originalArguments, safeInputSchema } from "./schema-names.js";
 import { nullLogger, type Logger } from "./log.js";
 import {
   META_CALL_TOOL,
@@ -342,7 +343,8 @@ export class Gateway {
   }
 
   private exposeTool(client: ClientConfig, u: Upstream, t: Tool, withClientArg: boolean): Tool {
-    const inputSchema = structuredClone(t.inputSchema ?? { type: "object" }) as Tool["inputSchema"];
+    // Input names AI apps refuse (Twilio's "DateSent<") are shown under valid ones; see schema-names.ts.
+    const inputSchema = structuredClone(safeInputSchema(t.inputSchema ?? { type: "object" }).schema) as Tool["inputSchema"];
     if (withClientArg) {
       inputSchema.properties = {
         ...(inputSchema.properties ?? {}),
@@ -492,7 +494,9 @@ export class Gateway {
     }
 
     this.log({ ev: "call_proxied", tool: name, client: active.id });
-    const result = await upstream.callTool(toolName, args);
+    const schema = upstream.tools.find((t) => t.name === toolName)?.inputSchema;
+    const original = schema ? (originalArguments(args, safeInputSchema(schema).map) as Record<string, unknown>) : args;
+    const result = await upstream.callTool(toolName, original);
     return labelResult(result, active, upstream.conn.name);
   }
 
