@@ -1,13 +1,11 @@
 // Ringkeeper Connect's own registered apps (Google, Microsoft): where their IDs
-// come from, how the catalog shows tools that need one, and that a connection
-// keeps its app.
+// come from, and that a connection keeps its app.
 import fs from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { registeredApps } from "../apps/desktop/src/main/registered-apps.js";
 import { CatalogActions } from "../apps/desktop/src/main/catalog.js";
-import { buildConnection } from "../packages/catalog/src/index.js";
 import { ClientStore } from "../packages/gateway/src/store/client-store.js";
 import { SecretStore, type Cipher } from "../packages/gateway/src/store/secrets.js";
 
@@ -37,32 +35,25 @@ describe("registered apps", () => {
     expect(apps.microsoft).toEqual({ id: "microsoft", clientId: "ms-id" });
   });
 
-  it("the catalog marks Google tools unavailable in a build without the Google app", () => {
+  it("tools that don't need a registered app aren't marked unavailable", () => {
     const deps = { store: store(), gateway: () => ({}) as never, oauthStore: { load: () => undefined, save: () => {} }, openExternal: () => {}, showSignInLink: () => {}, onChange: () => {} };
-    const without = new CatalogActions(deps).services().find((s) => s.id === "gmail")!;
-    expect(without.options[0]).toMatchObject({ unavailable: true });
-    const withApp = new CatalogActions({ ...deps, apps: { google: { id: "google", clientId: "x" } } }).services().find((s) => s.id === "gmail")!;
-    expect(withApp.options[0]).not.toHaveProperty("unavailable");
-    // Tools that don't need an app are untouched.
-    expect(new CatalogActions(deps).services().find((s) => s.id === "notion")!.options.some((o) => "unavailable" in o)).toBe(false);
+    for (const s of new CatalogActions(deps).services()) for (const o of s.options) expect("unavailable" in o, `${s.id}/${o.id}`).toBe(false);
   });
 
-  it("a Gmail connection keeps its app and permissions, also through an edit and a copy", () => {
+  it("a connection keeps its registered app and permissions, also through an edit and a copy", () => {
     const s = store();
     const a = s.addClient("Acme");
     const b = s.addClient("Globex");
-    const conn = s.addConnection(a.id, buildConnection("gmail", "signin", {}));
-    expect(conn).toMatchObject({ kind: "remote", auth: "oauth", oauthApp: "google", url: "https://gmailmcp.googleapis.com/mcp/v1" });
-    expect(conn.kind === "remote" && conn.scope).toContain("gmail.readonly");
+    const url = "https://mail.example.com/mcp";
+    const conn = s.addConnection(a.id, { kind: "remote", name: "Mail", url, auth: "oauth", oauthApp: "google", scope: "mail.read mail.send", fields: [] });
+    expect(conn).toMatchObject({ kind: "remote", auth: "oauth", oauthApp: "google", scope: "mail.read mail.send" });
 
     // The window edits a connection from its view, renaming it: the app and permissions stay.
-    s.updateConnection(a.id, conn.id, { kind: "remote", name: "Acme mail", url: "https://gmailmcp.googleapis.com/mcp/v1", auth: "oauth", fields: [] });
-    const edited = s.list().find((c) => c.id === a.id)!.connections[0]!;
-    expect(edited).toMatchObject({ name: "Acme mail", oauthApp: "google" });
-    expect(edited.kind === "remote" && edited.scope).toContain("gmail.readonly");
+    s.updateConnection(a.id, conn.id, { kind: "remote", name: "Acme mail", url, auth: "oauth", fields: [] });
+    expect(s.list().find((c) => c.id === a.id)!.connections[0]).toMatchObject({ name: "Acme mail", oauthApp: "google", scope: "mail.read mail.send" });
 
     const copied = s.cloneConnection(a.id, conn.id, b.id, {});
     expect(copied).toMatchObject({ oauthApp: "google" });
-    expect(s.toGatewayConfig().clients.find((c) => c.id === b.id)!.connections[0]).toMatchObject({ oauth: { app: "google" }, needsSignIn: true });
+    expect(s.toGatewayConfig().clients.find((c) => c.id === b.id)!.connections[0]).toMatchObject({ oauth: { app: "google", scope: "mail.read mail.send" }, needsSignIn: true });
   });
 });

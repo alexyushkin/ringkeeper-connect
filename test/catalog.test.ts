@@ -6,7 +6,7 @@ describe("the catalog data", () => {
     expect(validateCatalog(catalog)).toEqual([]);
   });
 
-  it("covers the MVP's tools plus Twilio and Google's own servers (Meta Ads waits for an approved app of our own)", () => {
+  it("covers the MVP's tools plus Twilio (Meta Ads waits for an approved app of our own), with no Google services", () => {
     expect(catalog.services.map((s) => s.id).sort()).toEqual(
       [
         "n8n", "supabase", "airtable", "notion", "stripe",
@@ -14,13 +14,9 @@ describe("the catalog data", () => {
         "make", "zapier", "gohighlevel", "pipedrive", "monday", "close", "klaviyo", "resend",
         "wordpress-com", "wordpress", "webflow", "wix", "paypal", "trello", "atlassian", "linear", "canva",
         "calendly", "calcom", "tavily", "apify", "elevenlabs", "twilio",
-        "gmail", "google-drive", "google-docs", "google-sheets", "google-calendar",
       ].sort(),
     );
-    // Google only through Ringkeeper Connect's registered Google app, on Google's own servers.
-    for (const s of catalog.services.filter((x) => /google|gmail/i.test(x.id))) {
-      for (const o of s.options) expect(o.kind === "remote" && o.app === "google" && o.auth === "oauth" && /^https:\/\/[a-z]+mcp\.googleapis\.com\//.test(o.url), `${s.id}/${o.id}`).toBe(true);
-    }
+    expect(JSON.stringify(catalog)).not.toMatch(/google/i);
   });
 
   it("puts every tool in a known group, and marks the ones not yet tried with a real sign-in as Beta", () => {

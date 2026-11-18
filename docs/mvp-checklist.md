@@ -70,12 +70,12 @@ with a key. Upwork's registration address looks like its sign-up page, so check 
 
 ## 4. Google (after the registration in docs/registered-apps.md)
 
-Needs a build made after the Google IDs are in the repository's Actions settings. With an account on
-the app's tester list:
+Needs a build made after the Google IDs are in the repository's Actions settings, and the built-in
+Google account tool (coming next). With the published app:
 
-1. Add a tool > Gmail (then Drive, Docs, Sheets, Calendar) > Continue, and sign in with Google.
-   Expect Google's "not verified" warning while the app is in testing.
+1. Add a tool > Google account, tick what it may do, Continue, and sign in with Google. Expect
+   Google's "unverified app" warning: Advanced > Go to Ringkeeper Connect.
 2. The tool shows Ready. In an AI app, list the client's tools and run a reading one (search
    mail, list files, read a sheet).
 3. A second client with a different Google account: its tools see only that account.
-4. After 7 days (testing mode), Ringkeeper Connect asks to sign in again.
+4. A week later, it still works without signing in again (the app is published, not in testing).
