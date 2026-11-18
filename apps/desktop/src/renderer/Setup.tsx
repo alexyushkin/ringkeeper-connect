@@ -9,7 +9,7 @@ export function appStatusText(h: Pick<HostView, "id" | "label" | "status">): { w
     case "connected":
       return { word: "Connected", tone: "ok" };
     case "added":
-      return { word: h.id === "claude-code" ? "Added, start a new session to finish" : `Added, restart ${h.label} to finish`, tone: "warn" };
+      return { word: h.id === "claude-code" ? "Added, open a session to finish" : `Added, restart ${h.label} to finish`, tone: "warn" };
     case "not_seeing":
       return { word: "Not seeing us yet", tone: "bad" };
     case "missing":

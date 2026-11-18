@@ -188,19 +188,27 @@ button:focus-visible {
 .client-list .no-match {
   padding: 8px;
 }
+/* Each client is its own bordered row, so every one reads as a choice, not just the active one. */
+.client-list li + li {
+  margin-top: 4px;
+}
 .client-item {
   width: 100%;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  border: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
   background: none;
   text-align: left;
   padding: 8px;
 }
+.client-item:hover {
+  background: var(--panel);
+}
 .client-item.selected {
   background: var(--panel);
-  box-shadow: 0 0 0 1px var(--border);
+  border-color: var(--accent);
 }
 .client-name {
   overflow: hidden;
