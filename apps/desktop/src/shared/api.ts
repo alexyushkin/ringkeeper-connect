@@ -107,6 +107,8 @@ export interface SetupRequest {
   hosts: HostId[];
   /** Catalog tools to add next (from extensions or web connectors); each still needs a sign-in or key. */
   tools: string[];
+  /** Online connectors added by their address (Claude's or ChatGPT's own ones can't be read). */
+  addresses?: Array<{ name: string; url: string }>;
 }
 
 export interface SetupOutcome {

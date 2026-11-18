@@ -386,6 +386,14 @@ export class AppsService {
         problems.push(`${cand.name}: ${err instanceof Error ? err.message : String(err)}`);
       }
     }
+    // Online connectors added by address: no key here; if the server supports sign-in, it's offered next.
+    for (const a of req.addresses ?? []) {
+      try {
+        store.addConnection(clientId, withSignIn(connectorByAddress(a)));
+      } catch (err) {
+        problems.push(`${a.name || a.url}: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
 
     // Only the apps the user ticked (the newer ones are opt-in), and only if they can be read.
     const wanted = new Set(req.hosts ?? []);
@@ -582,4 +590,17 @@ export function catalogToolsIn(client: ClientView): string[] {
       ),
     )
     .map((s) => s.id);
+}
+
+/** An online connector added by its address: a web connection with no key yet. Exported for tests. */
+export function connectorByAddress(a: { name: string; url: string }): ConnectionInput {
+  let url: URL;
+  try {
+    url = new URL(/^https?:\/\//i.test(a.url.trim()) ? a.url.trim() : `https://${a.url.trim()}`);
+  } catch {
+    throw new AppsError("That doesn't look like a web address. Copy it from the connector's settings in Claude or ChatGPT.");
+  }
+  if (url.protocol !== "https:") throw new AppsError("The address must start with https://.");
+  const name = a.name.trim() || url.hostname.replace(/^(www|mcp)\./, "").split(".")[0] || "Connector";
+  return { kind: "remote", name, url: url.toString(), fields: [] };
 }

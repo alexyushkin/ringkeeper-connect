@@ -39,6 +39,11 @@ export function Setup(props: { clients: ClientView[]; hosts: HostView[]; run: Ru
   const [clientQuery, setClientQuery] = useState("");
   const [toolQuery, setToolQuery] = useState("");
   const [webQuery, setWebQuery] = useState("");
+  // Online connectors added by address (their sign-in can't be read; Ringkeeper offers its own next).
+  const [addresses, setAddresses] = useState<Array<{ name: string; url: string }>>([]);
+  const [addrName, setAddrName] = useState("");
+  const [addrUrl, setAddrUrl] = useState("");
+  const [addrError, setAddrError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [outcome, setOutcome] = useState<SetupOutcome | null>(null);
 
@@ -74,7 +79,29 @@ export function Setup(props: { clients: ClientView[]; hosts: HostView[]; run: Ru
     });
   const unreadableSources = scan.sources.filter((s) => s.problems.length > 0);
   const extensionTools = new Set(scan.extensions.flatMap((e) => (e.toolId ? [e.toolId] : [])));
-  const needsClient = checked.size > 0 || picked.size > 0;
+  const needsClient = checked.size > 0 || picked.size > 0 || addresses.length > 0;
+
+  function addAddress() {
+    const raw = addrUrl.trim();
+    let url: URL | null = null;
+    try {
+      url = new URL(/^https?:\/\//i.test(raw) ? raw : `https://${raw}`);
+    } catch {
+      url = null;
+    }
+    if (!url || url.protocol !== "https:" || !url.hostname.includes(".")) {
+      setAddrError("Paste the connector's full address, starting with https://.");
+      return;
+    }
+    if (addresses.some((a) => a.url === url!.toString())) {
+      setAddrError("That address is already in the list.");
+      return;
+    }
+    setAddresses((list) => [...list, { name: addrName.trim(), url: url!.toString() }]);
+    setAddrName("");
+    setAddrUrl("");
+    setAddrError(null);
+  }
   const targetName = target === "new" ? newName.trim() || "the new client" : (props.clients.find((c) => c.id === target)?.name ?? "");
   // What the chosen client already has: shown as Connected, and not ticked by default.
   const inTarget = (c: ImportScan["candidates"][number]) => (target === "new" ? undefined : c.inClients.find((x) => x.clientId === target));
@@ -110,7 +137,7 @@ export function Setup(props: { clients: ClientView[]; hosts: HostView[]; run: Ru
   async function connect() {
     setBusy(true);
     const client = target === "new" ? { newName: newName.trim() || "Default" } : { id: target };
-    const r = await run(window.ringkeeper.runSetup({ client, take: [...checked], hosts: [...apps], tools: [...picked] }));
+    const r = await run(window.ringkeeper.runSetup({ client, take: [...checked], hosts: [...apps], tools: [...picked], addresses }));
     setBusy(false);
     if (r) setOutcome(r.value);
   }
@@ -297,6 +324,41 @@ export function Setup(props: { clients: ClientView[]; hosts: HostView[]; run: Ru
             {shownWebTools.length === 0 && <span className="muted small">No tool matches "{webQuery}".</span>}
           </div>
           {webTools.some((t) => targetTools.has(t.id)) && <p className="muted small">✓ {targetName} already has these.</p>}
+
+          <h3>A connector of your own?</h3>
+          <p className="muted small">
+            For one that isn't in the list (your own n8n, say), copy its address from Claude's Settings &gt; Connectors (or ChatGPT's) and paste it
+            here. If it lets Ringkeeper Connect sign in, you'll sign in once next, with no key to make.
+          </p>
+          <div className="add-address">
+            <input placeholder="Name (optional)" aria-label="Connector name" value={addrName} onChange={(e) => setAddrName(e.target.value)} />
+            <input
+              placeholder="https://…"
+              aria-label="Connector address"
+              value={addrUrl}
+              onChange={(e) => setAddrUrl(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addAddress())}
+            />
+            <button type="button" onClick={addAddress} disabled={!addrUrl.trim()}>
+              Add
+            </button>
+          </div>
+          {addrError && <div className="problem warn">{addrError}</div>}
+          {addresses.length > 0 && (
+            <ul className="candidates">
+              {addresses.map((a) => (
+                <li key={a.url}>
+                  <label>
+                    <span className="cand-name">{a.name || new URL(a.url).hostname}</span>
+                    <span className="muted small">{a.url}</span>
+                    <button type="button" className="link small" onClick={() => setAddresses((list) => list.filter((x) => x.url !== a.url))}>
+                      Remove
+                    </button>
+                  </label>
+                </li>
+              ))}
+            </ul>
+          )}
         </>
       )}
       <p className="muted small">
