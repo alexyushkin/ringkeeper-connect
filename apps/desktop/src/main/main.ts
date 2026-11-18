@@ -29,6 +29,7 @@ import { bridgeHome } from "./bridge-copy.js";
 import { CatalogActionError, CatalogActions } from "./catalog.js";
 import { Updates } from "./updates.js";
 import { SignInFinder } from "./sign-in-finder.js";
+import { registeredApps } from "./registered-apps.js";
 
 const dataDir = resolveDataDir();
 const files = dataFiles(dataDir);
@@ -94,6 +95,7 @@ async function start(): Promise<void> {
   const runtimes = bundledRuntimes({ packaged: app.isPackaged, resourcesPath: process.resourcesPath, appDir: join(__dirname, "..") });
   const oauthStore = secretOAuthStore(secrets);
   catalogActions = new CatalogActions({
+    apps: registeredApps(),
     store,
     gateway: () => gateway,
     oauthStore,
@@ -155,7 +157,7 @@ async function start(): Promise<void> {
     log,
     onActiveClientChanged: onSwitched,
     onStatusChanged: () => scheduleRefresh(),
-    upstreamEnv: { runtimes, oauthStore },
+    upstreamEnv: { runtimes, oauthStore, apps: registeredApps() },
     onAppContact: (contact) => apps.recordContact(contact),
   });
   log({ ev: "runtimes", node: !!runtimes.nodeDir, uv: !!runtimes.uvDir });

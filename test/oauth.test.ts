@@ -35,7 +35,8 @@ function memoryStore(): OAuthStateStore & { data: Map<string, OAuthState> } {
 }
 
 /** The vendor: an OAuth server in front of a real MCP server (a Ringkeeper gateway). */
-async function fakeVendor(opts: { denyConsent?: boolean } = {}) {
+/** `registered`: like Google, no self-registration; only this pre-registered app (with its secret) is accepted. */
+async function fakeVendor(opts: { denyConsent?: boolean; registered?: { clientId: string; secret: string } } = {}) {
   const innerToken = newToken();
   const inner = new Gateway({ config: spikeDefaultConfig(join(dist, "fixture-server.mjs")), activeClientId: "acme", token: innerToken, port: await freePort() });
   await inner.start();
@@ -48,6 +49,10 @@ async function fakeVendor(opts: { denyConsent?: boolean } = {}) {
     currentRefresh: undefined as string | undefined,
     revoked: false,
     refreshCount: 0,
+    registerCalls: 0,
+    /** The last sign-in page request's parameters, and the secrets the token requests carried. */
+    lastAuthorize: undefined as URLSearchParams | undefined,
+    tokenSecrets: [] as Array<string | null>,
   };
   const port = await freePort();
   const base = `http://127.0.0.1:${port}`;
@@ -75,14 +80,16 @@ async function fakeVendor(opts: { denyConsent?: boolean } = {}) {
         issuer: base,
         authorization_endpoint: `${base}/authorize`,
         token_endpoint: `${base}/token`,
-        registration_endpoint: `${base}/register`,
+        ...(opts.registered ? {} : { registration_endpoint: `${base}/register` }),
         response_types_supported: ["code"],
         grant_types_supported: ["authorization_code", "refresh_token"],
         code_challenge_methods_supported: ["S256"],
-        token_endpoint_auth_methods_supported: ["none"],
+        token_endpoint_auth_methods_supported: opts.registered ? ["client_secret_post"] : ["none"],
       });
     }
     if (url.pathname === "/register") {
+      state.registerCalls++;
+      if (opts.registered) return json(res, 400, { error: "invalid_client_metadata", error_description: "Dynamic registration is not available for this client." });
       const meta = JSON.parse(await readBody(req));
       const id = `client_${state.clients.size + 1}`;
       state.clients.set(id, meta.redirect_uris);
@@ -91,7 +98,11 @@ async function fakeVendor(opts: { denyConsent?: boolean } = {}) {
     if (url.pathname === "/authorize") {
       // The user approves in the browser (or not).
       const redirect = url.searchParams.get("redirect_uri")!;
-      const okClient = state.clients.get(url.searchParams.get("client_id") ?? "")?.includes(redirect);
+      state.lastAuthorize = url.searchParams;
+      // A registered desktop app may come back to any loopback port.
+      const okClient = opts.registered
+        ? url.searchParams.get("client_id") === opts.registered.clientId && /^http:\/\/127\.0\.0\.1:\d+\/callback$/.test(redirect)
+        : state.clients.get(url.searchParams.get("client_id") ?? "")?.includes(redirect);
       if (!okClient || url.searchParams.get("code_challenge_method") !== "S256") return json(res, 400, { error: "invalid_request" });
       const back = new URL(redirect);
       back.searchParams.set("state", url.searchParams.get("state") ?? "");
@@ -106,6 +117,10 @@ async function fakeVendor(opts: { denyConsent?: boolean } = {}) {
     }
     if (url.pathname === "/token") {
       const form = new URLSearchParams(await readBody(req));
+      if (opts.registered) {
+        state.tokenSecrets.push(form.get("client_secret"));
+        if (form.get("client_id") !== opts.registered.clientId || form.get("client_secret") !== opts.registered.secret) return json(res, 401, { error: "invalid_client" });
+      }
       if (form.get("grant_type") === "authorization_code") {
         const c = state.codes.get(form.get("code") ?? "");
         const verifier = form.get("code_verifier") ?? "";
@@ -172,6 +187,74 @@ async function gatewayWith(conn: ClientConfig["connections"][number], store: OAu
   cleanups.push(() => host.close());
   return { g, host };
 }
+
+describe("signing in through Ringkeeper Connect's registered app (Google, Microsoft)", () => {
+  const app = { id: "google", clientId: "rk-desktop-client", clientSecret: "rk-desktop-secret", authParams: { access_type: "offline", prompt: "consent" } };
+
+  it("uses the registered app instead of registering, asks for the right permissions, and the connection works", async () => {
+    const vendor = await fakeVendor({ registered: { clientId: app.clientId, secret: app.clientSecret } });
+    const store = memoryStore();
+    await signIn({
+      serverUrl: vendor.url,
+      label: "Gmail for Initech",
+      store,
+      key: "initech/gmail/~oauth",
+      openBrowser: (u) => void browser(u),
+      app,
+      scope: "https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.compose",
+    });
+    expect(vendor.state.registerCalls).toBe(0);
+    const asked = vendor.state.lastAuthorize!;
+    expect(asked.get("client_id")).toBe("rk-desktop-client");
+    expect(asked.get("scope")).toBe("https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.compose");
+    expect(asked.get("access_type")).toBe("offline");
+    expect(asked.get("prompt")).toBe("consent");
+    expect(vendor.state.tokenSecrets).toEqual(["rk-desktop-secret"]);
+    expect(store.load("initech/gmail/~oauth")!.tokens?.access_token).toMatch(/^at_/);
+    expect(store.load("initech/gmail/~oauth")!.client).toBeUndefined(); // nothing registered, nothing kept
+
+    // The gateway refreshes through the same app.
+    vendor.state.validAccess.clear();
+    const token = newToken();
+    const g = new Gateway({
+      config: {
+        clients: [{ id: "initech", name: "Initech", connections: [{ kind: "remote", id: "gmail", name: "Gmail", url: vendor.url, oauth: { key: "initech/gmail/~oauth", app: "google" } }] }],
+        options: { requireClientArg: false },
+      },
+      activeClientId: "initech",
+      token,
+      port: await freePort(),
+      upstreamEnv: { oauthStore: store, apps: { google: app } },
+    });
+    await g.start();
+    cleanups.push(() => g.stop());
+    const host = new Client({ name: "claude-code", version: "1" });
+    await host.connect(new StreamableHTTPClientTransport(new URL(mcpUrl(g.port)), { requestInit: { headers: { Authorization: `Bearer ${token}` } } }));
+    cleanups.push(() => host.close());
+    expect((await host.listTools()).tools.length).toBeGreaterThan(0);
+    expect(vendor.state.refreshCount).toBe(1);
+    expect(vendor.state.tokenSecrets.at(-1)).toBe("rk-desktop-secret");
+    expect(g.connectionStatuses()[0]).toMatchObject({ status: "ready" });
+  });
+
+  it("a build without the registered app says to update, instead of failing quietly", async () => {
+    const store = memoryStore();
+    const token = newToken();
+    const g = new Gateway({
+      config: {
+        clients: [{ id: "initech", name: "Initech", connections: [{ kind: "remote", id: "gmail", name: "Gmail", url: "https://gmailmcp.googleapis.com/mcp/v1", oauth: { key: "k", app: "google" } }] }],
+        options: { requireClientArg: false },
+      },
+      activeClientId: "initech",
+      token,
+      port: await freePort(),
+      upstreamEnv: { oauthStore: store, apps: {} },
+    });
+    await g.start();
+    cleanups.push(() => g.stop());
+    expect(g.connectionStatuses()[0]).toMatchObject({ status: "needs_signin", problem: expect.stringMatching(/needs a newer version of Ringkeeper Connect/) });
+  });
+});
 
 describe("signing in to a web connection", () => {
   it("signs in through the browser, saves the tokens, and the connection works", async () => {

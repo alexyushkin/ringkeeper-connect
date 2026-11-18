@@ -1,7 +1,7 @@
 // Catalog actions for the window: add a known service, sign in to it, and
 // open a vendor's "where to find this key" page.
 import { CatalogInputError, buildConnection, catalog, type CatalogService } from "@ringkeeper/catalog";
-import { SignInError, StoreError, oauthKey, signIn, type ClientStore, type Gateway, type OAuthStateStore } from "@ringkeeper/gateway";
+import { SignInError, StoreError, oauthKey, signIn, type ClientStore, type Gateway, type OAuthStateStore, type RegisteredApp } from "@ringkeeper/gateway";
 
 export class CatalogActionError extends Error {}
 
@@ -32,11 +32,18 @@ export class CatalogActions {
       /** Tells the window the sign-in address, for the "copy link" fallback. */
       showSignInLink: (url: string) => void;
       onChange: () => void;
+      /** Ringkeeper Connect's registered apps this build has (Google, Microsoft). */
+      apps?: Record<string, RegisteredApp>;
     },
   ) {}
 
+  /** The catalog, with options that need a registered app this build doesn't have marked unavailable. */
   services(): CatalogService[] {
-    return catalog.services;
+    const apps = this.deps.apps ?? {};
+    return catalog.services.map((s) => ({
+      ...s,
+      options: s.options.map((o) => (o.kind === "remote" && o.app && !apps[o.app] ? { ...o, unavailable: true } : o)),
+    }));
   }
 
   add(clientId: string, serviceId: string, optionId: string, answers: Record<string, string>, name?: string): { connectionId: string; needsSignIn: boolean } {
@@ -55,6 +62,8 @@ export class CatalogActions {
     const client = this.deps.store.list().find((c) => c.id === clientId);
     const conn = client?.connections.find((c) => c.id === connectionId);
     if (!client || !conn || conn.kind !== "remote" || conn.auth !== "oauth") throw new StoreError("That connection doesn't use sign-in.");
+    const app = conn.oauthApp ? this.deps.apps?.[conn.oauthApp] : undefined;
+    if (conn.oauthApp && !app) throw new CatalogActionError(`Signing in to ${conn.name} needs a newer version of Ringkeeper Connect. Update it, then try again.`);
     this.signingIn?.abort();
     const ctrl = new AbortController();
     this.signingIn = ctrl;
@@ -69,6 +78,8 @@ export class CatalogActions {
           this.deps.openExternal(url);
         },
         signal: ctrl.signal,
+        ...(app ? { app } : {}),
+        ...(conn.scope ? { scope: conn.scope } : {}),
       });
     } catch (err) {
       if (err instanceof SignInError) throw new CatalogActionError(err.message);

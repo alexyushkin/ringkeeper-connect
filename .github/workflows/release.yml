@@ -90,6 +90,10 @@ jobs:
       WIN_PUBLISHER_NAME: ${{ vars.WIN_PUBLISHER_NAME }}
       WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
       WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+      # Ringkeeper Connect's registered Google and Microsoft apps (docs/registered-apps.md).
+      RINGKEEPER_GOOGLE_CLIENT_ID: ${{ vars.RINGKEEPER_GOOGLE_CLIENT_ID }}
+      RINGKEEPER_GOOGLE_CLIENT_SECRET: ${{ secrets.RINGKEEPER_GOOGLE_CLIENT_SECRET }}
+      RINGKEEPER_MICROSOFT_CLIENT_ID: ${{ vars.RINGKEEPER_MICROSOFT_CLIENT_ID }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -119,6 +123,9 @@ jobs:
       APPLE_ID: ${{ secrets.APPLE_ID }}
       APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
       APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      RINGKEEPER_GOOGLE_CLIENT_ID: ${{ vars.RINGKEEPER_GOOGLE_CLIENT_ID }}
+      RINGKEEPER_GOOGLE_CLIENT_SECRET: ${{ secrets.RINGKEEPER_GOOGLE_CLIENT_SECRET }}
+      RINGKEEPER_MICROSOFT_CLIENT_ID: ${{ vars.RINGKEEPER_MICROSOFT_CLIENT_ID }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0

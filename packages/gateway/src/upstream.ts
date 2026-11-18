@@ -9,7 +9,7 @@ import { ToolListChangedNotificationSchema, type CallToolResult, type Tool } fro
 import { UnauthorizedError } from "@modelcontextprotocol/sdk/client/auth.js";
 import { OAuthError } from "@modelcontextprotocol/sdk/server/auth/errors.js";
 import type { ClientConfig, ConnectionConfig } from "./config.js";
-import { StoredOAuthProvider, type OAuthStateStore } from "./oauth.js";
+import { StoredOAuthProvider, type OAuthStateStore, type RegisteredApp } from "./oauth.js";
 import { resolveLaunch, type BundledRuntimes } from "./runtimes.js";
 import type { Logger } from "./log.js";
 
@@ -19,6 +19,8 @@ export type UpstreamStatus = "idle" | "starting" | "ready" | "error" | "needs_ke
 export interface UpstreamEnv {
   runtimes?: BundledRuntimes;
   oauthStore?: OAuthStateStore;
+  /** Ringkeeper Connect's registered apps (Google, Microsoft), by id; those this build has. */
+  apps?: Record<string, RegisteredApp>;
 }
 
 /** After a failed start, wait this long before trying again on the next request. */
@@ -73,6 +75,10 @@ export class Upstream {
     if (conn.missingKeys?.length) {
       this.status = "needs_key";
       this.error = `${conn.name} for ${owner.name} needs ${conn.missingKeys.join(" and ")}. Add it in Ringkeeper Connect under ${owner.name} > ${conn.name}.`;
+    } else if (conn.kind === "remote" && conn.oauth?.app && !env.apps?.[conn.oauth.app]) {
+      // Needs a registered app this version of Ringkeeper Connect doesn't have.
+      this.status = "needs_signin";
+      this.error = `${conn.name} for ${owner.name} needs a newer version of Ringkeeper Connect. Update it, then sign in under ${owner.name} > ${conn.name}.`;
     } else if (conn.kind === "remote" && conn.needsSignIn) {
       this.status = "needs_signin";
       this.error = this.signInMessage(false);
@@ -111,7 +117,7 @@ export class Upstream {
       if (c.transport === "sse") {
         return new SSEClientTransport(new URL(c.url), { requestInit: { headers }, eventSourceInit: { fetch: (u, init) => fetch(u, { ...init, headers: { ...(init?.headers as Record<string, string>), ...headers } }) } });
       }
-      this.oauth = c.oauth && this.env.oauthStore ? new StoredOAuthProvider(this.env.oauthStore, c.oauth.key) : undefined;
+      this.oauth = c.oauth && this.env.oauthStore ? new StoredOAuthProvider(this.env.oauthStore, c.oauth.key, c.oauth.app ? this.env.apps?.[c.oauth.app] : undefined) : undefined;
       return new StreamableHTTPClientTransport(new URL(c.url), { requestInit: { headers }, ...(this.oauth ? { authProvider: this.oauth } : {}) });
     }
     // npx / node / uvx run on the copies bundled with Ringkeeper Connect when present.

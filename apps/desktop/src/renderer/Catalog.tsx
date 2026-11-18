@@ -167,6 +167,8 @@ function ServiceForm(props: {
   const [error, setError] = useState<string | null>(null);
   const option = options.find((o) => o.id === optionId)!;
   const usesSignIn = option.kind === "remote" && option.auth === "oauth";
+  // Needs a registered app (Google, Microsoft) this build doesn't have.
+  const unavailable = option.kind === "remote" && !!option.unavailable;
 
   async function submit() {
     setBusy(true);
@@ -245,7 +247,13 @@ function ServiceForm(props: {
         </div>
       )}
 
-      {usesSignIn && (
+      {unavailable && (
+        <div className="notice info">
+          Signing in to {service.name} needs Ringkeeper Connect's own {option.kind === "remote" && option.app === "microsoft" ? "Microsoft" : "Google"} sign-in, which isn't in this version yet. It's coming in an update.
+        </div>
+      )}
+
+      {usesSignIn && !unavailable && (
         <ol className="steps sign-in-steps">
           <li>
             In your browser, sign in to {service.name} with <strong>{client.name}'s</strong> account.
@@ -258,7 +266,7 @@ function ServiceForm(props: {
         <button type="button" onClick={props.onBack}>
           Back
         </button>
-        <button type="submit" className="primary" disabled={busy || !name.trim()}>
+        <button type="submit" className="primary" disabled={busy || !name.trim() || unavailable}>
           {usesSignIn ? "Continue" : "Add tool"}
         </button>
       </div>

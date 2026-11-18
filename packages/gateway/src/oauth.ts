@@ -30,6 +30,24 @@ export class SignInError extends Error {}
 /** Starts the message for a service that only lets apps it approved sign in: trying again can't help. */
 export const NOT_APPROVED = "only lets apps it has approved sign in";
 
+/**
+ * An app Ringkeeper Connect registered with a vendor in advance (Google,
+ * Microsoft): for vendors that don't let apps register themselves. Its ID is
+ * used instead of registering, for the sign-in and for every refresh.
+ */
+export interface RegisteredApp {
+  id: string;
+  clientId: string;
+  /** Desktop apps' "secret" (Google issues one); not truly secret, but kept out of the code and logs. */
+  clientSecret?: string;
+  /** Added to the sign-in address, e.g. Google's access_type=offline so the sign-in lasts. */
+  authParams?: Record<string, string>;
+}
+
+function appClient(app: RegisteredApp): OAuthClientInformationMixed {
+  return { client_id: app.clientId, ...(app.clientSecret ? { client_secret: app.clientSecret } : {}) };
+}
+
 function metadata(redirectUrl: string): OAuthClientMetadata {
   return {
     client_name: "Ringkeeper Connect",
@@ -49,6 +67,7 @@ export class StoredOAuthProvider implements OAuthClientProvider {
   constructor(
     private readonly store: OAuthStateStore,
     private readonly key: string,
+    private readonly app?: RegisteredApp,
   ) {}
 
   private get saved(): OAuthState {
@@ -64,10 +83,11 @@ export class StoredOAuthProvider implements OAuthClientProvider {
   }
 
   clientInformation() {
-    return this.saved.client;
+    return this.app ? appClient(this.app) : this.saved.client;
   }
 
   saveClientInformation(client: OAuthClientInformationMixed): void {
+    if (this.app) return; // a registered app's ID never changes
     this.store.save(this.key, { ...this.saved, client });
   }
 
@@ -102,6 +122,7 @@ class InteractiveProvider implements OAuthClientProvider {
   constructor(
     readonly redirectUrl: string,
     private readonly open: (url: URL) => void,
+    readonly app?: RegisteredApp,
   ) {}
 
   get clientMetadata(): OAuthClientMetadata {
@@ -110,12 +131,12 @@ class InteractiveProvider implements OAuthClientProvider {
   state(): string {
     return this.expectedState;
   }
-  // Always register afresh: the redirect address changes on every sign-in.
+  // Always register afresh: the redirect address changes on every sign-in. (Not for a registered app.)
   clientInformation() {
-    return this.client;
+    return this.app ? appClient(this.app) : this.client;
   }
   saveClientInformation(c: OAuthClientInformationMixed): void {
-    this.client = c;
+    if (!this.app) this.client = c;
   }
   tokens() {
     return this.tokensSaved;
@@ -124,6 +145,7 @@ class InteractiveProvider implements OAuthClientProvider {
     this.tokensSaved = t;
   }
   redirectToAuthorization(url: URL): void {
+    for (const [k, v] of Object.entries(this.app?.authParams ?? {})) url.searchParams.set(k, v);
     this.open(url);
   }
   saveCodeVerifier(v: string): void {
@@ -148,6 +170,10 @@ export interface SignInOptions {
   timeoutMs?: number;
   signal?: AbortSignal;
   fetchFn?: typeof fetch;
+  /** Sign in through Ringkeeper Connect's registered app instead of registering (Google, Microsoft). */
+  app?: RegisteredApp;
+  /** The permissions to ask for, space-separated (otherwise the server's own list). */
+  scope?: string;
 }
 
 /** Sign in once and save the result. Resolves when done; rejects with a plain-language SignInError. */
@@ -183,7 +209,7 @@ export async function signIn(opts: SignInOptions): Promise<void> {
   });
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", () => r()));
   const port = (server.address() as AddressInfo).port;
-  provider = new InteractiveProvider(`http://127.0.0.1:${port}/callback`, (u) => opts.openBrowser(u.toString()));
+  provider = new InteractiveProvider(`http://127.0.0.1:${port}/callback`, (u) => opts.openBrowser(u.toString()), opts.app);
 
   const timer = setTimeout(() => rejectCode(new SignInError(`Sign-in to ${opts.label} took too long. Try again.`)), opts.timeoutMs ?? 5 * 60_000);
   opts.signal?.addEventListener("abort", () => rejectCode(new SignInError(`Sign-in to ${opts.label} was cancelled.`)));
@@ -191,14 +217,14 @@ export async function signIn(opts: SignInOptions): Promise<void> {
   try {
     let first: string;
     try {
-      first = await auth(provider, { serverUrl: opts.serverUrl, fetchFn: opts.fetchFn });
+      first = await auth(provider, { serverUrl: opts.serverUrl, fetchFn: opts.fetchFn, ...(opts.scope ? { scope: opts.scope } : {}) });
     } catch {
       // No details from the service in the message: they're technical and not something the user can act on.
-      throw new SignInError(await whySignInFailed(opts.label, opts.serverUrl, !!provider?.client, opts.fetchFn));
+      throw new SignInError(await whySignInFailed(opts.label, opts.serverUrl, !!(provider?.client || opts.app), opts.fetchFn));
     }
     if (first !== "AUTHORIZED") {
       const code = await codeArrived;
-      const done = await auth(provider, { serverUrl: opts.serverUrl, authorizationCode: code, fetchFn: opts.fetchFn });
+      const done = await auth(provider, { serverUrl: opts.serverUrl, authorizationCode: code, fetchFn: opts.fetchFn, ...(opts.scope ? { scope: opts.scope } : {}) });
       if (done !== "AUTHORIZED" || !provider.tokensSaved) throw new SignInError(`${opts.label} didn't finish the sign-in. Try again.`);
     }
     opts.store.save(opts.key, { client: provider.client, tokens: provider.tokensSaved, redirectUrl: provider.redirectUrl, obtainedAt: Date.now() });
