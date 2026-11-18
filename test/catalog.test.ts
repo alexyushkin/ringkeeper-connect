@@ -6,14 +6,14 @@ describe("the catalog data", () => {
     expect(validateCatalog(catalog)).toEqual([]);
   });
 
-  it("covers the MVP's 35 tools, with no Google services", () => {
+  it("covers the MVP's 35 tools plus Twilio, with no Google services", () => {
     expect(catalog.services.map((s) => s.id).sort()).toEqual(
       [
         "n8n", "supabase", "airtable", "notion", "stripe",
         "neon", "netlify", "github", "apollo", "leadfeeder", "upwork", "retell",
         "make", "zapier", "gohighlevel", "pipedrive", "monday", "close", "klaviyo", "meta-ads", "resend",
         "wordpress-com", "wordpress", "webflow", "wix", "paypal", "trello", "atlassian", "linear", "canva",
-        "calendly", "calcom", "tavily", "apify", "elevenlabs",
+        "calendly", "calcom", "tavily", "apify", "elevenlabs", "twilio",
       ].sort(),
     );
     expect(JSON.stringify(catalog)).not.toMatch(/google/i);
@@ -139,5 +139,47 @@ describe("turning answers into a connection", () => {
       args: ["elevenlabs-mcp==0.12.2"],
       fields: [{ name: "ELEVENLABS_API_KEY", value: "sk_123", secret: true }],
     });
+  });
+
+  it("Twilio: runs Twilio's own program, pinned; only the IDs are in its arguments, the secret is kept secret", () => {
+    const sid = `AC${"a".repeat(32)}`;
+    const key = `SK${"b".repeat(32)}`;
+    const conn = buildConnection("twilio", "key", { TWILIO_ACCOUNT_SID: sid, TWILIO_API_KEY: key, TWILIO_API_SECRET: "the-secret-value" });
+    expect(conn).toEqual({
+      kind: "local",
+      name: "Twilio",
+      command: "npx",
+      args: ["-y", "@twilio-alpha/mcp@0.7.0", "-a", sid, "-k", key, "-s", "${TWILIO_API_SECRET}"],
+      fields: [{ name: "TWILIO_API_SECRET", value: "the-secret-value", secret: true }],
+    });
+    expect(JSON.stringify(conn.kind === "local" && conn.args)).not.toContain("the-secret-value");
+    // The program refuses anything else, so the form does too.
+    expect(() => buildConnection("twilio", "key", { TWILIO_ACCOUNT_SID: key, TWILIO_API_KEY: key, TWILIO_API_SECRET: "x" })).toThrow();
+    expect(() => buildConnection("twilio", "key", { TWILIO_ACCOUNT_SID: sid, TWILIO_API_KEY: sid, TWILIO_API_SECRET: "x" })).toThrow();
+  });
+
+  it("never lets a secret into a program's plain arguments", () => {
+    const bad = {
+      services: [
+        {
+          id: "x",
+          name: "X",
+          group: "Other",
+          description: "",
+          options: [
+            {
+              id: "o",
+              label: "o",
+              kind: "local",
+              command: "npx",
+              args: ["-y", "x@1.0.0", "{{S}}", "${NOT_A_SETTING}"],
+              env: { S: "{{S}}" },
+              fields: [{ id: "S", label: "S", secret: true, required: true }],
+            },
+          ],
+        },
+      ],
+    } as unknown as Parameters<typeof validateCatalog>[0];
+    expect(validateCatalog(bad)).toEqual(["x/o: secret {{S}} in the command or arguments", "x/o: ${NOT_A_SETTING} isn't one of its settings"]);
   });
 });

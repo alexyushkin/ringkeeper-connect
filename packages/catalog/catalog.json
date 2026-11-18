@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "checked": "2026-11-17",
+  "checked": "2026-11-18",
   "services": [
     {
       "id": "n8n",
@@ -440,6 +440,81 @@
               "where": {
                 "label": "Open the Retell dashboard",
                 "url": "https://dashboard.retellai.com/"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "twilio",
+      "name": "Twilio",
+      "group": "Voice and research",
+      "description": "Send texts, look up numbers and manage calls and phone numbers in the client's Twilio account.",
+      "tags": [
+        "Uses credits"
+      ],
+      "beta": true,
+      "notes": [
+        "Texts and calls it makes are charged to the client's Twilio account.",
+        "This is Twilio's own early version. It covers Twilio's main features: texts, calls and phone numbers."
+      ],
+      "options": [
+        {
+          "id": "key",
+          "label": "Use an API key",
+          "recommended": true,
+          "kind": "local",
+          "command": "npx",
+          "args": [
+            "-y",
+            "@twilio-alpha/mcp@0.7.0",
+            "-a",
+            "{{TWILIO_ACCOUNT_SID}}",
+            "-k",
+            "{{TWILIO_API_KEY}}",
+            "-s",
+            "${TWILIO_API_SECRET}"
+          ],
+          "env": {
+            "TWILIO_API_SECRET": "{{TWILIO_API_SECRET}}"
+          },
+          "fields": [
+            {
+              "id": "TWILIO_ACCOUNT_SID",
+              "label": "Account SID",
+              "required": true,
+              "placeholder": "AC…",
+              "pattern": "^AC[0-9a-fA-F]{32}$",
+              "patternHint": "It starts with AC, followed by 32 letters and numbers.",
+              "help": "On the client's Twilio Console home page, under Account Info.",
+              "where": {
+                "label": "Open the Twilio Console",
+                "url": "https://console.twilio.com/"
+              }
+            },
+            {
+              "id": "TWILIO_API_KEY",
+              "label": "API key SID",
+              "required": true,
+              "placeholder": "SK…",
+              "pattern": "^SK[0-9a-fA-F]{32}$",
+              "patternHint": "It starts with SK, followed by 32 letters and numbers.",
+              "help": "In the Twilio Console: API keys & tokens > Create API key, type Standard. Copy the SID that starts with SK.",
+              "where": {
+                "label": "Open Twilio API keys",
+                "url": "https://www.twilio.com/console/project/api-keys"
+              }
+            },
+            {
+              "id": "TWILIO_API_SECRET",
+              "label": "API key secret",
+              "secret": true,
+              "required": true,
+              "help": "Shown once, right after you create the key. If it's lost, create a new key.",
+              "where": {
+                "label": "Open Twilio API keys",
+                "url": "https://www.twilio.com/console/project/api-keys"
               }
             }
           ]
