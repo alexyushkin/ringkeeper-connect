@@ -25,7 +25,7 @@ import {
 } from "@ringkeeper/hostconfig";
 import { readJson, writeJsonAtomic } from "@ringkeeper/gateway";
 import { catalog, findService } from "@ringkeeper/catalog";
-import type { ConnectionInput } from "@ringkeeper/gateway";
+import { temporaryHost, type ClientView, type ConnectionInput } from "@ringkeeper/gateway";
 import { AppStartWatcher } from "./app-processes.js";
 import { ensureBridgeCopy } from "./bridge-copy.js";
 import type { HostView } from "../shared/api.js";
@@ -336,21 +336,28 @@ export class AppsService {
   scan(): ImportScan {
     const { candidates, seen } = this.manager.scan();
     this.lastScan = new Map(candidates.map((c) => [c.key, c]));
+    const clients = this.opts.store.list();
     return {
       hosts: this.hosts(),
-      candidates: candidates.map((c) => ({
-        key: c.key,
-        name: c.name,
-        from: [...new Set(c.sources.map((s) => SOURCE_LABELS[s.host]))],
-        service: c.service?.label,
-        problem: c.problem,
-        warnings: [
-          ...c.warnings,
-          ...(c.sources.every((s) => !isHostId(s.host))
-            ? [`It will stay in ${[...new Set(c.sources.map((s) => SOURCE_LABELS[s.host]))].join(" and ")} too: Ringkeeper Connect only reads that app's settings.`]
-            : []),
-        ],
-      })),
+      candidates: candidates.map((c) => {
+        const inClients = whereAlready(c.input, c.name, clients);
+        return {
+          key: c.key,
+          name: c.name,
+          from: [...new Set(c.sources.map((s) => SOURCE_LABELS[s.host]))],
+          service: c.service?.label,
+          problem: c.problem,
+          warnings: [
+            ...c.warnings,
+            ...(c.sources.every((s) => !isHostId(s.host))
+              ? [`It will stay in ${[...new Set(c.sources.map((s) => SOURCE_LABELS[s.host]))].join(" and ")} too: Ringkeeper Connect only reads that app's settings.`]
+              : []),
+            ...addressWarnings(c.input),
+          ],
+          inClients,
+        };
+      }),
+      clientTools: Object.fromEntries(clients.map((cl) => [cl.id, catalogToolsIn(cl)])),
       sources: seen.map((s) => ({ label: s.label, count: s.count, problems: s.problems })),
       extensions: this.manager.desktopExtensions().map((e) => {
         const tool = e.service ? findService(e.service.id) : undefined;
@@ -514,4 +521,65 @@ export function withSignIn(input: ConnectionInput): ConnectionInput {
     }),
   );
   return signsIn ? { ...input, auth: "oauth" } : input;
+}
+
+function sameUrl(a: string, b: string): boolean {
+  const norm = (u: string) => u.trim().replace(/\/+$/, "").toLowerCase();
+  return norm(a) === norm(b);
+}
+
+/**
+ * Which clients already have a connection found in an AI app: one with the
+ * same name, or set up the same way (same address, or same program). `same`
+ * says whether it's set up the same way. Exported for tests.
+ */
+export function whereAlready(input: ConnectionInput | undefined, name: string, clients: ClientView[]): Array<{ clientId: string; clientName: string; same: boolean }> {
+  const out: Array<{ clientId: string; clientName: string; same: boolean }> = [];
+  for (const cl of clients) {
+    let found = false;
+    let same = false;
+    for (const conn of cl.connections) {
+      const sameSetup =
+        !!input &&
+        input.kind === conn.kind &&
+        (input.kind === "remote"
+          ? conn.kind === "remote" && sameUrl(input.url, conn.url)
+          : conn.kind === "local" && input.command === conn.command && JSON.stringify(input.args) === JSON.stringify(conn.args));
+      if (sameSetup) same = true;
+      if (sameSetup || conn.name.toLowerCase() === name.toLowerCase()) found = true;
+    }
+    if (found) out.push({ clientId: cl.id, clientName: cl.name, same });
+  }
+  return out;
+}
+
+/** Warnings about a found connection's web address. Exported for tests. */
+export function addressWarnings(input: ConnectionInput | undefined): string[] {
+  if (input?.kind !== "remote") return [];
+  const host = temporaryHost(input.url);
+  return host ? [`Its web address (${host}) is temporary and may have changed since. If it doesn't work, ask whoever runs it for the current address.`] : [];
+}
+
+/** The catalog tools a client already has, by name or by the tool's own address. Exported for tests. */
+export function catalogToolsIn(client: ClientView): string[] {
+  const hostOf = (u: string) => {
+    try {
+      return new URL(u).hostname.toLowerCase();
+    } catch {
+      return "";
+    }
+  };
+  return catalog.services
+    .filter((s) =>
+      client.connections.some(
+        (conn) =>
+          conn.name.toLowerCase() === s.name.toLowerCase() ||
+          s.options.some((o) => {
+            if (o.kind === "remote") return conn.kind === "remote" && !o.url.includes("{{") && hostOf(o.url) === hostOf(conn.url);
+            const pkg = o.args.find((a) => !a.startsWith("-") && !a.includes("{{") && !a.includes("${"));
+            return conn.kind === "local" && !!pkg && conn.args.includes(pkg);
+          }),
+      ),
+    )
+    .map((s) => s.id);
 }

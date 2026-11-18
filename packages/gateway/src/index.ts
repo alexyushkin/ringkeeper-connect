@@ -8,3 +8,4 @@ export * from "./store/secrets.js";
 export * from "./store/client-store.js";
 export * from "./oauth.js";
 export * from "./runtimes.js";
+export { temporaryHost } from "./upstream.js";
