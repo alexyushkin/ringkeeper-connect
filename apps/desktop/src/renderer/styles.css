@@ -873,3 +873,26 @@ p.muted {
 .add-address input:nth-child(2) {
   flex: 1;
 }
+/* "How it works": one collapsible section per topic. */
+.help {
+  max-height: 85vh;
+  overflow-y: auto;
+}
+.help details {
+  border-top: 1px solid var(--border);
+  padding: 10px 0;
+}
+.help summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.help ul {
+  margin: 8px 0 0;
+  padding-left: 20px;
+}
+.help li {
+  margin: 4px 0;
+}
+.help p {
+  margin: 8px 0 0;
+}

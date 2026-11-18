@@ -3,7 +3,9 @@ import logo from "./assets/logo.png";
 import { AppsSection, FoundBanner, Setup } from "./Setup";
 import { AddFromCatalog, SignIn } from "./Catalog";
 import { CLIENT_SEARCH_FROM, matchesWords } from "./search";
-import type { AppState, ClientView, ConnectionInput, ConnectionView, RingkeeperApi, Result } from "../shared/api";
+import { Help } from "./Help";
+import { restoreBody } from "./restore-text";
+import type { AppState, ClientView, ConnectionInput, ConnectionView, HostView, RingkeeperApi, Result } from "../shared/api";
 
 declare global {
   interface Window {
@@ -34,6 +36,7 @@ export function App() {
   const [showSetup, setShowSetup] = useState(false);
   const [hint, setHint] = useState<string | null>(null);
   const [clientQuery, setClientQuery] = useState("");
+  const [showHelp, setShowHelp] = useState(false);
 
   useEffect(() => {
     void api.getState().then((s) => {
@@ -134,6 +137,7 @@ export function App() {
           run={run}
           onSetup={() => setShowSetup(true)}
           onRestore={() => setDialog({ kind: "restore" })}
+          onHelp={() => setShowHelp(true)}
           onHint={setHint}
         />
         <label className="setting">
@@ -204,10 +208,12 @@ export function App() {
         )}
       </main>
 
+      {showHelp && <Help hosts={state.hosts} onClose={() => setShowHelp(false)} />}
       {dialog && (
         <Dialogs
           dialog={dialog}
           clients={clients}
+          hosts={state.hosts}
           close={() => setDialog(null)}
           run={run}
           onClientAdded={(id) => setSelectedId(id)}
@@ -382,6 +388,7 @@ type DialogState =
 function Dialogs(props: {
   dialog: DialogState;
   clients: ClientView[];
+  hosts: HostView[];
   close: () => void;
   run: Run;
   onClientAdded: (id: string) => void;
@@ -462,7 +469,7 @@ function Dialogs(props: {
       return (
         <Confirm
           title="Restore your AI apps' original settings?"
-          body="This puts Claude Desktop, Cursor and Claude Code back the way they were before Ringkeeper Connect, including the connections it took over. Your clients stay in Ringkeeper Connect. Restart those apps afterwards."
+          body={restoreBody(props.hosts)}
           confirm="Restore"
           danger
           onClose={close}

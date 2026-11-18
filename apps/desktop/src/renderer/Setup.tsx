@@ -458,7 +458,7 @@ function SetupDone(props: { outcome: SetupOutcome; hosts: HostView[]; tools: Cat
 }
 
 /** Sidebar section: whether each AI app really uses Ringkeeper, plus set up again and Restore. */
-export function AppsSection(props: { state: AppState; run: Run; onSetup: () => void; onRestore: () => void; onHint: (text: string) => void }) {
+export function AppsSection(props: { state: AppState; run: Run; onSetup: () => void; onRestore: () => void; onHelp: () => void; onHint: (text: string) => void }) {
   const apps = props.state.hosts.filter((h) => h.status !== "not_installed");
   const [checking, setChecking] = useState<HostView | null>(null);
   return (
@@ -504,6 +504,9 @@ export function AppsSection(props: { state: AppState; run: Run; onSetup: () => v
       {checking && <HowToCheck host={props.state.hosts.find((h) => h.id === checking.id) ?? checking} run={props.run} onClose={() => setChecking(null)} />}
       <button className="link small" onClick={props.onSetup}>
         Bring in connections from apps…
+      </button>
+      <button className="link small" onClick={props.onHelp}>
+        How it works
       </button>
       <button className="link small danger-text" onClick={props.onRestore}>
         Restore original settings…
