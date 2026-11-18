@@ -185,6 +185,15 @@ describe("connections brought in without a key", () => {
     expect(withSignIn({ kind: "local", name: "l", command: "npx", args: [], fields: [] })).not.toHaveProperty("auth");
   });
 
+  it("puts an app's entry back silently; tells the user only what needs them", async () => {
+    const { hostEventMessage } = await import("../apps/desktop/src/main/apps.js");
+    // Claude Desktop saving its settings from an old copy: already fixed, nothing to do.
+    expect(hostEventMessage({ kind: "reconnected", host: "claude-desktop" })).toBeNull();
+    expect(hostEventMessage({ kind: "lost", host: "claude-desktop" })?.title).toBe("Claude Desktop keeps disconnecting");
+    expect(hostEventMessage({ kind: "moved", host: "claude-desktop", from: "a", to: "b" })?.body).toContain("Restart Claude Desktop");
+    expect(hostEventMessage({ kind: "found", host: "cursor", name: "linear" })?.title).toBe("New connection found in Cursor");
+  });
+
   it("'Request a tool' opens an email with the search in the subject and a short form", async () => {
     const { requestToolMailto, REQUEST_TOOL_EMAIL } = await import("../apps/desktop/src/main/catalog.js");
     expect(REQUEST_TOOL_EMAIL).toBe("requests@yushkin.us");

@@ -125,6 +125,7 @@ async function start(): Promise<void> {
       })),
     onChange: () => scheduleRefresh(),
     notify,
+    log,
   });
 
   // Run by the uninstaller (M5): put the AI apps back and exit.
