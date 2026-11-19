@@ -47,6 +47,19 @@ export interface RegisteredApp {
   tokenEndpoint?: string;
   /** Repeat the permissions when renewing a sign-in (Microsoft wants them; Google keeps what was granted). */
   scopeOnRefresh?: boolean;
+  /**
+   * An https page the vendor sends the sign-in back to, which hands it on to this computer
+   * (Meta only takes https return addresses). The page is fixed; the port on this computer
+   * travels at the front of the state ("<port>.<random>"), and the code is no use without
+   * the app's secret and this sign-in's PKCE verifier.
+   */
+  returnPage?: string;
+  /** How the vendor wants the permissions joined (Meta: commas). */
+  scopeSeparator?: string;
+  /** Meta: the token address is asked with GET, as Meta documents it. */
+  tokenByGet?: boolean;
+  /** Meta: swap the short sign-in for one lasting about 60 days (Meta gives no way to renew it). */
+  longLivedExchange?: boolean;
 }
 
 function appClient(app: RegisteredApp): OAuthClientInformationMixed {
@@ -272,12 +285,14 @@ class TokenRequestError extends Error {
 
 async function tokenRequest(app: RegisteredApp, params: Record<string, string>, fetchFn: typeof fetch = fetch): Promise<OAuthTokens> {
   const body = new URLSearchParams({ client_id: app.clientId, ...(app.clientSecret ? { client_secret: app.clientSecret } : {}), ...params });
-  const res = await fetchFn(app.tokenEndpoint!, {
-    method: "POST",
-    headers: { "content-type": "application/x-www-form-urlencoded", accept: "application/json" },
-    body,
-    signal: AbortSignal.timeout(20_000),
-  });
+  const res = app.tokenByGet
+    ? await fetchFn(`${app.tokenEndpoint!}?${body}`, { headers: { accept: "application/json" }, signal: AbortSignal.timeout(20_000) })
+    : await fetchFn(app.tokenEndpoint!, {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded", accept: "application/json" },
+        body,
+        signal: AbortSignal.timeout(20_000),
+      });
   const json = (await res.json().catch(() => ({}))) as Record<string, unknown>;
   if (!res.ok || typeof json.access_token !== "string") throw new TokenRequestError(typeof json.error === "string" ? json.error : `http_${res.status}`);
   return json as unknown as OAuthTokens;
@@ -306,15 +321,19 @@ export interface DirectSignInOptions {
  */
 export async function signInDirect(opts: DirectSignInOptions): Promise<void> {
   if (!opts.app.authorizationEndpoint || !opts.app.tokenEndpoint) throw new SignInError(`Signing in to ${opts.label} needs a newer version of Ringkeeper Connect.`);
-  const state = randomBytes(16).toString("base64url");
+  let state = randomBytes(16).toString("base64url");
   const back = await catchRedirect(opts.label, () => state, opts.timeoutMs, opts.signal);
+  // Through an https page: it reads this computer's port from the front of the state.
+  if (opts.app.returnPage) state = `${new URL(back.redirectUrl).port}.${state}`;
+  const redirectUri = opts.app.returnPage ?? back.redirectUrl;
+  const scope = opts.scope.split(/\s+/).filter(Boolean).join(opts.app.scopeSeparator ?? " ");
   try {
     const verifier = randomBytes(32).toString("base64url");
     const url = new URL(opts.app.authorizationEndpoint);
     url.searchParams.set("client_id", opts.app.clientId);
     url.searchParams.set("response_type", "code");
-    url.searchParams.set("redirect_uri", back.redirectUrl);
-    url.searchParams.set("scope", opts.scope);
+    url.searchParams.set("redirect_uri", redirectUri);
+    url.searchParams.set("scope", scope);
     url.searchParams.set("state", state);
     url.searchParams.set("code_challenge", createHash("sha256").update(verifier).digest("base64url"));
     url.searchParams.set("code_challenge_method", "S256");
@@ -323,11 +342,20 @@ export async function signInDirect(opts: DirectSignInOptions): Promise<void> {
     const code = await back.codeArrived;
     let tokens: OAuthTokens;
     try {
-      tokens = await tokenRequest(opts.app, { grant_type: "authorization_code", code, redirect_uri: back.redirectUrl, code_verifier: verifier, scope: opts.scope }, opts.fetchFn);
+      tokens = await tokenRequest(
+        opts.app,
+        { grant_type: "authorization_code", code, redirect_uri: redirectUri, code_verifier: verifier, ...(opts.app.tokenByGet ? {} : { scope: opts.scope }) },
+        opts.fetchFn,
+      );
+      if (opts.app.longLivedExchange) {
+        // Meta's first token lasts an hour or two; this one about 60 days.
+        const lasting = await tokenRequest(opts.app, { grant_type: "fb_exchange_token", fb_exchange_token: tokens.access_token }, opts.fetchFn);
+        tokens = { ...lasting, token_type: lasting.token_type ?? "bearer" };
+      }
     } catch {
       throw new SignInError(`${opts.label} didn't finish the sign-in. Try again.`);
     }
-    opts.store.save(opts.key, { tokens, redirectUrl: back.redirectUrl, obtainedAt: Date.now() });
+    opts.store.save(opts.key, { tokens, redirectUrl: redirectUri, obtainedAt: Date.now() });
   } finally {
     back.close();
   }

@@ -1734,6 +1734,30 @@
       ]
     },
     {
+      "id": "meta_ads",
+      "name": "Meta Ads",
+      "group": "Marketing and email",
+      "description": "Report on and manage the client's Meta (Facebook and Instagram) ads, through Meta's own ads server.",
+      "beta": true,
+      "notes": [
+        "Signs in through your own Meta app (free, about 10 minutes to set up): Meta lets only the AI apps it approved sign in to its ads server directly.",
+        "Ad accounts your own business owns work straight away. A client's ad accounts need Meta's app review for your app first. A sign-in lasts about 60 days, then you sign in again."
+      ],
+      "options": [
+        {
+          "id": "signin",
+          "label": "Sign in with Meta",
+          "recommended": true,
+          "kind": "remote",
+          "auth": "oauth",
+          "app": "meta",
+          "url": "https://mcp.facebook.com/ads",
+          "scope": "ads_mcp_management ads_read ads_management catalog_management business_management pages_show_list instagram_basic",
+          "fields": []
+        }
+      ]
+    },
+    {
       "id": "pipeboard",
       "name": "Meta Ads (Pipeboard)",
       "group": "Marketing and email",

@@ -307,7 +307,7 @@ describe("your own Microsoft apps", () => {
     expect(await errorOf(own.add({ vendor: "microsoft", name: "X", clientId: MS_ID, tenant: "fabrikam.onmicrosoft.com" }))).toBe(
       `Microsoft doesn't know the directory "fabrikam.onmicrosoft.com". Copy the Directory (tenant) ID from the app's Overview page, or leave it empty for any account.`,
     );
-    expect(await errorOf(own.add({ vendor: "dropbox", name: "X", clientId: MS_ID }))).toMatch(/Google or Microsoft app only/);
+    expect(await errorOf(own.add({ vendor: "dropbox", name: "X", clientId: MS_ID }))).toMatch(/your own Google, Microsoft or Meta app only/);
     expect(own.list()).toEqual([]);
     await own.add({ vendor: "microsoft", name: "First", clientId: MS_ID });
     expect(await errorOf(own.add({ vendor: "microsoft", name: "Second", clientId: MS_ID }))).toBe('That Microsoft app is already set up, as "First".');

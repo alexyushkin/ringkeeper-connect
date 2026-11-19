@@ -20,6 +20,7 @@ import {
   type Gateway,
   type OAuthStateStore,
   type RegisteredApp,
+  vendorName,
 } from "@ringkeeper/gateway";
 
 import { OWN_APP_LINKS } from "../shared/api.js";
@@ -81,7 +82,7 @@ export class CatalogActions {
   /** The apps a sign-in with this vendor can go through: ours first, then the user's own. */
   private signInApps(vendor: string): Array<{ id: string; name: string }> {
     const apps = this.deps.apps ?? {};
-    const label = vendor === "microsoft" ? "Microsoft" : "Google";
+    const label = vendorName(vendor);
     const ours = apps[vendor] ? [{ id: vendor, name: `Ringkeeper Connect's ${label} app` }] : [];
     const own = (this.deps.ownApps?.() ?? []).filter((a) => a.vendor === vendor && apps[a.id]).map((a) => ({ id: a.id, name: a.name }));
     return [...ours, ...own];
@@ -124,8 +125,10 @@ export class CatalogActions {
       if (!chosen || !choices.some((c) => c.id === chosen))
         throw new CatalogActionError(
           choices.length
-            ? `That ${vendor === "microsoft" ? "Microsoft" : "Google"} app isn't set up anymore. Choose another one.`
-            : `Signing in needs Ringkeeper Connect's own ${vendor === "microsoft" ? "Microsoft" : "Google"} sign-in, which isn't in this version yet.`,
+            ? `That ${vendorName(vendor)} app isn't set up anymore. Choose another one.`
+            : vendor === "meta"
+              ? 'Meta Ads signs in through your own Meta app. Set one up under "Your own apps" first.'
+              : `Signing in needs Ringkeeper Connect's own ${vendorName(vendor)} sign-in, which isn't in this version yet.`,
         );
       input = { ...input, oauthApp: chosen };
     }
@@ -182,7 +185,39 @@ export class CatalogActions {
     return { needsSignIn: updated.auth === "oauth" && !updated.signedIn };
   }
 
+  /**
+   * A web connection added by hand or brought in from an AI app, at an address the catalog
+   * signs in to through a registered app (Meta's ads server): it takes the first such app
+   * offered, with the catalog's permissions. Without one, says how to get one.
+   */
+  private adoptApp(clientId: string, connectionId: string): void {
+    const client = this.deps.store.list().find((c) => c.id === clientId);
+    const conn = client?.connections.find((c) => c.id === connectionId);
+    if (!client || !conn || conn.kind !== "remote" || conn.oauthApp) return;
+    const same = (u: string) => u.replace(/\/+$/, "").toLowerCase();
+    const option = catalog.services
+      .flatMap((s) => s.options.map((o) => ({ s, o })))
+      .find(({ o }) => o.kind === "remote" && o.app && same(o.url) === same(conn.url));
+    if (!option?.o.app) return;
+    const chosen = this.signInApps(option.o.app)[0];
+    if (!chosen)
+      throw new CatalogActionError(
+        `${conn.name} for ${client.name} only lets apps Meta approved sign in, so Ringkeeper Connect signs in to it through your own ${vendorName(option.o.app)} app. Set one up under "Your own apps", then click Sign in again.`,
+      );
+    this.deps.store.updateConnection(clientId, connectionId, {
+      kind: "remote",
+      name: conn.name,
+      url: conn.url,
+      ...(conn.transport ? { transport: conn.transport } : {}),
+      auth: "oauth",
+      oauthApp: chosen.id,
+      ...(option.o.scope ? { scope: option.o.scope } : {}),
+      fields: conn.fields.map((f) => (f.secret ? { name: f.name, secret: true } : { name: f.name, secret: false, value: f.value })),
+    });
+  }
+
   async signIn(clientId: string, connectionId: string): Promise<void> {
+    this.adoptApp(clientId, connectionId);
     const client = this.deps.store.list().find((c) => c.id === clientId);
     const conn = client?.connections.find((c) => c.id === connectionId);
     if (!client || !conn || conn.auth !== "oauth")
@@ -190,7 +225,7 @@ export class CatalogActions {
     const app = conn.oauthApp ? this.deps.apps?.[conn.oauthApp] : undefined;
     if (conn.oauthApp?.includes(":") && !app)
       throw new CatalogActionError(
-        `The ${conn.oauthApp.startsWith("microsoft:") ? "Microsoft" : "Google"} app ${conn.name} for ${client.name} signs in through isn't set up on this computer anymore. Add it again under "Your own Google and Microsoft apps", or remove this tool and add it again.`,
+        `The ${vendorName(conn.oauthApp)} app ${conn.name} for ${client.name} signs in through isn't set up on this computer anymore. Add it again under "Your own apps", or remove this tool and add it again.`,
       );
     if (conn.oauthApp && !app)
       throw new CatalogActionError(
@@ -204,8 +239,9 @@ export class CatalogActions {
       this.deps.openExternal(url);
     };
     try {
-      if (conn.kind === "local") {
-        // Ringkeeper Connect's own tools: sign in straight with the vendor through our app.
+      if (conn.kind === "local" || app?.authorizationEndpoint) {
+        // Ringkeeper Connect's own tools, and web connections through an app with its own
+        // sign-in addresses (Meta): sign in straight with the vendor through that app.
         if (!app)
           throw new CatalogActionError(
             `Signing in to ${conn.name} needs a newer version of Ringkeeper Connect. Update it, then try again.`,
