@@ -217,3 +217,96 @@ describe("a Microsoft 365 account in the gateway", () => {
     expect(store.load("acme/microsoft")!.tokens!.refresh_token).toBe("ms-refresh-2");
   }, 60_000);
 });
+
+describe("Meta Ads with a pasted token in the gateway", () => {
+  const TOKEN = "EAAGm0PX4ZCpsBAKZBgatewaytesttoken1234567890";
+
+  /** Meta's Graph API, as far as this test needs it. */
+  async function fakeMeta() {
+    const bearers: string[] = [];
+    const posts: string[] = [];
+    const server = http.createServer((req, res) => {
+      res.setHeader("content-type", "application/json");
+      const url = new URL(req.url ?? "/", "http://x");
+      bearers.push(req.headers.authorization ?? "");
+      if (url.pathname === "/meta/me/adaccounts") return res.end(JSON.stringify({ data: [{ id: "act_1", name: "Mass Home Comfort", account_status: 1 }] }));
+      if (url.pathname === "/meta/111" && req.method === "GET") return res.end(JSON.stringify({ id: "111", name: "Winter windows", status: "ACTIVE" }));
+      if (url.pathname === "/meta/111" && req.method === "POST") {
+        posts.push(url.searchParams.get("status") ?? "");
+        return res.end(JSON.stringify({ success: true }));
+      }
+      res.statusCode = 400;
+      res.end(JSON.stringify({ error: { message: "Unsupported request", code: 100 } }));
+    });
+    await new Promise<void>((r) => server.listen(0, "127.0.0.1", () => r()));
+    cleanups.push(() => new Promise<void>((r) => server.close(() => r())));
+    return { base: `http://127.0.0.1:${(server.address() as AddressInfo).port}/meta`, bearers, posts };
+  }
+
+  async function startMeta(base: string, approve?: (q: { clientName: string; connectionName: string; message: string }) => Promise<boolean>) {
+    const client: ClientConfig = {
+      id: "acme",
+      name: "Acme",
+      connections: [
+        {
+          id: "meta-ads",
+          name: "Meta Ads",
+          command: BUILTIN_TOOLS_COMMAND,
+          args: ["meta-ads"],
+          env: { META_ACCESS_TOKEN: TOKEN, RINGKEEPER_ACCESS: "ads_read,ads_pause", RINGKEEPER_TOOLS_BASE_META: base },
+        },
+      ],
+    };
+    const token = newToken();
+    const gateway = new Gateway({
+      config: { clients: [client], options: { requireClientArg: false } },
+      activeClientId: client.id,
+      token,
+      port: await freePort(),
+      upstreamEnv: { toolsProgram, ...(approve ? { approve } : {}) },
+    });
+    await gateway.start();
+    cleanups.push(() => gateway.stop());
+    const mcp = new Client({ name: "claude-code", version: "1" });
+    await mcp.connect(new StreamableHTTPClientTransport(new URL(mcpUrl(gateway.port)), { requestInit: { headers: { Authorization: `Bearer ${token}` } } }));
+    cleanups.push(() => mcp.close());
+    return mcp;
+  }
+
+  const call = (mcp: Client, tool: string, args: Record<string, unknown>) =>
+    mcp.callTool({ name: "ringkeeper_call_tool", arguments: { client: "Acme", tool, arguments: args } }) as Promise<CallToolResult>;
+
+  it("reads with the pasted token, and pauses only after the person allows it in Ringkeeper Connect", async () => {
+    const meta = await fakeMeta();
+    const asked: Array<{ clientName: string; connectionName: string; message: string }> = [];
+    let answer = false;
+    const mcp = await startMeta(meta.base, async (q) => (asked.push(q), answer));
+
+    const accounts = await call(mcp, "list_ad_accounts", {});
+    expect(accounts.isError, text(accounts)).toBeFalsy();
+    expect(text(accounts)).toContain("Mass Home Comfort");
+    expect(meta.bearers[0]).toBe(`Bearer ${TOKEN}`);
+
+    const declined = await call(mcp, "pause", { ids: ["111"] });
+    expect(declined.isError).toBe(true);
+    expect(text(declined)).toMatch(/didn't allow pausing/);
+    expect(asked).toHaveLength(1);
+    expect(asked[0]).toMatchObject({ clientName: "Acme", connectionName: "Meta Ads" });
+    expect(asked[0]!.message).toContain("Winter windows (111)");
+    expect(meta.posts).toEqual([]);
+
+    answer = true;
+    const allowed = await call(mcp, "pause", { ids: ["111"] });
+    expect(allowed.isError, text(allowed)).toBeFalsy();
+    expect(meta.posts).toEqual(["PAUSED"]);
+  }, 60_000);
+
+  it("refuses to pause when the app can't ask", async () => {
+    const meta = await fakeMeta();
+    const mcp = await startMeta(meta.base);
+    const res = await call(mcp, "pause", { ids: ["111"] });
+    expect(res.isError).toBe(true);
+    expect(text(res)).toMatch(/needs your OK in Ringkeeper Connect/);
+    expect(meta.posts).toEqual([]);
+  }, 60_000);
+});

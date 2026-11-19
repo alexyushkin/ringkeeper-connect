@@ -33,9 +33,12 @@ describe("the catalog data", () => {
     for (const s of catalog.services) {
       for (const o of s.options) {
         if (o.kind === "local") {
-          // Our own tools program ships with the app; it signs in through our app, with no key to paste.
+          // Our own tools program ships with the app; it signs in through our app, with no key to
+          // paste, except where a pasted key is the point (Meta Ads with an access token), and then
+          // the app checks the key with its vendor.
           if (o.command === "ringkeeper-tools") {
-            expect(o.fields.filter((f) => f.secret), `${s.id}/${o.id}`).toEqual([]);
+            if (o.auth === "oauth") expect(o.fields.filter((f) => f.secret), `${s.id}/${o.id}`).toEqual([]);
+            else expect(o.check, `${s.id}/${o.id}`).toBeTruthy();
             continue;
           }
           // A program on this computer: pinned to one version.

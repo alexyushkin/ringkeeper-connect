@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { NOT_APPROVED, type CatalogService, type ClientView, type Result } from "../shared/api";
 import { matchesWords } from "./search";
 import { OwnApps } from "./OwnApps";
+import { KeyTest } from "./KeyTest";
 
 type Run = <T>(p: Promise<Result<T>>) => Promise<{ value: T } | null>;
 const api = () => window.ringkeeper;
@@ -288,6 +289,14 @@ function ServiceForm(props: {
           )}
         </div>
       ))}
+
+      {option.check && (
+        <KeyTest
+          test={() => api().testKey(service.id, option.id, answers)}
+          resetOn={`${option.id}:${JSON.stringify(answers)}`}
+          disabled={option.fields.some((f) => f.required && !(answers[f.id] ?? "").trim())}
+        />
+      )}
 
       {option.access && (
         <fieldset className="choice access">

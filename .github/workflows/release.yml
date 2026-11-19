@@ -72,6 +72,11 @@ jobs:
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             echo "Release $GITHUB_REF_NAME already exists; builds will upload to it."
           else
+            # This version's section of CHANGELOG.md ("## <version>"), when it has one.
+            news="$(awk -v head="## $version" '$0 == head { on = 1; next } /^## / { if (on) exit } on' CHANGELOG.md 2>/dev/null || true)"
+            if [ -n "$(printf '%s' "$news" | tr -d '[:space:]')" ]; then
+              { echo "## What's new"; printf '%s\n\n' "$news"; } >> "$RUNNER_TEMP/notes.md"
+            fi
             sed "s/{{VERSION}}/$version/g" .github/release-notes.md >> "$RUNNER_TEMP/notes.md"
             gh release create "$GITHUB_REF_NAME" --draft $pre --verify-tag --title "$version" --notes-file "$RUNNER_TEMP/notes.md"
           fi

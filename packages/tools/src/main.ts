@@ -11,7 +11,8 @@ if (!service) {
   process.stderr.write(`[ringkeeper-tools] unknown service "${id}"\n`);
   process.exit(2);
 }
-const token = process.env.RINGKEEPER_ACCESS_TOKEN ?? "";
+// A service that takes a pasted key (Meta Ads) reads it from its own setting.
+const token = (service.tokenSetting ? process.env[service.tokenSetting] : undefined) ?? process.env.RINGKEEPER_ACCESS_TOKEN ?? "";
 const access = new Set((process.env.RINGKEEPER_ACCESS ?? "").split(",").map((s) => s.trim()).filter(Boolean));
 // Tests point the tools at a stand-in service: RINGKEEPER_TOOLS_BASE_<NAME>=http://127.0.0.1:port
 const base = (name: string, fallback: string) => process.env[`RINGKEEPER_TOOLS_BASE_${name.toUpperCase()}`] ?? fallback;

@@ -2,11 +2,15 @@
 import type { BuiltinService } from "./types.js";
 import { google } from "./google.js";
 import { microsoft } from "./microsoft.js";
+import { metaAds } from "./meta-ads.js";
 
 export const SERVICES: Record<string, BuiltinService> = {
   google,
   microsoft,
+  "meta-ads": metaAds,
 };
+
+export { checkMetaToken, type MetaTokenCheck } from "./meta/check.js";
 
 export { allowedTools, createToolServer } from "./server.js";
 export { ToolError, type BuiltinService, type BuiltinTool, type ToolContext } from "./types.js";

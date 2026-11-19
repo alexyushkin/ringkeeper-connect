@@ -9,6 +9,11 @@ export interface ToolContext {
   fetch: typeof fetch;
   /** Base addresses, so tests can point the tools at a stand-in service. Keyed by the service's own name (e.g. "gmail"). */
   base: (name: string, fallback: string) => string;
+  /**
+   * Asks the person to allow something before it happens (an action that waits for approval).
+   * Resolves true only if they allowed it. Missing where no one can be asked.
+   */
+  approve?: (message: string) => Promise<boolean>;
 }
 
 export interface BuiltinTool {
@@ -30,4 +35,6 @@ export interface BuiltinService {
   id: string;
   name: string;
   tools: BuiltinTool[];
+  /** A service that takes a pasted key rather than a sign-in: the setting that holds it. */
+  tokenSetting?: string;
 }

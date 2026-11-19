@@ -41,6 +41,9 @@ importers:
       '@ringkeeper/hostconfig':
         specifier: workspace:*
         version: link:../../packages/hostconfig
+      '@ringkeeper/tools':
+        specifier: workspace:*
+        version: link:../../packages/tools
       '@types/react':
         specifier: ^19.3.0
         version: 19.3.0

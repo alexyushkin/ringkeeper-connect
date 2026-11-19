@@ -164,10 +164,10 @@
       "id": "google",
       "name": "Google account",
       "group": "Work and projects",
-      "description": "Gmail, Drive, Calendar, Sheets, Docs, Search Console, Analytics and YouTube for one of the client's Google accounts.",
+      "description": "Gmail, Drive, Calendar, Sheets, Docs, Search Console, Analytics, YouTube and Google Ads for one of the client's Google accounts.",
       "beta": true,
       "notes": [
-        "You choose what the AI may do. To change it later, remove the tool and add it again.",
+        "You choose what the AI may do. To change it later, use Edit on the tool: ticking something new asks you to sign in once more, for just that.",
         "Google shows a warning that it hasn't checked Ringkeeper Connect yet. Choose Advanced, then Go to Ringkeeper Connect."
       ],
       "options": [
@@ -281,6 +281,18 @@
               "id": "youtube_analytics",
               "label": "YouTube: read analytics",
               "scope": "https://www.googleapis.com/auth/yt-analytics.readonly"
+            },
+            {
+              "id": "ads_read",
+              "label": "Google Ads: reports",
+              "scope": "https://www.googleapis.com/auth/adwords",
+              "note": "Live ad accounts need Google's OK for the Google app first (Explorer access)."
+            },
+            {
+              "id": "ads_pause",
+              "label": "Google Ads: pause campaigns",
+              "scope": "https://www.googleapis.com/auth/adwords",
+              "note": "Ringkeeper Connect asks you before each pause."
             }
           ]
         }
@@ -293,7 +305,7 @@
       "description": "Outlook mail and calendar, OneDrive and SharePoint files for one of the client's Microsoft accounts (work, school or personal).",
       "beta": true,
       "notes": [
-        "You choose what the AI may do. To change it later, remove the tool and add it again.",
+        "You choose what the AI may do. To change it later, use Edit on the tool: ticking something new asks you to sign in once more.",
         "For a work or school account, the client's IT admin may have to approve Ringkeeper Connect once."
       ],
       "options": [
@@ -1737,17 +1749,60 @@
       "id": "meta_ads",
       "name": "Meta Ads",
       "group": "Marketing and email",
-      "description": "Report on and manage the client's Meta (Facebook and Instagram) ads, through Meta's own ads server.",
+      "description": "Report on the client's Meta (Facebook and Instagram) ads and, if you allow it, pause them.",
       "beta": true,
       "notes": [
-        "Signs in through your own Meta app (free, about 10 minutes to set up): Meta lets only the AI apps it approved sign in to its ads server directly.",
-        "Ad accounts your own business owns work straight away. A client's ad accounts need Meta's app review for your app first. A sign-in lasts about 60 days, then you sign in again."
+        "An access token is quickest if you have one: a System User token from Meta Business Settings doesn't run out.",
+        "With a token, the AI reads ad accounts, campaigns and reports. If you tick it, it can also pause campaigns, ad sets and ads, and Ringkeeper Connect asks you first each time. It can't create ads or change budgets.",
+        "Signing in goes through your own Meta app, because Meta lets only the AI apps it approved sign in to its ads server. A client's ad accounts then need Meta's app review for your app, and a sign-in lasts about 60 days."
       ],
       "options": [
         {
+          "id": "token",
+          "label": "Use an access token",
+          "recommended": true,
+          "kind": "local",
+          "command": "ringkeeper-tools",
+          "args": [
+            "meta-ads"
+          ],
+          "env": {
+            "META_ACCESS_TOKEN": "{{META_ACCESS_TOKEN}}"
+          },
+          "check": "meta-token",
+          "fields": [
+            {
+              "id": "META_ACCESS_TOKEN",
+              "label": "Access token",
+              "secret": true,
+              "required": true,
+              "help": "Best: a System User token. In Meta Business Settings, open Users > System users, add one (choose Employee if Admin is taken), assign it the client's ad accounts, then Generate token with ads_read, plus ads_management if the AI may pause ads. It doesn't run out. A token from your own profile lasts about 60 days.",
+              "where": {
+                "label": "Open System users in Meta Business Settings",
+                "url": "https://business.facebook.com/settings/system-users"
+              },
+              "pattern": "^[A-Za-z0-9_-|]{40,1000}$",
+              "patternHint": "That doesn't look like a Meta access token. It's a long code that usually starts with EAA."
+            }
+          ],
+          "access": [
+            {
+              "id": "ads_read",
+              "label": "Read ad accounts, campaigns and reports",
+              "scope": "ads_read",
+              "default": true
+            },
+            {
+              "id": "ads_pause",
+              "label": "Pause campaigns, ad sets and ads",
+              "scope": "ads_management",
+              "note": "Ringkeeper Connect asks you before each pause."
+            }
+          ]
+        },
+        {
           "id": "signin",
           "label": "Sign in with Meta",
-          "recommended": true,
           "kind": "remote",
           "auth": "oauth",
           "app": "meta",

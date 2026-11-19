@@ -4,12 +4,17 @@ import {
   ACCESS_SETTING,
   BUILTIN_COMMAND,
   CatalogInputError,
+  KEY_EXPIRES_SETTING,
   buildConnection,
   catalog,
+  checkField,
   chosenAccess,
   scopeFor,
+  type CatalogOption,
   type CatalogService,
+  type KeyCheck,
 } from "@ringkeeper/catalog";
+import { checkMetaToken } from "@ringkeeper/tools";
 import {
   SignInError,
   StoreError,
@@ -26,6 +31,31 @@ import {
 import { OWN_APP_LINKS } from "../shared/api.js";
 
 export class CatalogActionError extends Error {}
+
+/** What "Test connection" found. `reached` is false when the vendor couldn't be asked at all (offline). */
+export interface KeyCheckResult {
+  ok: boolean;
+  message: string;
+  /** When the key stops working (ISO), or null when it doesn't run out or isn't known. */
+  expiresAt: string | null;
+  reached: boolean;
+}
+
+/** Checks a pasted key with its vendor. */
+export async function checkKeyWithVendor(check: KeyCheck, key: string, f: typeof fetch = fetch): Promise<KeyCheckResult> {
+  switch (check) {
+    case "meta-token": {
+      const r = await checkMetaToken(key, f);
+      if (r.ok) return { ok: true, message: r.message, expiresAt: r.expiresAt, reached: true };
+      return { ok: false, message: r.message, expiresAt: null, reached: !/Couldn't reach|took too long/.test(r.message) };
+    }
+  }
+}
+
+/** The key a check looks at: the option's first required secret field. */
+function checkedField(option: CatalogOption) {
+  return option.fields.find((f) => f.secret && f.required);
+}
 
 /** Where "Request a tool" goes. Empty address: the public contact page instead. */
 export const REQUEST_TOOL_EMAIL = "requests@yushkin.us";
@@ -60,8 +90,21 @@ const allowedLinks = new Set([
   ...OWN_APP_LINKS,
 ]);
 
+/** The sign-in a Google account needs after Edit ticked something new: only the new permissions. */
+export function incrementalScope(previous: string, wanted: string): string | undefined {
+  const had = new Set(previous.split(/\s+/).filter(Boolean));
+  const added = wanted.split(/\s+/).filter((s) => s && !had.has(s));
+  return added.length ? [...new Set(["openid", "email", ...added])].join(" ") : undefined;
+}
+
 export class CatalogActions {
   private signingIn?: AbortController;
+  /**
+   * Google accounts whose Edit ticked something new, by client/connection: what they had
+   * allowed before. Their next sign-in asks only for what's new, and Google keeps the rest
+   * (include_granted_scopes). Kept until that sign-in; after a restart it's a full sign-in.
+   */
+  private readonly grantedBefore = new Map<string, string>();
 
   constructor(
     private readonly deps: {
@@ -76,6 +119,8 @@ export class CatalogActions {
       apps?: Record<string, RegisteredApp>;
       /** The user's own apps, by name (see own-apps.ts). */
       ownApps?: () => Array<{ id: string; vendor: string; name: string }>;
+      /** Checks a pasted key with its vendor ("Test connection"); swappable in tests. */
+      checkKey?: (check: KeyCheck, key: string) => Promise<KeyCheckResult>;
     },
   ) {}
 
@@ -109,6 +154,8 @@ export class CatalogActions {
     access?: string[],
     /** Which app it signs in through (ours, or one of the user's own); the first offered when left out. */
     appId?: string,
+    /** When the pasted key stops working, from its check (kept so the tool can warn a week ahead). */
+    keyExpires?: string | null,
   ): { connectionId: string; needsSignIn: boolean } {
     let input;
     try {
@@ -118,6 +165,7 @@ export class CatalogActions {
         throw new CatalogActionError(err.message);
       throw err;
     }
+    if (keyExpires) input = { ...input, fields: [...input.fields, { name: KEY_EXPIRES_SETTING, value: keyExpires, secret: false }] };
     if (input.oauthApp) {
       const vendor = input.oauthApp;
       const choices = this.signInApps(vendor);
@@ -136,24 +184,132 @@ export class CatalogActions {
     return { connectionId: conn.id, needsSignIn: input.auth === "oauth" };
   }
 
+  private option(serviceId: string, optionId: string): CatalogOption | undefined {
+    return catalog.services.find((s) => s.id === serviceId)?.options.find((o) => o.id === optionId);
+  }
+
+  /** The catalog option one of Ringkeeper Connect's own tools was added with. */
+  private builtInOption(conn: { kind: string; command?: string; args?: string[] }, preferCheck = false): CatalogOption | undefined {
+    if (conn.kind !== "local" || conn.command !== BUILTIN_COMMAND) return undefined;
+    const all = catalog.services
+      .flatMap((s) => s.options)
+      .filter((o) => o.kind === "local" && o.command === BUILTIN_COMMAND && o.args[0] === conn.args?.[0]);
+    return (preferCheck ? all.find((o) => o.check) : undefined) ?? all[0];
+  }
+
+  /**
+   * "Test connection": checks a pasted key with its vendor. For a tool already added, a
+   * key left empty means the one saved for it.
+   */
+  async testKey(
+    serviceId: string,
+    optionId: string,
+    answers: Record<string, string>,
+    existing?: { clientId: string; connectionId: string },
+  ): Promise<KeyCheckResult> {
+    let option = this.option(serviceId, optionId);
+    let saved: Record<string, string> = {};
+    if (existing) {
+      const client = this.deps.store.toGatewayConfig().clients.find((c) => c.id === existing.clientId);
+      const conn = client?.connections.find((c) => c.id === existing.connectionId);
+      if (!conn) throw new StoreError("That tool no longer exists.");
+      option = this.builtInOption(conn as { kind: string; command?: string; args?: string[] }, true);
+      saved = conn.kind === "local" ? (conn.env ?? {}) : {};
+    }
+    const field = option ? checkedField(option) : undefined;
+    if (!option?.check || !field) throw new CatalogActionError("This tool can't be tested here.");
+    const typed = (answers[field.id] ?? "").trim();
+    let key = typed || saved[field.id] || "";
+    if (!key) return { ok: false, message: `Paste the ${field.label.toLowerCase()} first.`, expiresAt: null, reached: false };
+    try {
+      key = checkField(field, key);
+    } catch (err) {
+      if (err instanceof CatalogInputError) return { ok: false, message: err.message, expiresAt: null, reached: false };
+      throw err;
+    }
+    return (this.deps.checkKey ?? checkKeyWithVendor)(option.check, key);
+  }
+
+  /**
+   * Add from the catalog, checking a pasted key with its vendor first when the tool can
+   * (Meta Ads): a key the vendor refused isn't added; when the vendor can't be reached,
+   * it's added unchecked.
+   */
+  async addChecked(
+    clientId: string,
+    serviceId: string,
+    optionId: string,
+    answers: Record<string, string>,
+    name?: string,
+    access?: string[],
+    appId?: string,
+  ): Promise<{ connectionId: string; needsSignIn: boolean }> {
+    const option = this.option(serviceId, optionId);
+    let expires: string | null = null;
+    if (option?.check) {
+      const r = await this.testKey(serviceId, optionId, answers);
+      if (!r.ok && r.reached) throw new CatalogActionError(r.message);
+      expires = r.ok ? r.expiresAt : null;
+    }
+    return this.add(clientId, serviceId, optionId, answers, name, access, appId, expires);
+  }
+
+  /** editBuiltIn, checking a newly pasted key with its vendor first (as addChecked). */
+  async editBuiltInChecked(
+    clientId: string,
+    connectionId: string,
+    name: string,
+    access?: string[],
+    keys?: Record<string, string>,
+  ): Promise<{ needsSignIn: boolean }> {
+    const typed = Object.fromEntries(Object.entries(keys ?? {}).filter(([, v]) => String(v ?? "").trim()));
+    if (!Object.keys(typed).length) return this.editBuiltIn(clientId, connectionId, name, access);
+    const r = await this.testKey("", "", typed, { clientId, connectionId });
+    if (!r.ok && r.reached) throw new CatalogActionError(r.message);
+    return this.editBuiltIn(clientId, connectionId, name, access, typed, r.ok ? r.expiresAt : undefined);
+  }
+
   /**
    * Edit one of Ringkeeper Connect's own tools (a Google or Microsoft account): its name, and
    * what the AI may do. Ticking something new needs a new sign-in (the account has to allow
    * it); unticking keeps the sign-in, and the tool just stops offering those actions.
    */
-  editBuiltIn(clientId: string, connectionId: string, name: string, access?: string[]): { needsSignIn: boolean } {
+  editBuiltIn(
+    clientId: string,
+    connectionId: string,
+    name: string,
+    access?: string[],
+    /** A new key for a tool that takes one (Meta Ads), by field; empty keeps the saved one. */
+    keys?: Record<string, string>,
+    /** When that new key stops working: a date, null when it doesn't, undefined when unknown. */
+    keyExpires?: string | null,
+  ): { needsSignIn: boolean } {
     const client = this.deps.store.list().find((c) => c.id === clientId);
     const conn = client?.connections.find((c) => c.id === connectionId);
     if (!client || !conn) throw new StoreError("That tool no longer exists.");
     if (conn.kind !== "local" || conn.command !== BUILTIN_COMMAND)
       throw new CatalogActionError("Only Ringkeeper Connect's own tools are edited here.");
-    const option = catalog.services
-      .flatMap((s) => s.options)
-      .find((o) => o.kind === "local" && o.command === BUILTIN_COMMAND && o.args[0] === conn.args[0]);
-    let fields = conn.fields.map((f) =>
+    const option = this.builtInOption(conn, !!keys && Object.keys(keys).length > 0);
+    let fields: Array<{ name: string; secret: boolean; value?: string }> = conn.fields.map((f) =>
       f.secret ? { name: f.name, secret: true } : { name: f.name, secret: false, value: f.value },
     );
+    for (const [id, raw] of Object.entries(keys ?? {})) {
+      const field = option?.fields.find((f) => f.id === id);
+      if (!field || !String(raw ?? "").trim()) continue;
+      let value;
+      try {
+        value = checkField(field, raw);
+      } catch (err) {
+        if (err instanceof CatalogInputError) throw new CatalogActionError(err.message);
+        throw err;
+      }
+      fields = fields.map((f) => (f.name === id ? { name: id, secret: true, value } : f));
+      // A new key: when the old one ran out no longer applies.
+      fields = fields.filter((f) => f.name !== KEY_EXPIRES_SETTING);
+      if (keyExpires) fields.push({ name: KEY_EXPIRES_SETTING, secret: false, value: keyExpires });
+    }
     let scope = conn.scope;
+    const signedInBefore = conn.auth === "oauth" && !!conn.signedIn;
     if (option?.access && access) {
       let chosen;
       try {
@@ -166,7 +322,7 @@ export class CatalogActions {
         ...fields.filter((f) => f.name !== ACCESS_SETTING),
         { name: ACCESS_SETTING, secret: false, value: chosen.map((a) => a.id).join(",") },
       ];
-      scope = scopeFor(option.scope, chosen);
+      if (conn.auth) scope = scopeFor(option.scope, chosen);
     }
     const updated = this.deps.store.updateConnection(clientId, connectionId, {
       kind: "local",
@@ -178,6 +334,8 @@ export class CatalogActions {
       ...(conn.oauthApp ? { oauthApp: conn.oauthApp } : {}),
       ...(scope ? { scope } : {}),
     });
+    const isGoogle = conn.oauthApp === "google" || !!conn.oauthApp?.startsWith("google:");
+    if (isGoogle && signedInBefore && !updated.signedIn && conn.scope) this.grantedBefore.set(`${clientId}/${connectionId}`, conn.scope);
     // The tool restarts with the new ticks (and name).
     this.deps.gateway().applyConfig(this.deps.store.toGatewayConfig(), this.deps.store.activeClientId);
     this.deps.gateway().restartConnection(clientId, connectionId);
@@ -246,6 +404,9 @@ export class CatalogActions {
           throw new CatalogActionError(
             `Signing in to ${conn.name} needs a newer version of Ringkeeper Connect. Update it, then try again.`,
           );
+        // After Edit ticked something new on a Google account: ask only for that.
+        const before = this.grantedBefore.get(`${clientId}/${connectionId}`);
+        const onlyNew = before ? incrementalScope(before, conn.scope ?? "") : undefined;
         await signInDirect({
           label: `${conn.name} for ${client.name}`,
           store: this.deps.oauthStore,
@@ -253,8 +414,10 @@ export class CatalogActions {
           openBrowser,
           signal: ctrl.signal,
           app,
-          scope: conn.scope ?? "",
+          scope: onlyNew ?? conn.scope ?? "",
+          ...(onlyNew ? { authParams: { include_granted_scopes: "true" } } : {}),
         });
+        this.grantedBefore.delete(`${clientId}/${connectionId}`);
       } else
         await signIn({
           serverUrl: conn.url,

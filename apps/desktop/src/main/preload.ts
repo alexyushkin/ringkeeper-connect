@@ -31,6 +31,7 @@ const api: RingkeeperApi = {
   addFromCatalog: call("addFromCatalog") as RingkeeperApi["addFromCatalog"],
   signIn: call("signIn") as RingkeeperApi["signIn"],
   editBuiltIn: call("editBuiltIn") as RingkeeperApi["editBuiltIn"],
+  testKey: call("testKey") as RingkeeperApi["testKey"],
   listOwnApps: call("listOwnApps") as RingkeeperApi["listOwnApps"],
   addOwnApp: call("addOwnApp") as RingkeeperApi["addOwnApp"],
   updateOwnApp: call("updateOwnApp") as RingkeeperApi["updateOwnApp"],

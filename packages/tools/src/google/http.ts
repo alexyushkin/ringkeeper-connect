@@ -19,6 +19,7 @@ export const BASES = {
   analyticsdata: "https://analyticsdata.googleapis.com/v1beta",
   youtube: "https://www.googleapis.com/youtube/v3",
   youtubeanalytics: "https://youtubeanalytics.googleapis.com/v2",
+  googleads: "https://googleads.googleapis.com/v26",
 } as const;
 export type Api = keyof typeof BASES;
 
@@ -39,6 +40,8 @@ export interface CallOptions {
   timeoutMs?: number;
   /** An absolute address (an upload session) instead of an API and a path. */
   url?: string;
+  /** Words of its own for some refusals (Google Ads'); undefined falls to the usual ones. */
+  refusal?: (status: number, body: unknown, challenge: string) => string | undefined;
 }
 
 function query(params: Record<string, unknown> | undefined): string {
@@ -113,13 +116,14 @@ export class Google {
     try {
       // An upload session answers 308 for "send the next part": that isn't a redirect to follow.
       const redirect = o.url ? "manual" : "follow";
-      response = await this.ctx.fetch(url, { method, headers, body, redirect, signal: AbortSignal.timeout(o.timeoutMs ?? TIMEOUT_MS) });
+      // (The cast: the app's browser typings don't count a Uint8Array as a request body; Node's fetch takes it.)
+      response = await this.ctx.fetch(url, { method, headers, body: body as RequestInit["body"], redirect, signal: AbortSignal.timeout(o.timeoutMs ?? TIMEOUT_MS) });
     } catch (err) {
       const name = err instanceof Error ? err.name : "";
       if (name === "TimeoutError" || name === "AbortError") throw this.fail("Google took too long to answer. Try again in a moment.");
       throw this.fail("Couldn't reach Google. Check this computer's internet connection and try again.");
     }
-    if (response.status >= 400) throw await this.refused(response, o.what);
+    if (response.status >= 400) throw await this.refused(response, o.what, o.refusal);
     return response;
   }
 
@@ -137,7 +141,7 @@ export class Google {
     return body && typeof body === "object" && !Array.isArray(body) ? (body as Json) : { data: body };
   }
 
-  private async refused(response: Response, what: string | undefined): Promise<ToolError> {
+  private async refused(response: Response, what: string | undefined, refusal?: CallOptions["refusal"]): Promise<ToolError> {
     let body: any = undefined;
     try {
       body = JSON.parse(await response.text());
@@ -149,6 +153,8 @@ export class Google {
     const why = reasons(body);
     const challenge = response.headers.get("www-authenticate") ?? "";
     const tick = accessLabels(this.needs);
+    const own = refusal?.(status, body, challenge);
+    if (own) return this.fail(own);
     if (status === 401) {
       return this.fail("The Google sign-in for this account has expired or was removed. Sign in to Google again in Ringkeeper Connect.");
     }

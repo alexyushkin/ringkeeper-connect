@@ -8,7 +8,7 @@ You do the registrations (they need your sign-in and stay yours). Then put the I
 shown at the end; the release builds pick them up. Never paste a client secret into a chat, an
 issue or the code.
 
-## Google (Gmail, Drive, Calendar, Sheets, Docs, Search Console, Analytics, YouTube)
+## Google (Gmail, Drive, Calendar, Sheets, Docs, Search Console, Analytics, YouTube, Google Ads)
 
 Ringkeeper Connect calls Google's regular APIs, as Ringkeeper does, so no preview program is needed.
 These are the same steps Ringkeeper shows its users.
@@ -18,7 +18,7 @@ These are the same steps Ringkeeper shows its users.
 2. **Turn on the APIs** (APIs & Services > Library, search each, Enable), or in Cloud Shell:
 
    ```
-   gcloud services enable gmail.googleapis.com drive.googleapis.com calendar-json.googleapis.com sheets.googleapis.com docs.googleapis.com searchconsole.googleapis.com analyticsdata.googleapis.com analyticsadmin.googleapis.com youtube.googleapis.com youtubeanalytics.googleapis.com --project=YOUR_PROJECT_ID
+   gcloud services enable gmail.googleapis.com drive.googleapis.com calendar-json.googleapis.com sheets.googleapis.com docs.googleapis.com searchconsole.googleapis.com analyticsdata.googleapis.com analyticsadmin.googleapis.com youtube.googleapis.com youtubeanalytics.googleapis.com googleads.googleapis.com --project=YOUR_PROJECT_ID
    ```
 
 3. **Branding** (Google Auth Platform > Branding > Get started):
@@ -51,9 +51,18 @@ These are the same steps Ringkeeper shows its users.
    https://www.googleapis.com/auth/youtube.upload
    https://www.googleapis.com/auth/youtube.force-ssl
    https://www.googleapis.com/auth/yt-analytics.readonly
+   https://www.googleapis.com/auth/adwords
    ```
 
    Each sign-in asks only for what's ticked for that account, so most clients see a short list.
+   Ticking something new later (Edit) signs in once more for just that, and Google keeps what was
+   already allowed (`include_granted_scopes`).
+
+   **Google Ads** (`adwords`, both "Google Ads: reports" and "Google Ads: pause campaigns") needs no
+   developer token anymore: access belongs to the Cloud project. Until Google approves the project
+   for live ad accounts, the tools say so. To apply: APIs & Services > Google Ads API (in this
+   project) > apply for **Explorer** access. A client reached through a manager account needs the
+   manager's ID, which the tools send as `login-customer-id`.
 5. **Create the client** (Google Auth Platform > Clients > Create client): Application type
    **Desktop app**, name Ringkeeper Connect, Create. Copy the **Client ID** (ends in
    `.apps.googleusercontent.com`) and **Client secret**. No redirect address is needed: a desktop

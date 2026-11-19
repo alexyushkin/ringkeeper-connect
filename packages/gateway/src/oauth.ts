@@ -308,6 +308,8 @@ export interface DirectSignInOptions {
   app: RegisteredApp;
   /** The permissions to ask for, space-separated. */
   scope: string;
+  /** More values for the sign-in address (Google's include_granted_scopes for a sign-in that only adds). */
+  authParams?: Record<string, string>;
   timeoutMs?: number;
   signal?: AbortSignal;
   fetchFn?: typeof fetch;
@@ -337,7 +339,7 @@ export async function signInDirect(opts: DirectSignInOptions): Promise<void> {
     url.searchParams.set("state", state);
     url.searchParams.set("code_challenge", createHash("sha256").update(verifier).digest("base64url"));
     url.searchParams.set("code_challenge_method", "S256");
-    for (const [k, v] of Object.entries(opts.app.authParams ?? {})) url.searchParams.set(k, v);
+    for (const [k, v] of Object.entries({ ...opts.app.authParams, ...opts.authParams })) url.searchParams.set(k, v);
     opts.openBrowser(url.toString());
     const code = await back.codeArrived;
     let tokens: OAuthTokens;

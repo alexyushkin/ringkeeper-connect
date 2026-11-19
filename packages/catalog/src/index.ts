@@ -37,7 +37,15 @@ interface OptionBase {
   scope?: string;
   /** What the user can let the AI do, one tick box each; each adds its permissions to the sign-in. */
   access?: AccessChoice[];
+  /** A pasted key the app can check with the vendor ("Test connection"), and how. */
+  check?: KeyCheck;
 }
+
+/** Keys the app knows how to check with their vendor. */
+export const KEY_CHECKS = ["meta-token"] as const;
+export type KeyCheck = (typeof KEY_CHECKS)[number];
+/** The setting where the app keeps when a checked key stops working (ISO date; not secret). */
+export const KEY_EXPIRES_SETTING = "RINGKEEPER_KEY_EXPIRES";
 
 /** One tick box: a thing the AI may do, and the vendor permission it needs. */
 export interface AccessChoice {
@@ -156,6 +164,8 @@ export function validateCatalog(c: Catalog): string[] {
         if (o.kind !== "local" || o.command !== BUILTIN_COMMAND) problems.push(`${s.id}/${o.id}: tick boxes are only for Ringkeeper Connect's own tools`);
       }
       if (o.kind === "local" && o.command === BUILTIN_COMMAND && !o.args[0]) problems.push(`${s.id}/${o.id}: name the built-in service`);
+      if (o.check && !(KEY_CHECKS as readonly string[]).includes(o.check)) problems.push(`${s.id}/${o.id}: unknown key check ${String(o.check)}`);
+      if (o.check && !o.fields.some((f) => f.secret && f.required)) problems.push(`${s.id}/${o.id}: a key check needs a required secret field`);
       if (o.kind === "local") {
         // The command and arguments are saved as plain text: a secret goes in `env` (kept secret)
         // and, if the program wants it as an argument, is referred to there as ${NAME}.
@@ -255,7 +265,8 @@ export function buildConnection(serviceId: string, optionId: string, answers: Re
   if (option.access) {
     const chosen = chosenAccess(option.access, access);
     fields.push({ name: ACCESS_SETTING, value: chosen.map((a) => a.id).join(","), secret: false });
-    scope = scopeFor(option.scope, chosen);
+    // A pasted key has whatever permissions it was made with: only a sign-in asks for them.
+    if (option.auth) scope = scopeFor(option.scope, chosen);
   }
   return {
     kind: "local",

@@ -3,6 +3,7 @@ import { OwnApps } from "./OwnApps";
 import logo from "./assets/logo.png";
 import { AppsSection, FoundBanner, Setup } from "./Setup";
 import { AddFromCatalog, SignIn } from "./Catalog";
+import { KeyTest, keyExpiryWarning } from "./KeyTest";
 import { CLIENT_SEARCH_FROM, matchesWords } from "./search";
 import { Help } from "./Help";
 import { restoreBody } from "./restore-text";
@@ -347,6 +348,8 @@ function ClientPanel(props: {
               : notSignedIn || s?.status === "needs_signin"
                 ? `Sign in with ${client.name}'s account to use it.`
                 : s?.problem;
+            // A pasted key (a Meta access token) that stops working within a week, or already has.
+            const expiring = keyExpiryWarning(conn);
             return (
               <li key={conn.id} className="connection">
                 <div className="connection-main">
@@ -355,6 +358,7 @@ function ClientPanel(props: {
                     {conn.kind === "remote" ? conn.url : builtIn ? "Built into Ringkeeper Connect" : "Program on this computer"}
                   </div>
                   {problem && status.tone !== "ok" && <div className={`problem ${status.tone}`}>{problem}</div>}
+                  {expiring && <div className="problem warn">{expiring}</div>}
                 </div>
                 <span className={`status ${status.tone}`}>{status.word}</span>
                 <div className="connection-actions">
@@ -601,6 +605,8 @@ function BuiltInDialog(props: { client: ClientView; conn: ConnectionView; onClos
   const [ticked, setTicked] = useState<Set<string>>(new Set((current ?? "").split(",").filter(Boolean)));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // A new key for a tool that takes one (Meta Ads); empty keeps the saved one.
+  const [keys, setKeys] = useState<Record<string, string>>({});
   const service = conn.kind === "local" ? conn.args[0] : undefined;
 
   useEffect(() => {
@@ -628,7 +634,7 @@ function BuiltInDialog(props: { client: ClientView; conn: ConnectionView; onClos
   async function save() {
     setBusy(true);
     setError(null);
-    const r = await api.editBuiltIn(client.id, conn.id, name, access ? access.filter((a) => ticked.has(a.id)).map((a) => a.id) : undefined);
+    const r = await api.editBuiltIn(client.id, conn.id, name, access ? access.filter((a) => ticked.has(a.id)).map((a) => a.id) : undefined, keys);
     setBusy(false);
     if (r.ok) props.onClose();
     else setError(r.error);
@@ -646,6 +652,28 @@ function BuiltInDialog(props: { client: ClientView; conn: ConnectionView; onClos
           <span>Name</span>
           <input autoFocus value={name} onChange={(e) => setName(e.target.value)} />
         </label>
+        {option?.fields
+          .filter((f) => f.secret)
+          .map((f) => (
+            <div className="field" key={f.id}>
+              <label htmlFor={`k-${f.id}`}>
+                <span>{f.label}</span>
+              </label>
+              <input
+                id={`k-${f.id}`}
+                type="password"
+                autoComplete="off"
+                placeholder="Saved. Paste a new one to replace it"
+                value={keys[f.id] ?? ""}
+                onChange={(e) => setKeys((k) => ({ ...k, [f.id]: e.target.value }))}
+              />
+              {f.help && <span className="hint">{f.help}</span>}
+            </div>
+          ))}
+        {option?.check && (
+          <KeyTest test={() => api.testKey("", "", keys, { clientId: client.id, connectionId: conn.id })} resetOn={JSON.stringify(keys)} />
+        )}
+        {keyExpiryWarning(conn) && !Object.values(keys).some((v) => v.trim()) && <div className="notice warn small">{keyExpiryWarning(conn)}</div>}
         {access && (
           <fieldset className="choice access">
             <legend>What may the AI do?</legend>
