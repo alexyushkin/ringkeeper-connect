@@ -4,6 +4,14 @@ What's new in each version of Ringkeeper Connect, in plain words. A release's pa
 shows its section under "What's new". Versions before 0.2.0-beta.16 are described on their
 [release pages](https://github.com/alexyushkin/ringkeeper-connect/releases).
 
+## 0.2.0-beta.18
+
+- **Check for updates in the window,** next to the version at the bottom of the sidebar, with what
+  it's doing: checking, up to date, downloading, or ready. Checking from the tray says how it went
+  too.
+- **A failed check tries again in 15 minutes** instead of waiting 6 hours (it still checks every
+  6 hours otherwise). The usual cause was a new version still being published.
+
 ## 0.2.0-beta.17
 
 - **Sign in with Meta works with an ordinary Meta app.** It now runs the same built-in Meta Ads

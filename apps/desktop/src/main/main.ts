@@ -401,7 +401,7 @@ function refreshTray(): void {
   if (updates?.ready) {
     items.push({ label: `Restart to update to ${updates.ready}`, click: () => updates?.restartToUpdate() });
   } else if (updates) {
-    items.push({ label: "Check for updates", click: () => updates?.check() });
+    items.push({ label: "Check for updates", click: () => updates?.check(true) });
   }
   if (app.isPackaged) {
     items.push({
@@ -440,6 +440,7 @@ function appState(): AppState {
     found: apps.pendingFound(),
     version: app.getVersion(),
     updateReady: updates?.ready,
+    ...(updates ? { update: updates.state } : {}),
     packaged: app.isPackaged,
     setupDone: store.settings.setupDone,
   };
@@ -490,6 +491,7 @@ function registerIpc(): void {
     requestTool: (searched: string) => catalogActions.requestTool(searched),
     dismissPendingTool: (clientId: string, toolId: string) => dropPendingTool(clientId, toolId),
     restartToUpdate: () => updates?.restartToUpdate(),
+    checkForUpdates: () => updates?.check(true),
   };
 
   ipcMain.handle(IPC.state, () => appState());

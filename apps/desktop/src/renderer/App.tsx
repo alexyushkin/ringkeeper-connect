@@ -7,7 +7,7 @@ import { KeyTest, keyExpiryWarning } from "./KeyTest";
 import { CLIENT_SEARCH_FROM, matchesWords } from "./search";
 import { Help } from "./Help";
 import { restoreBody } from "./restore-text";
-import type { AppState, CatalogService, ClientView, ConnectionInput, ConnectionView, HostView, RingkeeperApi, Result } from "../shared/api";
+import { updateStatusText, type AppState, type CatalogService, type ClientView, type ConnectionInput, type ConnectionView, type HostView, type RingkeeperApi, type Result } from "../shared/api";
 
 declare global {
   interface Window {
@@ -159,7 +159,22 @@ export function App() {
         <button className="link small left own-apps-link" onClick={() => setDialog({ kind: "own-apps" })}>
           Your own apps
         </button>
-        <div className="version">Version {state.version}</div>
+        <div className="version">
+          Version {state.version}
+          {state.update && state.update.status !== "ready" && (
+            <>
+              {" · "}
+              <button
+                className="link small"
+                disabled={state.update.status === "checking" || state.update.status === "downloading"}
+                onClick={() => void run(api.checkForUpdates())}
+              >
+                Check for updates
+              </button>
+            </>
+          )}
+          {updateStatusText(state.update) && <div className={`update-status${state.update?.status === "failed" ? " warn" : ""}`}>{updateStatusText(state.update)}</div>}
+        </div>
       </aside>
 
       <main className="main">
