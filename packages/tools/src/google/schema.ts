@@ -86,7 +86,7 @@ export function check(schema: Schema, value: unknown, where: string): unknown {
   return value;
 }
 
-function object(schema: Schema, value: Record<string, unknown>, where: string): Record<string, unknown> {
+export function object(schema: Schema, value: Record<string, unknown>, where: string): Record<string, unknown> {
   const out: Record<string, unknown> = { ...value };
   for (const [key, inner] of Object.entries(schema.properties ?? {})) {
     const name = where ? `${where}.${key}` : key;

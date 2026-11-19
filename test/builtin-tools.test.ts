@@ -252,3 +252,26 @@ describe("adding a Google account for a client", () => {
     expect(allowedTools(service, new Set())).toEqual([]);
   });
 });
+
+describe("the Microsoft 365 tool in the catalog", () => {
+  const option = () => findService("microsoft")!.options[0]!;
+
+  it("runs our own tools program and signs in through our Microsoft app, staying signed in", () => {
+    expect(option()).toMatchObject({ kind: "local", command: "ringkeeper-tools", args: ["microsoft"], auth: "oauth", app: "microsoft", scope: "openid profile email offline_access User.Read" });
+    for (const a of option().access!) expect(a.scope, a.id).toMatch(/^[A-Z][A-Za-z.]+( [A-Z][A-Za-z.]+)*$/);
+  });
+
+  it("asks Microsoft only for what's ticked, each permission once", () => {
+    const byDefault = buildConnection("microsoft", "signin", {}, "Acme Microsoft");
+    expect(byDefault).toMatchObject({ kind: "local", args: ["microsoft"], auth: "oauth", oauthApp: "microsoft" });
+    expect(byDefault.kind === "local" && byDefault.fields).toEqual([{ name: ACCESS_SETTING, value: "mail_read,mail_drafts,calendar_read,files_read", secret: false }]);
+    expect(byDefault.scope).toBe("openid profile email offline_access User.Read Mail.Read Mail.ReadWrite Calendars.Read Files.Read.All Sites.Read.All");
+    const chosen = buildConnection("microsoft", "signin", {}, undefined, ["files_share", "files_write", "mail_send"]);
+    expect(chosen.scope).toBe("openid profile email offline_access User.Read Mail.Send Files.ReadWrite.All Sites.Read.All");
+  });
+
+  it("isn't offered by a build without our Microsoft app", () => {
+    expect(registeredApps({}, {})).toEqual({});
+    expect(registeredApps({ RINGKEEPER_MICROSOFT_CLIENT_ID: "m-id" }, {}).microsoft).toMatchObject({ clientId: "m-id", scopeOnRefresh: true });
+  });
+});

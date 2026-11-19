@@ -287,6 +287,85 @@
       ]
     },
     {
+      "id": "microsoft",
+      "name": "Microsoft 365",
+      "group": "Work and projects",
+      "description": "Outlook mail and calendar, OneDrive and SharePoint files for one of the client's Microsoft accounts (work, school or personal).",
+      "beta": true,
+      "notes": [
+        "You choose what the AI may do. To change it later, remove the tool and add it again.",
+        "For a work or school account, the client's IT admin may have to approve Ringkeeper Connect once."
+      ],
+      "options": [
+        {
+          "id": "signin",
+          "label": "Sign in with Microsoft",
+          "recommended": true,
+          "kind": "local",
+          "command": "ringkeeper-tools",
+          "args": [
+            "microsoft"
+          ],
+          "auth": "oauth",
+          "app": "microsoft",
+          "scope": "openid profile email offline_access User.Read",
+          "fields": [],
+          "access": [
+            {
+              "id": "mail_read",
+              "label": "Read mail",
+              "scope": "Mail.Read",
+              "default": true
+            },
+            {
+              "id": "mail_drafts",
+              "label": "Write drafts, mark and move mail",
+              "scope": "Mail.ReadWrite",
+              "default": true
+            },
+            {
+              "id": "mail_send",
+              "label": "Send mail",
+              "scope": "Mail.Send"
+            },
+            {
+              "id": "mail_delete",
+              "label": "Delete mail",
+              "scope": "Mail.ReadWrite"
+            },
+            {
+              "id": "calendar_read",
+              "label": "Calendar: read events",
+              "scope": "Calendars.Read",
+              "default": true
+            },
+            {
+              "id": "calendar_write",
+              "label": "Calendar: add, change and cancel events",
+              "scope": "Calendars.ReadWrite"
+            },
+            {
+              "id": "files_read",
+              "label": "OneDrive and SharePoint: read files",
+              "scope": "Files.Read.All Sites.Read.All",
+              "default": true
+            },
+            {
+              "id": "files_write",
+              "label": "OneDrive and SharePoint: add, change and delete files",
+              "scope": "Files.ReadWrite.All Sites.Read.All"
+            },
+            {
+              "id": "files_share",
+              "label": "OneDrive and SharePoint: share files and make links",
+              "scope": "Files.ReadWrite.All Sites.Read.All",
+              "note": "Includes links anyone can open, where the client's company allows them."
+            }
+          ]
+        }
+      ]
+    },
+    {
       "id": "notion",
       "name": "Notion",
       "group": "Work and projects",

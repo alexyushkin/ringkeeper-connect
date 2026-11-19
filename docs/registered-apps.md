@@ -80,10 +80,13 @@ be kept) and comes back to the computer on any port.
    - Supported account types: **"Accounts in any organizational directory and personal Microsoft
      accounts"**.
    - Redirect URI: platform **"Public client/native (mobile & desktop)"**, address
-     `http://localhost`. Register.
-2. **Authentication**: under "Mobile and desktop applications" also add `http://127.0.0.1`.
-   Set **"Allow public client flows"** to Yes. Save. (No client secret: this app runs on people's
-   computers, where a secret couldn't be kept.)
+     `http://localhost/callback`. Register.
+2. **Authentication**: under "Mobile and desktop applications" also add
+   `http://127.0.0.1/callback` (that's the address the app actually comes back to; Microsoft
+   ignores the port for these, but the `/callback` path has to match). If the box refuses it,
+   open **Manifest** and add `{ "url": "http://127.0.0.1/callback", "type": "InstalledClient" }`
+   to `replyUrlsWithType`, then Save. Set **"Allow public client flows"** to Yes. Save. (No client
+   secret: this app runs on people's computers, where a secret couldn't be kept.)
 3. **API permissions** > Add a permission > Microsoft Graph > **Delegated**: `openid`, `profile`,
    `email`, `offline_access`, `User.Read`, `Mail.Read`, `Mail.Send`, `Mail.ReadWrite`,
    `Calendars.Read`, `Calendars.ReadWrite`, `Files.Read.All`, `Files.ReadWrite.All`,

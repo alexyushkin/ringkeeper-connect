@@ -83,3 +83,19 @@ Google account tile says its sign-in isn't in this version yet). With the publis
    see only that account.
 5. Over an hour later, it still works (the app renews Google's one-hour access by itself), and a
    week later too, without signing in again (the app is published, not in testing).
+
+## 5. Microsoft 365 (after the registration in docs/registered-apps.md)
+
+Needs a build made after `RINGKEEPER_MICROSOFT_CLIENT_ID` is in the repository's Actions settings
+(before that, the Microsoft 365 tile says its sign-in isn't in this version yet).
+
+1. Add a tool > Microsoft 365, tick what it may do, Continue, and sign in with Microsoft. Try a
+   work account and a personal one (outlook.com).
+2. The tool shows Ready. In an AI app, run a reading tool: list messages, read one, list this
+   week's events, list OneDrive files, read a Word file.
+3. Only the ticked things are offered: by default there's no tool that sends, deletes mail,
+   adds events or shares a file.
+4. With "Write drafts" ticked, ask for a draft: it's in Outlook's Drafts, and the AI gives its link.
+5. A second client with a different Microsoft account: its tools see only that account.
+6. Over an hour later it still works (the app renews Microsoft's access by itself), and days later
+   too, without signing in again.
