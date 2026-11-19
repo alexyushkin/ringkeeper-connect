@@ -915,3 +915,54 @@ p.muted {
 .help p {
   margin: 8px 0 0;
 }
+
+/* Your own Google apps */
+.own-apps {
+  list-style: none;
+  margin: 8px 0;
+  padding: 0;
+}
+.own-apps li {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 10px 0;
+  border-top: 1px solid var(--border);
+}
+.own-apps li:first-child {
+  border-top: none;
+}
+.own-apps .hint {
+  word-break: break-all;
+}
+.own-app-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.own-app-steps {
+  margin: 8px 0 12px;
+}
+.own-app-steps summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.own-app-steps .scopes {
+  font-size: 11px;
+  max-height: 140px;
+  overflow: auto;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  user-select: all;
+  white-space: pre;
+}
+.link.inline {
+  display: inline;
+  padding: 0;
+  font-size: inherit;
+}
+.own-apps-link {
+  margin-top: 8px;
+}

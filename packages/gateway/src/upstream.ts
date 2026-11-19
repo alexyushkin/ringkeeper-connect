@@ -84,9 +84,11 @@ export class Upstream {
       this.status = "needs_key";
       this.error = `${conn.name} for ${owner.name} needs ${conn.missingKeys.join(" and ")}. Add it in Ringkeeper Connect under ${owner.name} > ${conn.name}.`;
     } else if (conn.oauth?.app && !env.apps?.[conn.oauth.app]) {
-      // Needs a registered app this version of Ringkeeper Connect doesn't have.
+      // Needs a registered app this version of Ringkeeper Connect doesn't have, or one of the user's own that's gone.
       this.status = "needs_signin";
-      this.error = `${conn.name} for ${owner.name} needs a newer version of Ringkeeper Connect. Update it, then sign in under ${owner.name} > ${conn.name}.`;
+      this.error = conn.oauth.app.includes(":")
+        ? `${conn.name} for ${owner.name} signs in through a Google app that isn't set up on this computer anymore. Add it again under "Your own Google apps" in Ringkeeper Connect.`
+        : `${conn.name} for ${owner.name} needs a newer version of Ringkeeper Connect. Update it, then sign in under ${owner.name} > ${conn.name}.`;
     } else if (conn.needsSignIn) {
       this.status = "needs_signin";
       this.error = this.signInMessage(false);

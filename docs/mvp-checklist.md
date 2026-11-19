@@ -99,3 +99,18 @@ Needs a build made after `RINGKEEPER_MICROSOFT_CLIENT_ID` is in the repository's
 5. A second client with a different Microsoft account: its tools see only that account.
 6. Over an hour later it still works (the app renews Microsoft's access by itself), and days later
    too, without signing in again.
+
+## 6. Your own Google app
+
+Works in any build, including one without Ringkeeper Connect's Google app.
+
+1. Sidebar > **Your own Google apps** > Add a Google app. Follow "How to create one" (the links open
+   the right Google Cloud pages), paste the client ID and secret, Save. A wrong secret is refused
+   before saving ("Google didn't accept this client ID and secret").
+2. Add a tool > Google account: "Sign in through" lists Ringkeeper Connect's app (when the build
+   has it) and yours. Choose yours, Continue: Google's sign-in page shows your app's name.
+3. The tool works as in section 4, and still works over an hour later (renewed through your app).
+4. Your app can't be removed while a tool signs in through it (the list says which); a new secret
+   for the same client can be pasted under Edit.
+5. A build without our Google app: the Google account tile offers "Set up your own Google app"
+   instead of only saying it isn't available.

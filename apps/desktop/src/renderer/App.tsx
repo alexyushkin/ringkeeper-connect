@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { OwnGoogleApps } from "./OwnApps";
 import logo from "./assets/logo.png";
 import { AppsSection, FoundBanner, Setup } from "./Setup";
 import { AddFromCatalog, SignIn } from "./Catalog";
@@ -154,6 +155,9 @@ export function App() {
             <span>Start when I log in, so AI apps can always reach my clients</span>
           </label>
         )}
+        <button className="link small left own-apps-link" onClick={() => setDialog({ kind: "own-apps" })}>
+          Your own Google apps
+        </button>
         <div className="version">Version {state.version}</div>
       </aside>
 
@@ -387,7 +391,8 @@ type DialogState =
   | { kind: "remove-connection"; client: ClientView; conn: ConnectionView }
   | { kind: "restore" }
   | { kind: "add"; client: ClientView; toolId?: string }
-  | { kind: "signin"; client: ClientView; conn: ConnectionView };
+  | { kind: "signin"; client: ClientView; conn: ConnectionView }
+  | { kind: "own-apps" };
 
 function Dialogs(props: {
   dialog: DialogState;
@@ -401,6 +406,14 @@ function Dialogs(props: {
 }) {
   const { dialog, close, run } = props;
   switch (dialog.kind) {
+    case "own-apps":
+      return (
+        <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && close()}>
+          <div className="modal wide" role="dialog" aria-modal="true" aria-label="Your own Google apps">
+            <OwnGoogleApps run={run} onDone={close} />
+          </div>
+        </div>
+      );
     case "add-client":
       return (
         <NameDialog

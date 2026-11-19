@@ -29,6 +29,8 @@ interface OptionBase {
   auth?: "oauth";
   /** Set by the app when this build doesn't have the registered app the option needs. */
   unavailable?: boolean;
+  /** Set by the app: the apps this sign-in can go through (ours, and the user's own), the first being the default. */
+  signInApps?: Array<{ id: string; name: string }>;
   /** Sign in through Ringkeeper Connect's own registered app with this vendor (it doesn't let apps register themselves). */
   app?: RegisteredAppId;
   /** Permissions to ask for, space-separated (always, on top of any ticked below). */

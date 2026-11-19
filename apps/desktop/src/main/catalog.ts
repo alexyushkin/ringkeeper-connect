@@ -18,6 +18,8 @@ import {
   type RegisteredApp,
 } from "@ringkeeper/gateway";
 
+import { GOOGLE_CONSOLE_LINKS } from "../shared/api.js";
+
 export class CatalogActionError extends Error {}
 
 /** Where "Request a tool" goes. Empty address: the public contact page instead. */
@@ -43,14 +45,15 @@ export function requestToolMailto(
   return `mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 }
 
-/** Every link the catalog may open; nothing else is opened from the window. */
-const allowedLinks = new Set(
-  catalog.services.flatMap((s) =>
+/** Every link the catalog may open, and the Google Cloud pages of "your own Google app"; nothing else is opened from the window. */
+const allowedLinks = new Set([
+  ...catalog.services.flatMap((s) =>
     s.options.flatMap((o) =>
       o.fields.flatMap((f) => (f.where ? [f.where.url] : [])),
     ),
   ),
-);
+  ...GOOGLE_CONSOLE_LINKS,
+]);
 
 export class CatalogActions {
   private signingIn?: AbortController;
@@ -64,19 +67,31 @@ export class CatalogActions {
       /** Tells the window the sign-in address, for the "copy link" fallback. */
       showSignInLink: (url: string) => void;
       onChange: () => void;
-      /** Ringkeeper Connect's registered apps this build has (Google, Microsoft). */
+      /** The registered apps sign-ins can use, by id: Ringkeeper Connect's (Google, Microsoft) and the user's own. */
       apps?: Record<string, RegisteredApp>;
+      /** The user's own apps, by name (see own-apps.ts). */
+      ownApps?: () => Array<{ id: string; vendor: string; name: string }>;
     },
   ) {}
 
-  /** The catalog, with options that need a registered app this build doesn't have marked unavailable. */
-  services(): CatalogService[] {
+  /** The apps a sign-in with this vendor can go through: ours first, then the user's own. */
+  private signInApps(vendor: string): Array<{ id: string; name: string }> {
     const apps = this.deps.apps ?? {};
+    const label = vendor === "microsoft" ? "Microsoft" : "Google";
+    const ours = apps[vendor] ? [{ id: vendor, name: `Ringkeeper Connect's ${label} app` }] : [];
+    const own = (this.deps.ownApps?.() ?? []).filter((a) => a.vendor === vendor && apps[a.id]).map((a) => ({ id: a.id, name: a.name }));
+    return [...ours, ...own];
+  }
+
+  /** The catalog, with options that need a registered app this build doesn't have (and the user hasn't added) marked unavailable. */
+  services(): CatalogService[] {
     return catalog.services.map((s) => ({
       ...s,
-      options: s.options.map((o) =>
-        o.app && !apps[o.app] ? { ...o, unavailable: true } : o,
-      ),
+      options: s.options.map((o) => {
+        if (!o.app) return o;
+        const signInApps = this.signInApps(o.app);
+        return signInApps.length ? { ...o, signInApps } : { ...o, unavailable: true };
+      }),
     }));
   }
 
@@ -87,6 +102,8 @@ export class CatalogActions {
     answers: Record<string, string>,
     name?: string,
     access?: string[],
+    /** Which app it signs in through (ours, or one of the user's own); the first offered when left out. */
+    appId?: string,
   ): { connectionId: string; needsSignIn: boolean } {
     let input;
     try {
@@ -95,6 +112,18 @@ export class CatalogActions {
       if (err instanceof CatalogInputError)
         throw new CatalogActionError(err.message);
       throw err;
+    }
+    if (input.oauthApp) {
+      const vendor = input.oauthApp;
+      const choices = this.signInApps(vendor);
+      const chosen = appId ?? choices[0]?.id;
+      if (!chosen || !choices.some((c) => c.id === chosen))
+        throw new CatalogActionError(
+          choices.length
+            ? `That ${vendor === "microsoft" ? "Microsoft" : "Google"} app isn't set up anymore. Choose another one.`
+            : `Signing in needs Ringkeeper Connect's own ${vendor === "microsoft" ? "Microsoft" : "Google"} sign-in, which isn't in this version yet.`,
+        );
+      input = { ...input, oauthApp: chosen };
     }
     const conn = this.deps.store.addConnection(clientId, input);
     return { connectionId: conn.id, needsSignIn: input.auth === "oauth" };
@@ -106,6 +135,10 @@ export class CatalogActions {
     if (!client || !conn || conn.auth !== "oauth")
       throw new StoreError("That connection doesn't use sign-in.");
     const app = conn.oauthApp ? this.deps.apps?.[conn.oauthApp] : undefined;
+    if (conn.oauthApp?.includes(":") && !app)
+      throw new CatalogActionError(
+        `The Google app ${conn.name} for ${client.name} signs in through isn't set up on this computer anymore. Add it again under "Your own Google apps", or remove this tool and add it again.`,
+      );
     if (conn.oauthApp && !app)
       throw new CatalogActionError(
         `Signing in to ${conn.name} needs a newer version of Ringkeeper Connect. Update it, then try again.`,

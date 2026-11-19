@@ -30,6 +30,7 @@ import { CatalogActionError, CatalogActions } from "./catalog.js";
 import { Updates } from "./updates.js";
 import { SignInFinder } from "./sign-in-finder.js";
 import { registeredApps } from "./registered-apps.js";
+import { OwnApps, OwnAppsError } from "./own-apps.js";
 
 const dataDir = resolveDataDir();
 const files = dataFiles(dataDir);
@@ -48,6 +49,7 @@ const log = fileLogger(files.log);
 let store: ClientStore;
 let apps: AppsService;
 let catalogActions: CatalogActions;
+let ownApps: OwnApps;
 let updates: Updates | undefined;
 let signIns: SignInFinder | undefined;
 let gateway: Gateway;
@@ -94,8 +96,12 @@ async function start(): Promise<void> {
   store = new ClientStore(files.clients, secrets);
   const runtimes = bundledRuntimes({ packaged: app.isPackaged, resourcesPath: process.resourcesPath, appDir: join(__dirname, "..") });
   const oauthStore = secretOAuthStore(secrets);
+  // The apps sign-ins go through: ours (in the build) and the user's own, kept current by ownApps.
+  const signInApps = registeredApps();
+  ownApps = new OwnApps({ store, secrets, apps: signInApps, restart: (clientId, connId) => gateway?.restartConnection(clientId, connId) });
   catalogActions = new CatalogActions({
-    apps: registeredApps(),
+    apps: signInApps,
+    ownApps: () => ownApps.list(),
     store,
     gateway: () => gateway,
     oauthStore,
@@ -160,7 +166,7 @@ async function start(): Promise<void> {
     upstreamEnv: {
       runtimes,
       oauthStore,
-      apps: registeredApps(),
+      apps: signInApps,
       // Ringkeeper Connect's own tools: next to the app when installed, next to main.cjs in development.
       toolsProgram: app.isPackaged ? join(process.resourcesPath, "tools.mjs") : join(__dirname, "tools.mjs"),
     },
@@ -450,12 +456,16 @@ function registerIpc(): void {
       else void shell.openPath(dirname(p));
     },
     catalogServices: () => catalogActions.services(),
-    addFromCatalog: (clientId: string, serviceId: string, optionId: string, answers: Record<string, string>, name?: string, access?: string[]) => {
-      const added = catalogActions.add(clientId, serviceId, optionId, answers, name, Array.isArray(access) ? access.map(String) : undefined);
+    addFromCatalog: (clientId: string, serviceId: string, optionId: string, answers: Record<string, string>, name?: string, access?: string[], appId?: string) => {
+      const added = catalogActions.add(clientId, serviceId, optionId, answers, name, Array.isArray(access) ? access.map(String) : undefined, typeof appId === "string" ? appId : undefined);
       dropPendingTool(clientId, serviceId);
       return added;
     },
     signIn: (clientId: string, connectionId: string) => catalogActions.signIn(clientId, connectionId),
+    listOwnApps: () => ownApps.list(),
+    addOwnApp: (input) => ownApps.add(input ?? {}),
+    updateOwnApp: (id: string, input) => ownApps.update(String(id), input ?? {}),
+    removeOwnApp: (id: string) => ownApps.remove(String(id)),
     cancelSignIn: () => catalogActions.cancelSignIn(),
     openLink: (url: string) => catalogActions.openLink(url),
     requestTool: (searched: string) => catalogActions.requestTool(searched),
@@ -476,7 +486,8 @@ function registerIpc(): void {
         err instanceof SecretStorageUnavailableError ||
         err instanceof AppsError ||
         err instanceof HostConfigError ||
-        err instanceof CatalogActionError
+        err instanceof CatalogActionError ||
+        err instanceof OwnAppsError
           ? err.message
           : "Something went wrong saving that. Try again, and if it keeps happening, restart Ringkeeper Connect.";
       log({ ev: "ipc_error", method, error: String(err).slice(0, 300) });

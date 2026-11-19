@@ -16,23 +16,28 @@ function fromBuild(): Record<string, string> {
   }
 }
 
+export const GOOGLE_TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token";
+
+/** A Google "Desktop app" client: ours, or one in the user's own Google Cloud project. */
+export function googleApp(id: string, clientId: string, clientSecret?: string): RegisteredApp {
+  return {
+    id,
+    clientId,
+    ...(clientSecret ? { clientSecret } : {}),
+    // Without these, Google gives no lasting sign-in (it would expire within the hour);
+    // select_account lets each client use a different Google account.
+    authParams: { access_type: "offline", prompt: "consent select_account" },
+    authorizationEndpoint: "https://accounts.google.com/o/oauth2/v2/auth",
+    tokenEndpoint: GOOGLE_TOKEN_ENDPOINT,
+  };
+}
+
 /** The registered apps this build can use, by id. */
 export function registeredApps(env: Record<string, string | undefined> = process.env, built: Record<string, string> = fromBuild()): Record<string, RegisteredApp> {
   const value = (name: string) => (env[name] || built[name] || "").trim();
   const apps: Record<string, RegisteredApp> = {};
   const googleId = value("RINGKEEPER_GOOGLE_CLIENT_ID");
-  if (googleId) {
-    apps.google = {
-      id: "google",
-      clientId: googleId,
-      ...(value("RINGKEEPER_GOOGLE_CLIENT_SECRET") ? { clientSecret: value("RINGKEEPER_GOOGLE_CLIENT_SECRET") } : {}),
-      // Without these, Google gives no lasting sign-in (it would expire within the hour);
-      // select_account lets each client use a different Google account.
-      authParams: { access_type: "offline", prompt: "consent select_account" },
-      authorizationEndpoint: "https://accounts.google.com/o/oauth2/v2/auth",
-      tokenEndpoint: "https://oauth2.googleapis.com/token",
-    };
-  }
+  if (googleId) apps.google = googleApp("google", googleId, value("RINGKEEPER_GOOGLE_CLIENT_SECRET"));
   const microsoftId = value("RINGKEEPER_MICROSOFT_CLIENT_ID");
   if (microsoftId) {
     apps.microsoft = {
