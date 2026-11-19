@@ -83,6 +83,9 @@ Google account tile says its sign-in isn't in this version yet). With the publis
    see only that account.
 5. Over an hour later, it still works (the app renews Google's one-hour access by itself), and a
    week later too, without signing in again (the app is published, not in testing).
+6. **Edit** on the Google account: rename it, and untick something: it keeps working with no new
+   sign-in, and the AI no longer offers those actions. Tick something new: Save says you'll sign in
+   again, and the row shows Sign in. (The same goes for a Microsoft 365 account.)
 
 ## 5. Microsoft 365 (after the registration in docs/registered-apps.md)
 

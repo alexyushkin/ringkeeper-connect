@@ -1,9 +1,13 @@
 // Catalog actions for the window: add a known service, sign in to it, and
 // open a vendor's "where to find this key" page.
 import {
+  ACCESS_SETTING,
+  BUILTIN_COMMAND,
   CatalogInputError,
   buildConnection,
   catalog,
+  chosenAccess,
+  scopeFor,
   type CatalogService,
 } from "@ringkeeper/catalog";
 import {
@@ -127,6 +131,55 @@ export class CatalogActions {
     }
     const conn = this.deps.store.addConnection(clientId, input);
     return { connectionId: conn.id, needsSignIn: input.auth === "oauth" };
+  }
+
+  /**
+   * Edit one of Ringkeeper Connect's own tools (a Google or Microsoft account): its name, and
+   * what the AI may do. Ticking something new needs a new sign-in (the account has to allow
+   * it); unticking keeps the sign-in, and the tool just stops offering those actions.
+   */
+  editBuiltIn(clientId: string, connectionId: string, name: string, access?: string[]): { needsSignIn: boolean } {
+    const client = this.deps.store.list().find((c) => c.id === clientId);
+    const conn = client?.connections.find((c) => c.id === connectionId);
+    if (!client || !conn) throw new StoreError("That tool no longer exists.");
+    if (conn.kind !== "local" || conn.command !== BUILTIN_COMMAND)
+      throw new CatalogActionError("Only Ringkeeper Connect's own tools are edited here.");
+    const option = catalog.services
+      .flatMap((s) => s.options)
+      .find((o) => o.kind === "local" && o.command === BUILTIN_COMMAND && o.args[0] === conn.args[0]);
+    let fields = conn.fields.map((f) =>
+      f.secret ? { name: f.name, secret: true } : { name: f.name, secret: false, value: f.value },
+    );
+    let scope = conn.scope;
+    if (option?.access && access) {
+      let chosen;
+      try {
+        chosen = chosenAccess(option.access, access);
+      } catch (err) {
+        if (err instanceof CatalogInputError) throw new CatalogActionError(err.message);
+        throw err;
+      }
+      fields = [
+        ...fields.filter((f) => f.name !== ACCESS_SETTING),
+        { name: ACCESS_SETTING, secret: false, value: chosen.map((a) => a.id).join(",") },
+      ];
+      scope = scopeFor(option.scope, chosen);
+    }
+    const updated = this.deps.store.updateConnection(clientId, connectionId, {
+      kind: "local",
+      name,
+      command: conn.command,
+      args: [...conn.args],
+      fields,
+      ...(conn.auth ? { auth: conn.auth } : {}),
+      ...(conn.oauthApp ? { oauthApp: conn.oauthApp } : {}),
+      ...(scope ? { scope } : {}),
+    });
+    // The tool restarts with the new ticks (and name).
+    this.deps.gateway().applyConfig(this.deps.store.toGatewayConfig(), this.deps.store.activeClientId);
+    this.deps.gateway().restartConnection(clientId, connectionId);
+    this.deps.onChange();
+    return { needsSignIn: updated.auth === "oauth" && !updated.signedIn };
   }
 
   async signIn(clientId: string, connectionId: string): Promise<void> {

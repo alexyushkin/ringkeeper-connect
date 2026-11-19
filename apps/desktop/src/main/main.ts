@@ -462,6 +462,8 @@ function registerIpc(): void {
       return added;
     },
     signIn: (clientId: string, connectionId: string) => catalogActions.signIn(clientId, connectionId),
+    editBuiltIn: (clientId: string, connectionId: string, name: string, access?: string[]) =>
+      catalogActions.editBuiltIn(String(clientId), String(connectionId), String(name ?? ""), Array.isArray(access) ? access.map(String) : undefined),
     listOwnApps: () => ownApps.list(),
     addOwnApp: (input) => ownApps.add(input ?? {}),
     updateOwnApp: (id: string, input) => ownApps.update(String(id), input ?? {}),

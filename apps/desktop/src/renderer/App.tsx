@@ -6,7 +6,7 @@ import { AddFromCatalog, SignIn } from "./Catalog";
 import { CLIENT_SEARCH_FROM, matchesWords } from "./search";
 import { Help } from "./Help";
 import { restoreBody } from "./restore-text";
-import type { AppState, ClientView, ConnectionInput, ConnectionView, HostView, RingkeeperApi, Result } from "../shared/api";
+import type { AppState, CatalogService, ClientView, ConnectionInput, ConnectionView, HostView, RingkeeperApi, Result } from "../shared/api";
 
 declare global {
   interface Window {
@@ -205,7 +205,9 @@ export function App() {
             run={run}
             onBringIn={() => setShowSetup(true)}
             onSignIn={(conn) => setDialog({ kind: "signin", client: selected, conn })}
-            onEditConnection={(conn) => setDialog({ kind: "connection", client: selected, conn })}
+            onEditConnection={(conn) =>
+              setDialog(conn.kind === "local" && conn.command === "ringkeeper-tools" ? { kind: "built-in", client: selected, conn } : { kind: "connection", client: selected, conn })
+            }
             onCopyConnection={(conn) => setDialog({ kind: "copy", client: selected, conn })}
             onRemoveConnection={(conn) => setDialog({ kind: "remove-connection", client: selected, conn })}
           />
@@ -336,7 +338,7 @@ function ClientPanel(props: {
           {client.connections.map((conn) => {
             const s = props.statuses.find((x) => x.clientId === client.id && x.connectionId === conn.id);
             const notSignedIn = conn.auth === "oauth" && !conn.signedIn;
-            // Ringkeeper Connect's own tools (a Google account): nothing to edit but what it may do, set when added.
+            // Ringkeeper Connect's own tools (a Google or Microsoft account): its name and what the AI may do are edited in their own dialog.
             const builtIn = conn.kind === "local" && conn.command === "ringkeeper-tools";
             const status = STATUS[conn.missingKeys.length ? "needs_key" : notSignedIn ? "needs_signin" : (s?.status ?? "idle")] ?? STATUS.idle!;
             // Inside the app, say what to do here rather than repeating "in Ringkeeper Connect".
@@ -361,7 +363,7 @@ function ClientPanel(props: {
                       Sign in
                     </button>
                   )}
-                  {!builtIn && <button onClick={() => props.onEditConnection(conn)}>Edit</button>}
+                  <button onClick={() => props.onEditConnection(conn)}>Edit</button>
                   {props.clients.length > 1 && <button onClick={() => props.onCopyConnection(conn)}>Copy to…</button>}
                   <button className="danger-quiet" onClick={() => props.onRemoveConnection(conn)}>
                     Remove
@@ -387,6 +389,7 @@ type DialogState =
   | { kind: "rename-client"; client: ClientView }
   | { kind: "delete-client"; client: ClientView }
   | { kind: "connection"; client: ClientView; conn?: ConnectionView }
+  | { kind: "built-in"; client: ClientView; conn: ConnectionView }
   | { kind: "copy"; client: ClientView; conn: ConnectionView }
   | { kind: "remove-connection"; client: ClientView; conn: ConnectionView }
   | { kind: "restore" }
@@ -507,6 +510,8 @@ function Dialogs(props: {
       );
     case "connection":
       return <ConnectionDialog client={dialog.client} conn={dialog.conn} onClose={close} run={run} />;
+    case "built-in":
+      return <BuiltInDialog client={dialog.client} conn={dialog.conn} onClose={close} run={run} />;
     case "copy":
       return <CopyDialog from={dialog.client} conn={dialog.conn} clients={props.clients} onClose={close} run={run} />;
   }
@@ -585,6 +590,94 @@ interface FieldRow {
   saved: boolean;
   /** The user ticked or unticked "Keep secret" themselves; stop guessing. */
   chosen: boolean;
+}
+
+/** Edit one of Ringkeeper Connect's own tools: its name, what the AI may do, and (shown) the app it signs in through. */
+function BuiltInDialog(props: { client: ClientView; conn: ConnectionView; onClose: () => void; run: Run }) {
+  const { client, conn } = props;
+  const [name, setName] = useState(conn.name);
+  const [option, setOption] = useState<CatalogService["options"][number] | null>(null);
+  const current = conn.fields.find((f) => f.name === "RINGKEEPER_ACCESS")?.value;
+  const [ticked, setTicked] = useState<Set<string>>(new Set((current ?? "").split(",").filter(Boolean)));
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const service = conn.kind === "local" ? conn.args[0] : undefined;
+
+  useEffect(() => {
+    void api.catalogServices().then((r) => {
+      if (!r.ok) return;
+      const found = r.value.flatMap((s) => s.options).find((o) => o.kind === "local" && o.command === "ringkeeper-tools" && o.args[0] === service);
+      setOption(found ?? null);
+      // Saved before tick boxes existed: start from what's ticked by default.
+      if (found?.access && !current) setTicked(new Set(found.access.filter((a) => a.default).map((a) => a.id)));
+    });
+  }, [service, current]);
+
+  const access = option?.access;
+  const had = new Set((current ?? "").split(",").filter(Boolean));
+  const adds = !!access && [...ticked].some((id) => !had.has(id));
+  const app = option?.signInApps?.find((a) => a.id === conn.oauthApp)?.name;
+  const toggle = (id: string, on: boolean) =>
+    setTicked((t) => {
+      const next = new Set(t);
+      if (on) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+
+  async function save() {
+    setBusy(true);
+    setError(null);
+    const r = await api.editBuiltIn(client.id, conn.id, name, access ? access.filter((a) => ticked.has(a.id)).map((a) => a.id) : undefined);
+    setBusy(false);
+    if (r.ok) props.onClose();
+    else setError(r.error);
+  }
+
+  return (
+    <Modal title={`Edit ${conn.name} for ${client.name}`} onClose={props.onClose} wide>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          void save();
+        }}
+      >
+        <label className="field">
+          <span>Name</span>
+          <input autoFocus value={name} onChange={(e) => setName(e.target.value)} />
+        </label>
+        {access && (
+          <fieldset className="choice access">
+            <legend>What may the AI do?</legend>
+            {access.map((a) => (
+              <label key={a.id}>
+                <input type="checkbox" checked={ticked.has(a.id)} onChange={(e) => toggle(a.id, e.target.checked)} /> {a.label}
+                {a.note && <span className="hint"> {a.note}</span>}
+              </label>
+            ))}
+            {ticked.size === 0 && <span className="hint">Tick at least one.</span>}
+          </fieldset>
+        )}
+        {adds && conn.auth === "oauth" && (
+          <div className="notice info small">You ticked something new, so you'll sign in to {client.name}'s account again after saving, to allow it.</div>
+        )}
+        {conn.oauthApp && <p className="muted small">Signs in through {app ?? (conn.oauthApp.includes(":") ? "your own app" : "Ringkeeper Connect's app")}.</p>}
+        {error && (
+          <div className="notice bad" role="alert">
+            {error}
+          </div>
+        )}
+        <div className="modal-actions">
+          <button type="button" onClick={props.onClose}>
+            Cancel
+          </button>
+          <button type="submit" className="primary" disabled={busy || !name.trim() || (!!access && ticked.size === 0)}>
+            Save
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
 }
 
 function ConnectionDialog(props: {
