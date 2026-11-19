@@ -916,7 +916,17 @@ p.muted {
   margin: 8px 0 0;
 }
 
-/* Your own Google apps */
+/* Your own Google and Microsoft apps */
+.own-apps-group {
+  margin: 10px 0 4px;
+}
+.own-apps-group h3 {
+  margin: 0 0 2px;
+  font-size: 13px;
+}
+.own-app-steps code {
+  word-break: break-all;
+}
 .own-apps {
   list-style: none;
   margin: 8px 0;

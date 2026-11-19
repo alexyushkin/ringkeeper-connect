@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { OwnGoogleApps } from "./OwnApps";
+import { OwnApps } from "./OwnApps";
 import logo from "./assets/logo.png";
 import { AppsSection, FoundBanner, Setup } from "./Setup";
 import { AddFromCatalog, SignIn } from "./Catalog";
@@ -156,7 +156,7 @@ export function App() {
           </label>
         )}
         <button className="link small left own-apps-link" onClick={() => setDialog({ kind: "own-apps" })}>
-          Your own Google apps
+          Your own Google and Microsoft apps
         </button>
         <div className="version">Version {state.version}</div>
       </aside>
@@ -409,8 +409,8 @@ function Dialogs(props: {
     case "own-apps":
       return (
         <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && close()}>
-          <div className="modal wide" role="dialog" aria-modal="true" aria-label="Your own Google apps">
-            <OwnGoogleApps run={run} onDone={close} />
+          <div className="modal wide" role="dialog" aria-modal="true" aria-label="Your own Google and Microsoft apps">
+            <OwnApps run={run} onDone={close} />
           </div>
         </div>
       );

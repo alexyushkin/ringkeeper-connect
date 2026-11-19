@@ -63,20 +63,25 @@ export interface Settings {
    */
   pendingTools: Array<{ clientId: string; toolId: string }>;
   /**
-   * The user's own registered apps (a Google app in their own Google Cloud project), for
-   * agencies past the 100 accounts Google allows our app, or wanting their own name on
-   * the sign-in. The secret is kept encrypted with the keys (ownAppSecretKey), not here.
+   * The user's own registered apps (a Google app in their own Google Cloud project, or a
+   * Microsoft app in their own Entra directory), for agencies past the 100 accounts Google
+   * allows our app, a client whose IT admin only trusts their own apps, or their own name on
+   * the sign-in. A Google app's secret is kept encrypted with the keys (ownAppSecretKey), not here.
    */
   ownApps?: OwnAppRecord[];
 }
 
 export interface OwnAppRecord {
-  /** "google:<slug>": what a connection's oauthApp names. */
+  /** "google:<slug>" or "microsoft:<slug>": what a connection's oauthApp names. */
   id: string;
-  vendor: "google";
+  vendor: OwnAppVendor;
   name: string;
   clientId: string;
+  /** Microsoft only: the directory it signs in to ("common" for any account). */
+  tenant?: string;
 }
+
+export type OwnAppVendor = "google" | "microsoft";
 
 /** Where an own app's client secret is kept. "~" never appears in a client's id, so removing a client can't touch it. */
 export function ownAppSecretKey(appId: string): string {

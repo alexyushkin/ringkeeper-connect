@@ -1,6 +1,7 @@
-// "Use your own Google app": a Google app in the agency's own Google Cloud project, kept
-// with its secret encrypted, checked with Google before it's saved, offered when a Google
-// account is added, and used for that account's sign-in and renewals.
+// "Use your own Google or Microsoft app": a Google app in the agency's own Google Cloud
+// project (kept with its secret encrypted) or a Microsoft app in their own Entra directory
+// (no secret), checked with the vendor before it's saved, offered when an account is added,
+// and used for that account's sign-in and renewals.
 import fs from "node:fs";
 import http from "node:http";
 import { createHash } from "node:crypto";
@@ -67,15 +68,80 @@ async function fakeGoogle() {
   return { seen, endpoints, browser };
 }
 
+const MS_ID = "1a2b3c4d-1234-5678-9abc-1a2b3c4d5e6f";
+const TENANTS = new Set(["organizations", "common", "contoso.onmicrosoft.com"]);
+
+/**
+ * A stand-in for Microsoft's sign-in service: knows one app (with the 127.0.0.1/callback return
+ * address, any port) in the tenants above. A silent sign-in (prompt=none) with nobody signed in
+ * comes back with login_required, as Microsoft's does; anything wrong stays on an error page.
+ */
+async function fakeMicrosoft() {
+  const seen: Array<{ path: string; p: Record<string, string> }> = [];
+  let challenge = "";
+  const server = http.createServer((req, res) => {
+    let body = "";
+    req.on("data", (c) => (body += c));
+    req.on("end", () => {
+      const url = new URL(req.url ?? "/", "http://x");
+      const [, tenant, , , what] = url.pathname.split("/");
+      const p = req.method === "GET" ? Object.fromEntries(url.searchParams) : Object.fromEntries(new URLSearchParams(body));
+      seen.push({ path: url.pathname, p });
+      const page = (code: string) => {
+        res.writeHead(200, { "content-type": "text/html" });
+        res.end(`<html><script>var cfg={"strServiceExceptionMessage":"${code}: something"};</script></html>`);
+      };
+      const json = (status: number, j: unknown) => {
+        res.writeHead(status, { "content-type": "application/json" });
+        res.end(JSON.stringify(j));
+      };
+      if (!TENANTS.has(tenant!)) return page("AADSTS90002");
+      if (what === "authorize") {
+        const back = p.redirect_uri ? new URL(p.redirect_uri) : undefined;
+        if (p.client_id !== MS_ID) return page("AADSTS50059");
+        if (!back || back.hostname !== "127.0.0.1" || back.pathname !== "/callback") return page("AADSTS50011");
+        back.searchParams.set("error", "login_required");
+        back.searchParams.set("state", p.state ?? "");
+        res.writeHead(302, { location: back.toString() });
+        return res.end();
+      }
+      if (p.client_id !== MS_ID) return json(400, { error: "unauthorized_client" });
+      if (p.client_secret) return json(401, { error: "invalid_client", error_description: "AADSTS700025: Client is public" });
+      if (p.grant_type === "authorization_code") {
+        if (p.code !== "ms-code" || createHash("sha256").update(p.code_verifier ?? "").digest("base64url") !== challenge) return json(400, { error: "invalid_grant" });
+        return json(200, { access_token: "ms-access-1", refresh_token: "ms-refresh-1", expires_in: 3599, token_type: "Bearer" });
+      }
+      if (p.grant_type === "refresh_token" && p.refresh_token === "ms-refresh-1" && p.scope) {
+        return json(200, { access_token: "ms-access-2", refresh_token: "ms-refresh-2", expires_in: 3599, token_type: "Bearer" });
+      }
+      json(400, { error: "invalid_grant" });
+    });
+  });
+  await new Promise<void>((r) => server.listen(0, "127.0.0.1", () => r()));
+  cleanups.push(() => new Promise<void>((r) => server.close(() => r())));
+  const login = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  const browser = (opened: string[]) => (url: string) => {
+    opened.push(url);
+    const u = new URL(url);
+    challenge = u.searchParams.get("code_challenge") ?? "";
+    const back = new URL(u.searchParams.get("redirect_uri")!);
+    back.searchParams.set("code", "ms-code");
+    back.searchParams.set("state", u.searchParams.get("state")!);
+    void fetch(back).then((r) => r.text());
+  };
+  return { seen, login, browser };
+}
+
 async function setup(ours: Record<string, RegisteredApp> = {}, openExternal: (url: string) => void = () => {}) {
   const google = await fakeGoogle();
+  const microsoft = await fakeMicrosoft();
   const dir = fs.mkdtempSync(join(tmpdir(), "rk-ownapps-"));
   cleanups.push(() => fs.rmSync(dir, { recursive: true, force: true }));
   const secrets = new SecretStore(join(dir, "secrets.json"), cipher);
   const store = new ClientStore(join(dir, "clients.json"), secrets);
   const apps: Record<string, RegisteredApp> = { ...ours };
   const restarted: string[] = [];
-  const own = new OwnApps({ store, secrets, apps, endpoints: google.endpoints, restart: (_c, id) => restarted.push(id) });
+  const own = new OwnApps({ store, secrets, apps, endpoints: google.endpoints, microsoftLogin: microsoft.login, restart: (_c, id) => restarted.push(id) });
   const oauthStore = secretOAuthStore(secrets);
   const actions = new CatalogActions({
     store,
@@ -87,7 +153,7 @@ async function setup(ours: Record<string, RegisteredApp> = {}, openExternal: (ur
     apps,
     ownApps: () => own.list(),
   });
-  return { dir, google, secrets, store, apps, own, actions, oauthStore, restarted };
+  return { dir, google, microsoft, secrets, store, apps, own, actions, oauthStore, restarted };
 }
 
 const errorOf = async (p: Promise<unknown>) => {
@@ -200,5 +266,107 @@ describe("your own Google apps", () => {
     expect(t.own.list()).toEqual([]);
     expect(t.apps["google:agency"]).toBeUndefined();
     expect(t.secrets.has(ownAppSecretKey("google:agency"))).toBe(false);
+  });
+});
+
+describe("your own Microsoft apps", () => {
+  it("checks the app with Microsoft without signing anyone in, and keeps no secret", async () => {
+    const { own, apps, microsoft, secrets } = await setup();
+    const added = await own.add({ vendor: "microsoft", name: "Agency", clientId: ` ${MS_ID.toUpperCase()} ` });
+    expect(added).toEqual({ id: "microsoft:agency", vendor: "microsoft", name: "Agency", clientId: MS_ID, tenant: "common", usedBy: [] });
+    // A silent sign-in for any organization's account, back to Ringkeeper Connect's address.
+    const asked = microsoft.seen[0]!;
+    expect(asked.path).toBe("/organizations/oauth2/v2.0/authorize");
+    expect(asked.p).toMatchObject({ client_id: MS_ID, prompt: "none", redirect_uri: "http://127.0.0.1:53682/callback" });
+    expect(apps["microsoft:agency"]).toEqual({
+      id: "microsoft:agency",
+      clientId: MS_ID,
+      authorizationEndpoint: `${microsoft.login}/common/oauth2/v2.0/authorize`,
+      tokenEndpoint: `${microsoft.login}/common/oauth2/v2.0/token`,
+      authParams: { prompt: "select_account" },
+      scopeOnRefresh: true,
+    });
+    expect(secrets.has(ownAppSecretKey("microsoft:agency"))).toBe(false);
+  });
+
+  it("signs in to one organization's directory when it's given", async () => {
+    const { own, apps, microsoft } = await setup();
+    await own.add({ vendor: "microsoft", name: "Contoso only", clientId: MS_ID, tenant: " Contoso.onmicrosoft.com " });
+    expect(microsoft.seen[0]!.path).toBe("/contoso.onmicrosoft.com/oauth2/v2.0/authorize");
+    expect(apps["microsoft:contoso_only"]!.tokenEndpoint).toBe(`${microsoft.login}/contoso.onmicrosoft.com/oauth2/v2.0/token`);
+    expect(own.list()[0]!.tenant).toBe("contoso.onmicrosoft.com");
+  });
+
+  it("refuses what isn't a Microsoft app ID, an app Microsoft doesn't know, an unknown directory and the same app twice", async () => {
+    const { own, store, secrets } = await setup();
+    expect(await errorOf(own.add({ vendor: "microsoft", name: "X", clientId: CLIENT_ID }))).toMatch(/isn't a Microsoft Application \(client\) ID/);
+    expect(await errorOf(own.add({ vendor: "microsoft", name: "X", clientId: MS_ID, tenant: "not a tenant!" }))).toMatch(/isn't a directory \(tenant\) ID/);
+    expect(await errorOf(own.add({ vendor: "microsoft", name: "X", clientId: "99999999-1234-5678-9abc-1a2b3c4d5e6f" }))).toMatch(
+      /^Microsoft didn't accept this app\. .*http:\/\/127\.0\.0\.1\/callback/,
+    );
+    expect(await errorOf(own.add({ vendor: "microsoft", name: "X", clientId: MS_ID, tenant: "fabrikam.onmicrosoft.com" }))).toBe(
+      `Microsoft doesn't know the directory "fabrikam.onmicrosoft.com". Copy the Directory (tenant) ID from the app's Overview page, or leave it empty for any account.`,
+    );
+    expect(await errorOf(own.add({ vendor: "dropbox", name: "X", clientId: MS_ID }))).toMatch(/Google or Microsoft app only/);
+    expect(own.list()).toEqual([]);
+    await own.add({ vendor: "microsoft", name: "First", clientId: MS_ID });
+    expect(await errorOf(own.add({ vendor: "microsoft", name: "Second", clientId: MS_ID }))).toBe('That Microsoft app is already set up, as "First".');
+    const offline = new OwnApps({ store, secrets, apps: {}, fetchFn: (async () => { throw new TypeError("fetch failed"); }) as typeof fetch });
+    expect(await errorOf(offline.add({ vendor: "microsoft", name: "Y", clientId: "88888888-1234-5678-9abc-1a2b3c4d5e6f" }))).toMatch(/Couldn't reach Microsoft to check this app/);
+  });
+
+  it("is offered on the Microsoft 365 tile after Ringkeeper Connect's own app, and not on Google's", async () => {
+    const without = await setup();
+    await without.own.add({ vendor: "microsoft", name: "Agency", clientId: MS_ID });
+    const tile = (id: string) => without.actions.services().find((s) => s.id === id)!.options[0]!;
+    expect(tile("microsoft").unavailable).toBeUndefined();
+    expect(tile("microsoft").signInApps).toEqual([{ id: "microsoft:agency", name: "Agency" }]);
+    expect(tile("google")).toMatchObject({ unavailable: true });
+
+    const both = await setup(registeredApps({ RINGKEEPER_MICROSOFT_CLIENT_ID: "11111111-2222-3333-4444-555555555555" }, {}));
+    await both.own.add({ vendor: "microsoft", name: "Agency", clientId: MS_ID });
+    expect(both.actions.services().find((s) => s.id === "microsoft")!.options[0]!.signInApps).toEqual([
+      { id: "microsoft", name: "Ringkeeper Connect's Microsoft app" },
+      { id: "microsoft:agency", name: "Agency" },
+    ]);
+  });
+
+  it("signs a Microsoft account in through the chosen app, renews through it, and won't move an app in use", async () => {
+    const opened: string[] = [];
+    const t = await setup({}, (url) => t.microsoft.browser(opened)(url));
+    await t.own.add({ vendor: "microsoft", name: "Agency", clientId: MS_ID });
+    const acme = t.store.addClient("Acme");
+    const added = t.actions.add(acme.id, "microsoft", "signin", {}, "Microsoft 365", ["mail_read"], "microsoft:agency");
+    const conn = t.store.toGatewayConfig().clients[0]!.connections[0]!;
+    expect(conn).toMatchObject({ oauth: { app: "microsoft:agency" }, needsSignIn: true });
+
+    await t.actions.signIn(acme.id, added.connectionId);
+    const signInPage = new URL(opened[0]!);
+    expect(signInPage.origin + signInPage.pathname).toBe(`${t.microsoft.login}/common/oauth2/v2.0/authorize`);
+    expect(signInPage.searchParams.get("client_id")).toBe(MS_ID);
+    expect(signInPage.searchParams.get("scope")).toContain("Mail.Read");
+    const key = conn.kind === "local" ? conn.oauth!.key : "";
+    const scope = conn.kind === "local" ? (conn.oauth!.scope ?? "") : "";
+    expect(t.oauthStore.load(key)!.tokens!.access_token).toBe("ms-access-1");
+    // An hour later: renewed through the same app, asking for the same permissions again.
+    const renewed = await directAccessToken(t.oauthStore, key, t.apps["microsoft:agency"]!, scope, undefined, Date.now() + 3600_000);
+    expect(renewed.token).toBe("ms-access-2");
+    const refresh = t.microsoft.seen.at(-1)!;
+    expect(refresh.path).toBe("/common/oauth2/v2.0/token");
+    expect(refresh.p).toMatchObject({ grant_type: "refresh_token", client_id: MS_ID });
+    expect(refresh.p.scope).toContain("Mail.Read");
+    expect(refresh.p.client_secret).toBeUndefined();
+
+    expect(t.own.list()[0]!.usedBy).toEqual(["Acme > Microsoft 365"]);
+    expect(() => t.own.remove("microsoft:agency")).toThrow("Acme > Microsoft 365 signs in through this app. Remove that tool first.");
+    expect(await errorOf(t.own.update("microsoft:agency", { tenant: "contoso.onmicrosoft.com" }))).toMatch(/Microsoft ties each sign-in to its directory/);
+    expect(await errorOf(t.own.update("microsoft:agency", { clientId: "99999999-1234-5678-9abc-1a2b3c4d5e6f" }))).toMatch(/Microsoft ties each sign-in to its client ID/);
+    await t.own.update("microsoft:agency", { name: "Agency (renamed)", tenant: "" });
+    expect(t.own.list()[0]).toMatchObject({ name: "Agency (renamed)", tenant: "common" });
+
+    t.store.removeConnection(acme.id, added.connectionId);
+    t.own.remove("microsoft:agency");
+    expect(t.own.list()).toEqual([]);
+    expect(t.apps["microsoft:agency"]).toBeUndefined();
   });
 });

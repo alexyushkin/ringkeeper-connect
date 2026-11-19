@@ -148,21 +148,33 @@ export const GOOGLE_CONSOLE_LINKS = [
   `${GOOGLE_CONSOLE}/auth/clients`,
 ];
 
-/** One of the user's own Google apps, as the window sees it: never its secret. */
+/** Microsoft Entra's App registrations page, where "your own Microsoft app" is made. */
+export const ENTRA_APP_REGISTRATIONS = "https://entra.microsoft.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade";
+/** Where the sign-in comes back on this computer (Microsoft ignores the port of these). */
+export const MICROSOFT_RETURN_ADDRESS = "http://127.0.0.1/callback";
+export const OWN_APP_LINKS = [...GOOGLE_CONSOLE_LINKS, ENTRA_APP_REGISTRATIONS];
+
+/** One of the user's own Google or Microsoft apps, as the window sees it: never its secret. */
 export interface OwnAppView {
   id: string;
-  vendor: "google";
+  vendor: "google" | "microsoft";
   name: string;
   clientId: string;
+  /** Microsoft: the directory it signs in to ("common" for any account). */
+  tenant?: string;
   /** The tools that sign in through it, as "Acme > Google". */
   usedBy: string[];
 }
 
 export interface OwnAppInput {
+  /** On an add: whose app it is. */
+  vendor?: "google" | "microsoft";
   name?: string;
   clientId?: string;
-  /** Left empty on an edit: keep the saved one. */
+  /** Google only. Left empty on an edit: keep the saved one. */
   clientSecret?: string;
+  /** Microsoft only: a directory (tenant) ID; empty for any account. */
+  tenant?: string;
 }
 
 export type Result<T = void> = { ok: true; value: T } | { ok: false; error: string };

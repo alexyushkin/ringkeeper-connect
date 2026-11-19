@@ -18,7 +18,7 @@ import {
   type RegisteredApp,
 } from "@ringkeeper/gateway";
 
-import { GOOGLE_CONSOLE_LINKS } from "../shared/api.js";
+import { OWN_APP_LINKS } from "../shared/api.js";
 
 export class CatalogActionError extends Error {}
 
@@ -45,14 +45,14 @@ export function requestToolMailto(
   return `mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 }
 
-/** Every link the catalog may open, and the Google Cloud pages of "your own Google app"; nothing else is opened from the window. */
+/** Every link the catalog may open, and the Google Cloud and Microsoft Entra pages of "your own app"; nothing else is opened from the window. */
 const allowedLinks = new Set([
   ...catalog.services.flatMap((s) =>
     s.options.flatMap((o) =>
       o.fields.flatMap((f) => (f.where ? [f.where.url] : [])),
     ),
   ),
-  ...GOOGLE_CONSOLE_LINKS,
+  ...OWN_APP_LINKS,
 ]);
 
 export class CatalogActions {
@@ -137,7 +137,7 @@ export class CatalogActions {
     const app = conn.oauthApp ? this.deps.apps?.[conn.oauthApp] : undefined;
     if (conn.oauthApp?.includes(":") && !app)
       throw new CatalogActionError(
-        `The Google app ${conn.name} for ${client.name} signs in through isn't set up on this computer anymore. Add it again under "Your own Google apps", or remove this tool and add it again.`,
+        `The ${conn.oauthApp.startsWith("microsoft:") ? "Microsoft" : "Google"} app ${conn.name} for ${client.name} signs in through isn't set up on this computer anymore. Add it again under "Your own Google and Microsoft apps", or remove this tool and add it again.`,
       );
     if (conn.oauthApp && !app)
       throw new CatalogActionError(

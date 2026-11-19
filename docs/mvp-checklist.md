@@ -104,7 +104,7 @@ Needs a build made after `RINGKEEPER_MICROSOFT_CLIENT_ID` is in the repository's
 
 Works in any build, including one without Ringkeeper Connect's Google app.
 
-1. Sidebar > **Your own Google apps** > Add a Google app. Follow "How to create one" (the links open
+1. Sidebar > **Your own Google and Microsoft apps** > Add a Google app. Follow "How to create one" (the links open
    the right Google Cloud pages), paste the client ID and secret, Save. A wrong secret is refused
    before saving ("Google didn't accept this client ID and secret").
 2. Add a tool > Google account: "Sign in through" lists Ringkeeper Connect's app (when the build
@@ -114,3 +114,21 @@ Works in any build, including one without Ringkeeper Connect's Google app.
    for the same client can be pasted under Edit.
 5. A build without our Google app: the Google account tile offers "Set up your own Google app"
    instead of only saying it isn't available.
+
+## 7. Your own Microsoft app
+
+Works in any build, including one without Ringkeeper Connect's Microsoft app. You need a work
+Microsoft account to register the app in Microsoft Entra (free).
+
+1. Sidebar > **Your own Google and Microsoft apps** > Add a Microsoft app. Follow "How to create
+   one" (App registrations opens in the Entra admin center), paste the Application (client) ID,
+   leave the directory empty, Save. Ringkeeper Connect checks with Microsoft first, without
+   signing anyone in.
+2. Try the refusals once: a made-up ID, or the app without the `http://127.0.0.1/callback`
+   address, is refused before saving ("Microsoft didn't accept this app...").
+3. Add a tool > Microsoft 365: "Sign in through" lists Ringkeeper Connect's app (when the build
+   has it) and yours. Choose yours, Continue: Microsoft's sign-in page shows your app's name.
+4. The tool works as in section 5, and still works over an hour later (renewed through your app).
+5. A client's work account may hit "Need admin approval": their IT admin approves the app once.
+6. Your app can't be removed, or have its ID or directory changed, while a tool signs in through
+   it.

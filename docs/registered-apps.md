@@ -64,7 +64,7 @@ These are the same steps Ringkeeper shows its users.
 **Unverified, published:** people see Google's warning and click "Advanced > Go to Ringkeeper
 Connect (unsafe)", and the app can sign in **100 accounts in its lifetime**, across everyone using
 it. That's fine for you and the first clients. For more: agencies use their own Google app (the
-same steps, in their own project, pasted into Ringkeeper Connect under "Your own Google apps"), or Ringkeeper Connect's app goes
+same steps, in their own project, pasted into Ringkeeper Connect under "Your own Google and Microsoft apps"), or Ringkeeper Connect's app goes
 through Google's verification (Gmail and Drive access are "restricted": a yearly paid security
 assessment). A client's Workspace admin may also have to trust the app's client ID.
 
@@ -97,6 +97,12 @@ be kept) and comes back to the computer on any port.
 **Later (optional, recommended before a public release):** Branding > publisher verification with a
 Microsoft Partner Network ID, so the sign-in screen shows Ringkeeper Connect as verified. Some
 companies only allow verified apps, and some require their IT admin to approve any new app once.
+
+Agencies can also use their own Microsoft app: the same steps, in their own (or a client's) Entra
+directory, pasted into Ringkeeper Connect under "Your own Google and Microsoft apps". Ringkeeper
+Connect checks it with a silent sign-in (nobody is signed in, nothing is created): Microsoft only
+sends the browser back when the app exists, takes that directory's accounts and has the
+`http://127.0.0.1/callback` address.
 
 ## Put the IDs into GitHub
 
