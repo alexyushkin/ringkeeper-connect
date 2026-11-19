@@ -105,12 +105,13 @@ describe("Google Ads in the Google account", () => {
     }
   });
 
-  it("is in the changelog, under this version", () => {
+  it("is in the changelog, and this version has a section of its own", () => {
     const version = JSON.parse(fs.readFileSync("apps/desktop/package.json", "utf8")).version as string;
     const log = fs.readFileSync("CHANGELOG.md", "utf8").split(String.fromCharCode(13)).join("");
-    const section = log.split(`\n## ${version}\n`)[1]?.split("\n## ")[0] ?? "";
-    expect(section).toMatch(/Google Ads/);
-    expect(section).toMatch(/Meta Ads with an access token/);
+    const section = (v: string) => log.split(`\n## ${v}\n`)[1]?.split("\n## ")[0] ?? "";
+    expect(section(version).trim().length).toBeGreaterThan(20);
+    expect(section("0.2.0-beta.16")).toMatch(/Google Ads/);
+    expect(section("0.2.0-beta.16")).toMatch(/Meta Ads with an access token/);
   });
 
   it("is in the registration doc and the own-app steps", () => {

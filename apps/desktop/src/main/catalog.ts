@@ -32,6 +32,9 @@ import { OWN_APP_LINKS } from "../shared/api.js";
 
 export class CatalogActionError extends Error {}
 
+/** Meta's own ads server: it only lets the AI apps Meta approved in (a token from any other app gets 401). */
+export const META_ADS_SERVER = "https://mcp.facebook.com/ads";
+
 /** What "Test connection" found. `reached` is false when the vendor couldn't be asked at all (offline). */
 export interface KeyCheckResult {
   ok: boolean;
@@ -189,12 +192,14 @@ export class CatalogActions {
   }
 
   /** The catalog option one of Ringkeeper Connect's own tools was added with. */
-  private builtInOption(conn: { kind: string; command?: string; args?: string[] }, preferCheck = false): CatalogOption | undefined {
+  private builtInOption(conn: { kind: string; command?: string; args?: string[]; auth?: string }, preferCheck = false): CatalogOption | undefined {
     if (conn.kind !== "local" || conn.command !== BUILTIN_COMMAND) return undefined;
     const all = catalog.services
       .flatMap((s) => s.options)
       .filter((o) => o.kind === "local" && o.command === BUILTIN_COMMAND && o.args[0] === conn.args?.[0]);
-    return (preferCheck ? all.find((o) => o.check) : undefined) ?? all[0];
+    if (preferCheck) return all.find((o) => o.check) ?? all[0];
+    // Meta Ads has two: the one this tool was added with signs in, or takes a pasted token.
+    return all.find((o) => (o.auth === "oauth") === (conn.auth === "oauth")) ?? all[0];
   }
 
   /**
@@ -351,8 +356,32 @@ export class CatalogActions {
   private adoptApp(clientId: string, connectionId: string): void {
     const client = this.deps.store.list().find((c) => c.id === clientId);
     const conn = client?.connections.find((c) => c.id === connectionId);
-    if (!client || !conn || conn.kind !== "remote" || conn.oauthApp) return;
+    if (!client || !conn || conn.kind !== "remote") return;
     const same = (u: string) => u.replace(/\/+$/, "").toLowerCase();
+    // Meta's own ads server takes only the AI apps Meta approved, whatever app signs in: it
+    // becomes Ringkeeper Connect's own Meta Ads tools, signed in through your Meta app.
+    if (same(conn.url) === same(META_ADS_SERVER)) {
+      const meta = catalog.services.find((s) => s.id === "meta_ads")?.options.find((o) => o.kind === "local" && o.auth === "oauth");
+      if (!meta || meta.kind !== "local" || !meta.app) return;
+      const chosen = this.signInApps(meta.app)[0];
+      if (!chosen)
+        throw new CatalogActionError(
+          `${conn.name} for ${client.name} signs in through your own Meta app. Set one up under "Your own apps", then click Sign in again. Or remove it and add Meta Ads with an access token instead.`,
+        );
+      const ticks = chosenAccess(meta.access ?? [], undefined);
+      this.deps.store.updateConnection(clientId, connectionId, {
+        kind: "local",
+        name: conn.name,
+        command: meta.command,
+        args: [...meta.args],
+        auth: "oauth",
+        oauthApp: chosen.id,
+        scope: scopeFor(meta.scope, ticks),
+        fields: [{ name: ACCESS_SETTING, secret: false, value: ticks.map((a) => a.id).join(",") }],
+      });
+      return;
+    }
+    if (conn.oauthApp) return;
     const option = catalog.services
       .flatMap((s) => s.options.map((o) => ({ s, o })))
       .find(({ o }) => o.kind === "remote" && o.app && same(o.url) === same(conn.url));

@@ -1,6 +1,6 @@
-// Meta Ads through Meta's own ads server, signed in through the agency's own Meta app: Meta lets
-// only the AI apps it approved register themselves, and Ringkeeper Connect ships no Meta app
-// (its secret would be in every copy). The sign-in comes back through an https page that hands
+// Meta Ads signed in through the agency's own Meta app (a Marketing API app), running Ringkeeper
+// Connect's own Meta Ads tools: Meta's own ads server lets in only the AI apps Meta approved, and
+// Ringkeeper Connect ships no Meta app (its secret would be in every copy). The sign-in comes back through an https page that hands
 // it to this computer, and the first token is swapped for one lasting about 60 days.
 import fs from "node:fs";
 import http from "node:http";
@@ -13,7 +13,7 @@ import { CatalogActionError, CatalogActions } from "../apps/desktop/src/main/cat
 import { OwnApps, OwnAppsError } from "../apps/desktop/src/main/own-apps.js";
 import { META_RETURN_PAGE } from "../apps/desktop/src/shared/api.js";
 import type { RegisteredApp } from "../packages/gateway/src/oauth.js";
-import { ClientStore, ownAppSecretKey, secretOAuthStore } from "../packages/gateway/src/store/client-store.js";
+import { ClientStore, oauthKey, ownAppSecretKey, secretOAuthStore } from "../packages/gateway/src/store/client-store.js";
 import { SecretStore, type Cipher } from "../packages/gateway/src/store/secrets.js";
 
 const APP_ID = "1234567890123456";
@@ -138,7 +138,8 @@ describe("Meta Ads", () => {
   it("is offered only with your own Meta app, and says how to get one", async () => {
     const t = await setup();
     const tile = () => t.actions.services().find((s) => s.id === "meta_ads")!.options.find((o) => o.id === "signin")!;
-    expect(tile()).toMatchObject({ unavailable: true, url: "https://mcp.facebook.com/ads", app: "meta" });
+    expect(tile()).toMatchObject({ unavailable: true, kind: "local", command: "ringkeeper-tools", args: ["meta-ads"], app: "meta" });
+    expect(tile()).not.toHaveProperty("url");
     const acme = t.store.addClient("Acme");
     expect(() => t.actions.add(acme.id, "meta_ads", "signin", {}, "Meta Ads")).toThrow('Meta Ads signs in through your own Meta app. Set one up under "Your own apps" first.');
     await t.own.add({ vendor: "meta", name: "Agency", clientId: APP_ID, clientSecret: APP_SECRET });
@@ -158,14 +159,16 @@ describe("Meta Ads", () => {
     expect(dialog.origin + dialog.pathname).toBe(`${t.meta.graph}/dialog/oauth`);
     expect(dialog.searchParams.get("client_id")).toBe(APP_ID);
     expect(dialog.searchParams.get("redirect_uri")).toBe(META_RETURN_PAGE);
-    expect(dialog.searchParams.get("scope")).toBe("ads_mcp_management,ads_read,ads_management,catalog_management,business_management,pages_show_list,instagram_basic");
+    // Only what a Marketing API app has: none of the ads server's own permissions.
+    expect(dialog.searchParams.get("scope")).toBe("business_management,ads_read");
     expect(dialog.searchParams.get("state")).toMatch(/^\d{4,5}\./);
     // The secret goes only to Meta's token address, never into the browser.
     expect(opened[0]).not.toContain(APP_SECRET);
 
     const conn = t.store.toGatewayConfig().clients[0]!.connections[0]!;
-    expect(conn).toMatchObject({ kind: "remote", url: "https://mcp.facebook.com/ads", oauth: { app: "meta:agency" } });
-    const key = conn.kind === "remote" ? conn.oauth!.key : "";
+    expect(conn).toMatchObject({ command: "ringkeeper-tools", args: ["meta-ads"], env: { RINGKEEPER_ACCESS: "ads_read" }, oauth: { app: "meta:agency" } });
+    expect(conn.kind).not.toBe("remote");
+    const key = conn.kind !== "remote" ? conn.oauth!.key : "";
     expect(t.oauthStore.load(key)!.tokens).toMatchObject({ access_token: "lasting", expires_in: 5183944 });
     expect(t.meta.seen.map((s) => s.grant_type)).toEqual(["client_credentials", "authorization_code", "fb_exchange_token"]);
 
@@ -173,21 +176,34 @@ describe("Meta Ads", () => {
     expect(() => t.own.remove("meta:agency")).toThrow("Acme > Meta Ads signs in through this app. Remove that tool first.");
   });
 
-  it("signs in a Meta Ads tool brought in from an AI app through your Meta app", async () => {
+  it("turns a Meta Ads tool brought in from an AI app into the built-in tools, signed in through your Meta app", async () => {
     const opened: string[] = [];
     const t = await setup((url) => t.meta.browser(opened)(url));
     const acme = t.store.addClient("Acme");
     const brought = t.store.addConnection(acme.id, { kind: "remote", name: "Meta Ads", url: "https://mcp.facebook.com/ads/", auth: "oauth", fields: [] });
     // No Meta app yet: says what to do instead of trying a sign-in that can't work.
     await expect(t.actions.signIn(acme.id, brought.id)).rejects.toThrow(CatalogActionError);
-    await expect(t.actions.signIn(acme.id, brought.id)).rejects.toThrow(/Set one up under "Your own apps", then click Sign in again/);
+    await expect(t.actions.signIn(acme.id, brought.id)).rejects.toThrow(/Set one up under "Your own apps", then click Sign in again. Or remove it and add Meta Ads with an access token instead./);
     expect(opened).toEqual([]);
 
     await t.own.add({ vendor: "meta", name: "Agency", clientId: APP_ID, clientSecret: APP_SECRET });
     await t.actions.signIn(acme.id, brought.id);
     const conn = t.store.list()[0]!.connections[0]!;
-    expect(conn).toMatchObject({ oauthApp: "meta:agency", signedIn: true });
-    expect(conn.scope).toContain("ads_mcp_management");
+    expect(conn).toMatchObject({ kind: "local", command: "ringkeeper-tools", args: ["meta-ads"], name: "Meta Ads", oauthApp: "meta:agency", signedIn: true });
+    expect(conn.scope).toBe("business_management ads_read");
+    expect(conn.fields).toContainEqual(expect.objectContaining({ name: "RINGKEEPER_ACCESS", value: "ads_read" }));
     expect(new URL(opened[0]!).searchParams.get("redirect_uri")).toBe(META_RETURN_PAGE);
+  });
+  it("edits a signed-in Meta Ads tool as a sign-in: ticking pausing asks for ads_management, with no token field", async () => {
+    const t = await setup();
+    await t.own.add({ vendor: "meta", name: "Agency", clientId: APP_ID, clientSecret: APP_SECRET });
+    const acme = t.store.addClient("Acme");
+    const added = t.actions.add(acme.id, "meta_ads", "signin", {}, "Meta Ads");
+    t.oauthStore.save(oauthKey(acme.id, added.connectionId), { tokens: { access_token: "lasting", token_type: "bearer", expires_in: 5183944 }, obtainedAt: Date.now() });
+    expect(t.actions.editBuiltIn(acme.id, added.connectionId, "Meta Ads", ["ads_read"])).toEqual({ needsSignIn: false });
+    expect(t.actions.editBuiltIn(acme.id, added.connectionId, "Meta Ads", ["ads_read", "ads_pause"])).toEqual({ needsSignIn: true });
+    const conn = t.store.list()[0]!.connections[0]!;
+    expect(conn.scope).toBe("business_management ads_read ads_management");
+    expect(conn.fields.map((f) => f.name)).toEqual(["RINGKEEPER_ACCESS"]);
   });
 });
