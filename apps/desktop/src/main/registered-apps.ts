@@ -32,6 +32,23 @@ export function googleApp(id: string, clientId: string, clientSecret?: string): 
   };
 }
 
+export const MICROSOFT_LOGIN = "https://login.microsoftonline.com";
+
+/**
+ * A Microsoft "public client" app (no secret: it runs on people's computers): ours, or one in
+ * the user's own Entra directory. "common" takes work, school and personal Microsoft accounts.
+ */
+export function microsoftApp(id: string, clientId: string, tenant = "common", login = MICROSOFT_LOGIN): RegisteredApp {
+  return {
+    id,
+    clientId,
+    authorizationEndpoint: `${login}/${tenant}/oauth2/v2.0/authorize`,
+    tokenEndpoint: `${login}/${tenant}/oauth2/v2.0/token`,
+    authParams: { prompt: "select_account" },
+    scopeOnRefresh: true,
+  };
+}
+
 /** The registered apps this build can use, by id. */
 export function registeredApps(env: Record<string, string | undefined> = process.env, built: Record<string, string> = fromBuild()): Record<string, RegisteredApp> {
   const value = (name: string) => (env[name] || built[name] || "").trim();
@@ -39,16 +56,6 @@ export function registeredApps(env: Record<string, string | undefined> = process
   const googleId = value("RINGKEEPER_GOOGLE_CLIENT_ID");
   if (googleId) apps.google = googleApp("google", googleId, value("RINGKEEPER_GOOGLE_CLIENT_SECRET"));
   const microsoftId = value("RINGKEEPER_MICROSOFT_CLIENT_ID");
-  if (microsoftId) {
-    apps.microsoft = {
-      id: "microsoft",
-      clientId: microsoftId,
-      // "common": work, school and personal Microsoft accounts.
-      authorizationEndpoint: "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
-      tokenEndpoint: "https://login.microsoftonline.com/common/oauth2/v2.0/token",
-      authParams: { prompt: "select_account" },
-      scopeOnRefresh: true,
-    };
-  }
+  if (microsoftId) apps.microsoft = microsoftApp("microsoft", microsoftId);
   return apps;
 }
