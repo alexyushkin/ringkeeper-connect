@@ -4,6 +4,15 @@ What's new in each version of Ringkeeper Connect, in plain words. A release's pa
 shows its section under "What's new". Versions before 0.2.0-beta.16 are described on their
 [release pages](https://github.com/alexyushkin/ringkeeper-connect/releases).
 
+## 0.2.0-beta.17
+
+- **Sign in with Meta works with an ordinary Meta app.** It now runs the same built-in Meta Ads
+  tools as an access token, and asks only for what a Marketing API app has: no more "Invalid
+  Scopes". Pausing still asks you first, every time.
+- **Clearer steps for your own Meta app,** including the App Domains setting Meta needs (without
+  it, Meta says "Can't load URL").
+- A Meta Ads tool brought in from an AI app becomes the built-in one when you sign in.
+
 ## 0.2.0-beta.16
 
 - **Meta Ads with an access token.** Add a tool > Meta Ads > **Use an access token**

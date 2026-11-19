@@ -136,22 +136,26 @@ Microsoft account to register the app in Microsoft Entra (free).
 6. Your app can't be removed, or have its ID or directory changed, while a tool signs in through
    it.
 
-## 8. Meta Ads (your own Meta app)
+## 8. Meta Ads, signing in through your own Meta app
 
 Needs the return page live first: `https://yushkin.us/ringkeeper-connect/oauth/callback` (in the
 yushkin.us repo, `public/ringkeeper-connect/oauth/callback/index.html`).
 
 1. Sidebar > **Your own apps** > Add a Meta app. Follow "How to create one": a Meta app with the
-   use case "Create & manage ads with ads MCP server", its permissions added, the return page
-   under Facebook Login for Business > Settings > Valid OAuth Redirect URIs, and you under App
-   roles. Paste the App ID and App secret, Save. A wrong secret is refused before saving.
-2. Add a tool > **Meta Ads** > Continue. Facebook opens; sign in and allow. The browser goes to
-   the yushkin.us page and straight back to Ringkeeper Connect ("You're signed in").
-3. Ask the AI for your own ad accounts' campaigns: it works. A client's ad accounts need Meta's
+   use case "Create & manage ads with Marketing API" and its three permissions, `yushkin.us` under
+   App Domains with a Website platform, the return page under Facebook Login for Business >
+   Settings > Valid OAuth Redirect URIs, and you under App roles. Paste the App ID and App secret,
+   Save. A wrong secret is refused before saving.
+2. Add a tool > **Meta Ads** > **Sign in with Meta** > Continue. Facebook opens with no "Invalid
+   Scopes" or "Can't load URL"; sign in and allow. The browser goes to the yushkin.us page and
+   straight back to Ringkeeper Connect ("You're signed in").
+3. Ask the AI for your own ad accounts' campaigns: it works. A client's ad accounts may need Meta's
    app review for your app first.
 4. A Meta Ads tool brought in from Claude Desktop (Meta's own server, `mcp.facebook.com/ads`):
-   **Sign in** without a Meta app says to set one up; with one, it signs in through it.
-5. About 60 days later the sign-in ends: the tool shows **Sign in** again.
+   **Sign in** without a Meta app says to set one up or use a token; with one, it becomes
+   "Built into Ringkeeper Connect" and signs in through it.
+5. Edit > tick **Pause campaigns, ad sets and ads** > Save: it asks you to sign in once more.
+6. About 60 days later the sign-in ends: the tool shows **Sign in** again.
 
 ## 9. Meta Ads with an access token
 

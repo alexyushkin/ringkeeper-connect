@@ -43,7 +43,9 @@ export function OwnApps(props: { run: Run; onDone: () => void; doneLabel?: strin
         const of = (id: string) => (r.value.find((s) => s.id === id)?.options[0]?.access ?? []).flatMap((a) => a.scope.split(/\s+/));
         const google = of("google");
         const microsoft = of("microsoft");
-        const meta = (r.value.find((s) => s.id === "meta_ads")?.options[0]?.scope ?? "").split(/\s+/).filter(Boolean);
+        // Meta Ads' sign-in: its fixed permission and each tick box's.
+        const signin = r.value.find((s) => s.id === "meta_ads")?.options.find((o) => o.app === "meta");
+        const meta = [...new Set([signin?.scope ?? "", ...(signin?.access ?? []).map((a) => a.scope)].flatMap((x) => x.split(/\s+/)).filter(Boolean))];
         setScopes({
           google: google.length ? ["openid", "https://www.googleapis.com/auth/userinfo.email", ...new Set(google)] : [],
           microsoft: microsoft.length ? [...new Set([...MICROSOFT_ALWAYS, ...microsoft])] : [],
@@ -364,20 +366,24 @@ function MetaSteps(props: { scopes: string[]; run: Run }) {
           signed in with your own Facebook account, and click Create app. Name it after your agency.
         </li>
         <li>
-          Under Use cases, add <strong>Create &amp; manage ads with ads MCP server</strong>. Click Customize and add each of these permissions (a missing one stops the
+          Under Use cases, add <strong>Create &amp; manage ads with Marketing API</strong>. Click Customize and add each of these permissions (a missing one stops the
           sign-in with "Invalid Scopes"):
           <Scopes scopes={props.scopes} />
+        </li>
+        <li>
+          Open App settings, then Basic. Type <Copyable text="yushkin.us" /> under App Domains. At the bottom, click Add platform, choose Website, and enter{" "}
+          <Copyable text="https://yushkin.us/" /> as Site URL. Save changes.
         </li>
         <li>
           Open Facebook Login for Business, then Settings (add that product first if it isn't there). Paste <Copyable text={META_RETURN_PAGE} /> under Valid OAuth Redirect
           URIs, then Save changes. That page hands the sign-in straight back to this computer and keeps nothing.
         </li>
         <li>Keep yourself under App roles: until Meta reviews the app, only people with a role can sign in.</li>
-        <li>Open App settings, then Basic. Copy the App ID, and the App secret (click Show), and paste both below.</li>
+        <li>Back in App settings, then Basic: copy the App ID, and the App secret (click Show), and paste both below.</li>
       </ol>
       <div className="notice info small">
-        Ad accounts your own business owns work straight away. A client's ad accounts need Meta's app review for your app first (Advanced Access to ads_mcp_management). Each
-        sign-in lasts about 60 days, then you sign in again.
+        Ad accounts your own business owns work straight away. A client's ad accounts may need Meta's app review for your app first (Advanced Access to ads_read and
+        ads_management). Each sign-in lasts about 60 days, then you sign in again. Have a System User token? Skip all this: add Meta Ads with "Use an access token".
       </div>
     </details>
   );

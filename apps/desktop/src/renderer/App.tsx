@@ -612,7 +612,9 @@ function BuiltInDialog(props: { client: ClientView; conn: ConnectionView; onClos
   useEffect(() => {
     void api.catalogServices().then((r) => {
       if (!r.ok) return;
-      const found = r.value.flatMap((s) => s.options).find((o) => o.kind === "local" && o.command === "ringkeeper-tools" && o.args[0] === service);
+      // Meta Ads has two: the one this tool was added with signs in, or takes a pasted token.
+      const same = r.value.flatMap((s) => s.options).filter((o) => o.kind === "local" && o.command === "ringkeeper-tools" && o.args[0] === service);
+      const found = same.find((o) => (o.auth === "oauth") === (conn.auth === "oauth")) ?? same[0];
       setOption(found ?? null);
       // Saved before tick boxes existed: start from what's ticked by default.
       if (found?.access && !current) setTicked(new Set(found.access.filter((a) => a.default).map((a) => a.id)));

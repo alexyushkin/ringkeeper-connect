@@ -128,11 +128,21 @@ before starting it.
 
 ## Meta (Meta Ads)
 
-Ringkeeper Connect has no Meta app of its own. Meta's ads server (`mcp.facebook.com/ads`) lets only
-the AI apps Meta approved register themselves, so an app is needed, and a Meta app's sign-in needs
-its **App secret**, which controls the whole app: shipped inside Ringkeeper Connect, anyone could
+Meta Ads runs Ringkeeper Connect's own Meta Ads tools (packages/tools, Meta's Marketing API), with a
+pasted access token or a sign-in. Meta's own ads server (`mcp.facebook.com/ads`) isn't used: it
+lets in only the AI apps Meta approved (a System User token with every ads permission got 401, and a
+Marketing API app can't even ask for its `ads_mcp_management`).
+
+**Signing in** needs a Meta app, and Ringkeeper Connect has none of its own: a Meta app's sign-in
+needs its **App secret**, which controls the whole app: shipped inside Ringkeeper Connect, anyone could
 take it out. So, as in Ringkeeper, each agency makes its own Meta app (free, about 10 minutes) and
 pastes its App ID and App secret under "Your own apps". The secret stays encrypted on that computer.
+The app: use case **Create & manage ads with Marketing API**, with `business_management`,
+`ads_read` and `ads_management`; `yushkin.us` under App Domains and a Website platform with Site
+URL `https://yushkin.us/` (without them Meta says "Can't load URL"); the return page under Facebook
+Login for Business > Valid OAuth Redirect URIs. The sign-in asks for `business_management` and
+`ads_read`, plus `ads_management` when pausing is ticked. A Meta Ads tool brought in from an AI app
+(Meta's ads server) becomes the built-in tools when you click Sign in.
 
 Meta only takes https return addresses, so the sign-in comes back through
 `https://yushkin.us/ringkeeper-connect/oauth/callback`, a static page (yushkin.us repo,

@@ -1753,8 +1753,8 @@
       "beta": true,
       "notes": [
         "An access token is quickest if you have one: a System User token from Meta Business Settings doesn't run out.",
-        "With a token, the AI reads ad accounts, campaigns and reports. If you tick it, it can also pause campaigns, ad sets and ads, and Ringkeeper Connect asks you first each time. It can't create ads or change budgets.",
-        "Signing in goes through your own Meta app, because Meta lets only the AI apps it approved sign in to its ads server. A client's ad accounts then need Meta's app review for your app, and a sign-in lasts about 60 days."
+        "The AI reads ad accounts, campaigns and reports. If you tick it, it can also pause campaigns, ad sets and ads, and Ringkeeper Connect asks you first each time. It can't create ads or change budgets.",
+        "Signing in instead goes through a Meta app of your own (free, about 10 minutes to set up) and lasts about 60 days. A client's ad accounts may need Meta's app review for your app first."
       ],
       "options": [
         {
@@ -1803,12 +1803,29 @@
         {
           "id": "signin",
           "label": "Sign in with Meta",
-          "kind": "remote",
+          "kind": "local",
+          "command": "ringkeeper-tools",
+          "args": [
+            "meta-ads"
+          ],
           "auth": "oauth",
           "app": "meta",
-          "url": "https://mcp.facebook.com/ads",
-          "scope": "ads_mcp_management ads_read ads_management catalog_management business_management pages_show_list instagram_basic",
-          "fields": []
+          "scope": "business_management",
+          "fields": [],
+          "access": [
+            {
+              "id": "ads_read",
+              "label": "Read ad accounts, campaigns and reports",
+              "scope": "ads_read",
+              "default": true
+            },
+            {
+              "id": "ads_pause",
+              "label": "Pause campaigns, ad sets and ads",
+              "scope": "ads_management",
+              "note": "Ringkeeper Connect asks you before each pause."
+            }
+          ]
         }
       ]
     },

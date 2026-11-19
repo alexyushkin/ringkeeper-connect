@@ -329,7 +329,7 @@ function ServiceForm(props: {
       )}
 
       {unavailable && option.app === "meta" && (
-        <div className="notice info">{service.name} signs in through a Meta app of your own: Meta lets only the AI apps it approved sign in directly. Set one up first.</div>
+        <div className="notice info">Signing in to {service.name} goes through a Meta app of your own. Set one up first, or choose "Use an access token" above.</div>
       )}
       {unavailable && option.app !== "meta" && (
         <div className="notice info">
