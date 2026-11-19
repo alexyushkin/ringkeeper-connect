@@ -732,6 +732,16 @@ p.muted {
   color: var(--muted);
   padding: 0 8px;
 }
+.version .link {
+  font-size: 11px;
+  padding: 0;
+}
+.update-status {
+  margin-top: 2px;
+}
+.update-status.warn {
+  color: var(--warn);
+}
 
 /* ---------- real app status ---------- */
 .apps li {

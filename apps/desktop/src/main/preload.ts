@@ -41,6 +41,7 @@ const api: RingkeeperApi = {
   requestTool: call("requestTool") as RingkeeperApi["requestTool"],
   dismissPendingTool: call("dismissPendingTool") as RingkeeperApi["dismissPendingTool"],
   restartToUpdate: call("restartToUpdate") as RingkeeperApi["restartToUpdate"],
+  checkForUpdates: call("checkForUpdates") as RingkeeperApi["checkForUpdates"],
   onSignInLink: (listener) => {
     const handler = (_e: unknown, url: string) => listener(url);
     ipcRenderer.on(IPC.signInLink, handler);

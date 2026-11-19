@@ -56,6 +56,8 @@ export interface AppState {
   version: string;
   /** A downloaded update waiting for a restart. */
   updateReady?: string;
+  /** Where checking for updates is (installed copies only). */
+  update?: UpdateState;
   /** Installed build (not a development run). */
   packaged: boolean;
 }
@@ -184,6 +186,33 @@ export interface OwnAppInput {
   tenant?: string;
 }
 
+/** Checking for updates: what the window shows next to the version. */
+export type UpdateState =
+  | { status: "idle" }
+  | { status: "checking" }
+  | { status: "up-to-date"; checkedAt: string }
+  | { status: "downloading"; version: string }
+  | { status: "ready"; version: string }
+  | { status: "failed"; message: string };
+
+/** The few words next to the version for each state; null shows nothing. */
+export function updateStatusText(s: UpdateState | undefined): string | null {
+  switch (s?.status) {
+    case "checking":
+      return "Checking for updates…";
+    case "up-to-date":
+      return "Up to date.";
+    case "downloading":
+      return `Downloading ${s.version}…`;
+    case "ready":
+      return `${s.version} is ready.`;
+    case "failed":
+      return s.message;
+    default:
+      return null;
+  }
+}
+
 export type Result<T = void> = { ok: true; value: T } | { ok: false; error: string };
 
 export interface RingkeeperApi {
@@ -243,6 +272,8 @@ export interface RingkeeperApi {
   /** Opens an email (or the contact page) to ask for a tool that isn't in the catalog. */
   requestTool(searched: string): Promise<Result>;
   restartToUpdate(): Promise<Result>;
+  /** Check for an update now, and say how it went. */
+  checkForUpdates(): Promise<Result>;
   /** The sign-in address, sent while a sign-in waits, for a "copy link" fallback. */
   onSignInLink(listener: (url: string) => void): () => void;
   onStateChanged(listener: (state: AppState) => void): () => void;
