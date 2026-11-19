@@ -6,7 +6,7 @@ describe("the catalog data", () => {
     expect(validateCatalog(catalog)).toEqual([]);
   });
 
-  it("covers the MVP's tools, Twilio and the official servers Ringkeeper has (Meta Ads waits for an approved app of our own), with no Google services", () => {
+  it("covers the MVP's tools, Twilio, the official servers Ringkeeper has and a Google account (Meta Ads waits for an approved app of our own)", () => {
     expect(catalog.services.map((s) => s.id).sort()).toEqual(
       [
         "n8n", "supabase", "airtable", "notion", "stripe",
@@ -15,10 +15,11 @@ describe("the catalog data", () => {
         "wordpress-com", "wordpress", "webflow", "wix", "paypal", "trello", "atlassian", "linear", "canva",
         "calendly", "calcom", "tavily", "apify", "elevenlabs", "twilio",
         "sentry", "cloudflare", "posthog", "attio", "freshbooks", "zoho-books", "odoo", "sanity", "contentful", "strapi", "payload",
-        "mollie", "paddle", "gocardless", "pipeboard",
+        "mollie", "paddle", "gocardless", "pipeboard", "google",
       ].sort(),
     );
-    expect(JSON.stringify(catalog)).not.toMatch(/google/i);
+    // Google only as our own tools, signed in through our own Google app: no Google servers.
+    for (const s of catalog.services) for (const o of s.options) if (JSON.stringify(o).match(/google/i)) expect(o, `${s.id}/${o.id}`).toMatchObject({ kind: "local", command: "ringkeeper-tools", app: "google" });
   });
 
   it("puts every tool in a known group, and marks the ones not yet tried with a real sign-in as Beta", () => {
@@ -31,6 +32,11 @@ describe("the catalog data", () => {
     for (const s of catalog.services) {
       for (const o of s.options) {
         if (o.kind === "local") {
+          // Our own tools program ships with the app; it signs in through our app, with no key to paste.
+          if (o.command === "ringkeeper-tools") {
+            expect(o.fields.filter((f) => f.secret), `${s.id}/${o.id}`).toEqual([]);
+            continue;
+          }
           // A program on this computer: pinned to one version.
           expect(o.args.join(" "), `${s.id}/${o.id}`).toMatch(/==\d|@\d/);
           continue;

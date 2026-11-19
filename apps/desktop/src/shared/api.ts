@@ -154,6 +154,8 @@ export interface RingkeeperApi {
     optionId: string,
     answers: Record<string, string>,
     name?: string,
+    /** The ticked "what the AI may do" boxes, for a tool that has them. */
+    access?: string[],
   ): Promise<Result<{ connectionId: string; needsSignIn: boolean }>>;
   signIn(clientId: string, connectionId: string): Promise<Result>;
   cancelSignIn(): Promise<Result>;

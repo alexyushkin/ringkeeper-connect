@@ -29,6 +29,7 @@ import { bridgeHome } from "./bridge-copy.js";
 import { CatalogActionError, CatalogActions } from "./catalog.js";
 import { Updates } from "./updates.js";
 import { SignInFinder } from "./sign-in-finder.js";
+import { registeredApps } from "./registered-apps.js";
 
 const dataDir = resolveDataDir();
 const files = dataFiles(dataDir);
@@ -94,6 +95,7 @@ async function start(): Promise<void> {
   const runtimes = bundledRuntimes({ packaged: app.isPackaged, resourcesPath: process.resourcesPath, appDir: join(__dirname, "..") });
   const oauthStore = secretOAuthStore(secrets);
   catalogActions = new CatalogActions({
+    apps: registeredApps(),
     store,
     gateway: () => gateway,
     oauthStore,
@@ -155,7 +157,13 @@ async function start(): Promise<void> {
     log,
     onActiveClientChanged: onSwitched,
     onStatusChanged: () => scheduleRefresh(),
-    upstreamEnv: { runtimes, oauthStore },
+    upstreamEnv: {
+      runtimes,
+      oauthStore,
+      apps: registeredApps(),
+      // Ringkeeper Connect's own tools: next to the app when installed, next to main.cjs in development.
+      toolsProgram: app.isPackaged ? join(process.resourcesPath, "tools.mjs") : join(__dirname, "tools.mjs"),
+    },
     onAppContact: (contact) => apps.recordContact(contact),
   });
   log({ ev: "runtimes", node: !!runtimes.nodeDir, uv: !!runtimes.uvDir });
@@ -442,8 +450,8 @@ function registerIpc(): void {
       else void shell.openPath(dirname(p));
     },
     catalogServices: () => catalogActions.services(),
-    addFromCatalog: (clientId: string, serviceId: string, optionId: string, answers: Record<string, string>, name?: string) => {
-      const added = catalogActions.add(clientId, serviceId, optionId, answers, name);
+    addFromCatalog: (clientId: string, serviceId: string, optionId: string, answers: Record<string, string>, name?: string, access?: string[]) => {
+      const added = catalogActions.add(clientId, serviceId, optionId, answers, name, Array.isArray(access) ? access.map(String) : undefined);
       dropPendingTool(clientId, serviceId);
       return added;
     },

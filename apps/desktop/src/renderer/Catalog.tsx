@@ -167,11 +167,26 @@ function ServiceForm(props: {
   // Shown inside the form, where the user is looking.
   const [error, setError] = useState<string | null>(null);
   const option = options.find((o) => o.id === optionId)!;
-  const usesSignIn = option.kind === "remote" && option.auth === "oauth";
+  const usesSignIn = option.auth === "oauth";
+  // Needs a registered app (Google, Microsoft) this build doesn't have.
+  const unavailable = !!option.unavailable;
+  const vendor = option.app === "microsoft" ? "Microsoft" : "Google";
+  // What the AI may do (a Google account): one tick box each, some ticked to begin with.
+  const [access, setAccess] = useState<Record<string, Set<string>>>({});
+  const ticked = access[option.id] ?? new Set((option.access ?? []).filter((a) => a.default).map((a) => a.id));
+  const toggle = (id: string, on: boolean) =>
+    setAccess((all) => {
+      const next = new Set(ticked);
+      if (on) next.add(id);
+      else next.delete(id);
+      return { ...all, [option.id]: next };
+    });
+  const nothingTicked = !!option.access && ticked.size === 0;
 
   async function submit() {
     setBusy(true);
-    const r = await api().addFromCatalog(client.id, service.id, option.id, answers, name);
+    const chosen = option.access ? option.access.filter((a) => ticked.has(a.id)).map((a) => a.id) : undefined;
+    const r = await api().addFromCatalog(client.id, service.id, option.id, answers, name, chosen);
     setBusy(false);
     if (!r.ok) {
       setError(r.error);
@@ -240,13 +255,41 @@ function ServiceForm(props: {
         </div>
       ))}
 
+      {option.access && (
+        <fieldset className="choice access">
+          <legend>What may the AI do?</legend>
+          {option.access.map((a) => (
+            <label key={a.id}>
+              <input type="checkbox" checked={ticked.has(a.id)} onChange={(e) => toggle(a.id, e.target.checked)} /> {a.label}
+              {a.note && <span className="hint"> {a.note}</span>}
+            </label>
+          ))}
+          {nothingTicked && <span className="hint">Tick at least one.</span>}
+        </fieldset>
+      )}
+
       {error && (
         <div className="notice bad" role="alert">
           {error}
         </div>
       )}
 
-      {usesSignIn && (
+      {unavailable && (
+        <div className="notice info">
+          Signing in to {service.name} needs Ringkeeper Connect's own {vendor} sign-in, which isn't in this version yet. It's coming in an update.
+        </div>
+      )}
+
+      {usesSignIn && !unavailable && option.app && (
+        <ol className="steps sign-in-steps">
+          <li>
+            Click Continue. {vendor} opens in your browser: choose <strong>{client.name}'s</strong> account there, or add it.
+          </li>
+          <li>Allow what you ticked, then come back here.</li>
+        </ol>
+      )}
+
+      {usesSignIn && !unavailable && !option.app && (
         <ol className="steps sign-in-steps">
           <li>
             In your browser, sign in to {service.name} with <strong>{client.name}'s</strong> account.
@@ -259,7 +302,7 @@ function ServiceForm(props: {
         <button type="button" onClick={props.onBack}>
           Back
         </button>
-        <button type="submit" className="primary" disabled={busy || !name.trim()}>
+        <button type="submit" className="primary" disabled={busy || !name.trim() || unavailable || nothingTicked}>
           {usesSignIn ? "Continue" : "Add tool"}
         </button>
       </div>

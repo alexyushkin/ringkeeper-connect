@@ -5,6 +5,7 @@ import { build } from "esbuild";
 const entries = {
   gateway: "packages/gateway/src/main.ts",
   bridge: "packages/bridge/src/main.ts",
+  tools: "packages/tools/src/main.ts",
   "fixture-server": "spike/fixture-server.ts",
   "spike-tools": "spike/tools.ts",
   "fake-vendor": "spike/fake-vendor.ts",

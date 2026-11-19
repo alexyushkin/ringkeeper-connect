@@ -21,6 +21,10 @@ export interface StoredLocalConnection extends StoredBase {
   command: string;
   args: string[];
   env: Record<string, StoredValue>;
+  /** Signs in through a registered app (built-in tools): the program gets a fresh access token. */
+  auth?: "oauth";
+  oauthApp?: string;
+  scope?: string;
 }
 export interface StoredRemoteConnection extends StoredBase {
   kind: "remote";
@@ -29,6 +33,9 @@ export interface StoredRemoteConnection extends StoredBase {
   transport?: "sse";
   /** Signs in with OAuth instead of (or as well as) keys. */
   auth?: "oauth";
+  /** Sign in through Ringkeeper Connect's registered app with this vendor (Google, Microsoft), and these permissions. */
+  oauthApp?: string;
+  scope?: string;
   headers: Record<string, StoredValue>;
 }
 export type StoredConnection = StoredLocalConnection | StoredRemoteConnection;
@@ -76,8 +83,8 @@ export interface FieldInput {
 }
 
 export type ConnectionInput =
-  | { kind: "local"; name: string; command: string; args: string[]; fields: FieldInput[] }
-  | { kind: "remote"; name: string; url: string; transport?: "sse"; auth?: "oauth"; fields: FieldInput[] };
+  | { kind: "local"; name: string; command: string; args: string[]; auth?: "oauth"; oauthApp?: string; scope?: string; fields: FieldInput[] }
+  | { kind: "remote"; name: string; url: string; transport?: "sse"; auth?: "oauth"; oauthApp?: string; scope?: string; fields: FieldInput[] };
 
 /** Secret values are never included; `isSet` says whether one is saved. */
 export interface FieldView {
@@ -88,7 +95,19 @@ export interface FieldView {
 }
 
 export type ConnectionView =
-  | { kind: "local"; id: string; name: string; command: string; args: string[]; fields: FieldView[]; missingKeys: string[] }
+  | {
+      kind: "local";
+      id: string;
+      name: string;
+      command: string;
+      args: string[];
+      auth?: "oauth";
+      oauthApp?: string;
+      scope?: string;
+      signedIn?: boolean;
+      fields: FieldView[];
+      missingKeys: string[];
+    }
   | {
       kind: "remote";
       id: string;
@@ -96,6 +115,8 @@ export type ConnectionView =
       url: string;
       transport?: "sse";
       auth?: "oauth";
+      oauthApp?: string;
+      scope?: string;
       /** For OAuth connections: a sign-in is saved. */
       signedIn?: boolean;
       fields: FieldView[];
@@ -112,6 +133,12 @@ export interface ClientView {
 export class StoreError extends Error {}
 
 /** Where a connection's OAuth sign-in is kept in the SecretStore. Deleted with the connection. */
+/** The registered app and permissions of a sign-in connection, when it has them. */
+function appOf(c: { oauthApp?: string; scope?: string } | { kind: string }): { oauthApp?: string; scope?: string } {
+  const x = c as { oauthApp?: string; scope?: string };
+  return { ...(x.oauthApp ? { oauthApp: x.oauthApp } : {}), ...(x.scope ? { scope: x.scope } : {}) };
+}
+
 export function oauthKey(clientId: string, connectionId: string): string {
   return `${clientId}/${connectionId}/~oauth`;
 }
@@ -218,7 +245,17 @@ export class ClientStore {
     );
     const missingKeys = fields.filter((f) => !f.isSet).map((f) => f.name);
     return conn.kind === "local"
-      ? { kind: "local", id: conn.id, name: conn.name, command: conn.command, args: [...conn.args], fields, missingKeys }
+      ? {
+          kind: "local",
+          id: conn.id,
+          name: conn.name,
+          command: conn.command,
+          args: [...conn.args],
+          ...(conn.auth ? { auth: conn.auth, signedIn: this.secrets.has(this.oauthKeyFor(conn)) } : {}),
+          ...appOf(conn),
+          fields,
+          missingKeys,
+        }
       : {
           kind: "remote",
           id: conn.id,
@@ -226,6 +263,7 @@ export class ClientStore {
           url: conn.url,
           ...(conn.transport ? { transport: conn.transport } : {}),
           ...(conn.auth ? { auth: conn.auth, signedIn: this.secrets.has(this.oauthKeyFor(conn)) } : {}),
+          ...appOf(conn),
           fields,
           missingKeys,
         };
@@ -255,13 +293,30 @@ export class ClientStore {
           }
           const base = { id: conn.id, name: conn.name, ...(missing.length ? { missingKeys: missing } : {}) };
           return conn.kind === "local"
-            ? { ...base, kind: "local", command: conn.command, args: [...conn.args], env: resolved }
+            ? {
+                ...base,
+                kind: "local",
+                command: conn.command,
+                args: [...conn.args],
+                env: resolved,
+                ...(conn.auth === "oauth"
+                  ? {
+                      oauth: { key: oauthKey(c.id, conn.id), ...(conn.oauthApp ? { app: conn.oauthApp } : {}), ...(conn.scope ? { scope: conn.scope } : {}) },
+                      needsSignIn: !this.secrets.has(oauthKey(c.id, conn.id)),
+                    }
+                  : {}),
+              }
             : {
                 ...base,
                 kind: "remote",
                 url: conn.url,
                 ...(conn.transport ? { transport: conn.transport } : {}),
-                ...(conn.auth === "oauth" ? { oauth: { key: oauthKey(c.id, conn.id) }, needsSignIn: !this.secrets.has(oauthKey(c.id, conn.id)) } : {}),
+                ...(conn.auth === "oauth"
+                  ? {
+                      oauth: { key: oauthKey(c.id, conn.id), ...(conn.oauthApp ? { app: conn.oauthApp } : {}), ...(conn.scope ? { scope: conn.scope } : {}) },
+                      needsSignIn: !this.secrets.has(oauthKey(c.id, conn.id)),
+                    }
+                  : {}),
                 headers: resolved,
               };
         }),
@@ -393,8 +448,8 @@ export class ClientStore {
     const fields = this.storeFields(clientId, id, input.fields);
     const conn: StoredConnection =
       input.kind === "local"
-        ? { kind: "local", id, name, command: input.command.trim(), args: input.args, env: fields }
-        : { kind: "remote", id, name, url: input.url.trim(), ...(input.transport ? { transport: input.transport } : {}), ...(input.auth ? { auth: input.auth } : {}), headers: fields };
+        ? { kind: "local", id, name, command: input.command.trim(), args: input.args, env: fields, ...(input.auth ? { auth: input.auth } : {}), ...appOf(input) }
+        : { kind: "remote", id, name, url: input.url.trim(), ...(input.transport ? { transport: input.transport } : {}), ...(input.auth ? { auth: input.auth } : {}), ...appOf(input), headers: fields };
     client.connections.push(conn);
     this.commit();
     return this.viewConnection(conn);
@@ -409,10 +464,34 @@ export class ClientStore {
     const fields = this.storeFields(clientId, connId, input.fields, fieldsOf(prev));
     const conn: StoredConnection =
       input.kind === "local"
-        ? { kind: "local", id: connId, name, command: input.command.trim(), args: input.args, env: fields }
-        : { kind: "remote", id: connId, name, url: input.url.trim(), ...(input.transport ? { transport: input.transport } : {}), ...(input.auth ? { auth: input.auth } : {}), headers: fields };
+        ? {
+            kind: "local",
+            id: connId,
+            name,
+            command: input.command.trim(),
+            args: input.args,
+            env: fields,
+            ...(input.auth ? { auth: input.auth } : {}),
+            // An edit keeps the registered app and permissions it was added with.
+            ...appOf(input.oauthApp || input.auth !== "oauth" || prev.kind !== "local" ? input : prev),
+          }
+        : {
+            kind: "remote",
+            id: connId,
+            name,
+            url: input.url.trim(),
+            ...(input.transport ? { transport: input.transport } : {}),
+            ...(input.auth ? { auth: input.auth } : {}),
+            // An edit (name, address) keeps the registered app and permissions it was added with.
+            ...appOf(input.oauthApp || input.auth !== "oauth" || prev.kind !== "remote" || input.url.trim() !== prev.url ? input : prev),
+            headers: fields,
+          };
     // A sign-in belongs to one address; a new address (or no more sign-in) needs a new one.
-    if (prev.kind === "remote" && (conn.kind !== "remote" || conn.url !== prev.url || conn.auth !== prev.auth)) {
+    // (A program signed in through a registered app: new permissions need a new sign-in too.)
+    if (
+      (prev.kind === "remote" && (conn.kind !== "remote" || conn.url !== prev.url || conn.auth !== prev.auth)) ||
+      (prev.kind === "local" && prev.auth === "oauth" && (conn.kind !== "local" || conn.auth !== prev.auth || conn.scope !== prev.scope))
+    ) {
       this.secrets.delete(oauthKey(clientId, connId));
     }
     client.connections[idx] = conn;
@@ -445,8 +524,8 @@ export class ClientStore {
     );
     const input: ConnectionInput =
       src.kind === "local"
-        ? { kind: "local", name, command: src.command, args: [...src.args], fields }
-        : { kind: "remote", name, url: src.url, ...(src.transport ? { transport: src.transport } : {}), ...(src.auth ? { auth: src.auth } : {}), fields };
+        ? { kind: "local", name, command: src.command, args: [...src.args], ...(src.auth ? { auth: src.auth } : {}), ...appOf(src), fields }
+        : { kind: "remote", name, url: src.url, ...(src.transport ? { transport: src.transport } : {}), ...(src.auth ? { auth: src.auth } : {}), ...appOf(src), fields };
     return this.addConnection(to.id, input);
   }
 }

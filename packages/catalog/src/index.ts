@@ -26,7 +26,33 @@ interface OptionBase {
   label: string;
   recommended?: boolean;
   fields: CatalogField[];
+  auth?: "oauth";
+  /** Set by the app when this build doesn't have the registered app the option needs. */
+  unavailable?: boolean;
+  /** Sign in through Ringkeeper Connect's own registered app with this vendor (it doesn't let apps register themselves). */
+  app?: RegisteredAppId;
+  /** Permissions to ask for, space-separated (always, on top of any ticked below). */
+  scope?: string;
+  /** What the user can let the AI do, one tick box each; each adds its permissions to the sign-in. */
+  access?: AccessChoice[];
 }
+
+/** One tick box: a thing the AI may do, and the vendor permission it needs. */
+export interface AccessChoice {
+  id: string;
+  label: string;
+  /** The vendor permission (scope) it needs. */
+  scope: string;
+  /** Ticked to begin with. */
+  default?: boolean;
+  /** A warning shown next to it. */
+  note?: string;
+}
+
+/** Ringkeeper Connect's own tools program (packages/tools): args[0] names the service. */
+export const BUILTIN_COMMAND = "ringkeeper-tools";
+/** The setting that tells the tools program which tick boxes were ticked (comma-separated). */
+export const ACCESS_SETTING = "RINGKEEPER_ACCESS";
 
 export interface RemoteOption extends OptionBase {
   kind: "remote";
@@ -36,8 +62,11 @@ export interface RemoteOption extends OptionBase {
   query?: Record<string, string>;
   /** Sent with every request; may contain {{FIELD}} placeholders. */
   headers?: Record<string, string>;
-  auth?: "oauth";
 }
+
+/** Vendors Ringkeeper Connect has registered apps with. */
+export const REGISTERED_APPS = ["google", "microsoft"] as const;
+export type RegisteredAppId = (typeof REGISTERED_APPS)[number];
 
 export interface LocalOption extends OptionBase {
   kind: "local";
@@ -110,6 +139,20 @@ export function validateCatalog(c: Catalog): string[] {
       const templates = o.kind === "remote" ? [o.url, ...Object.values(o.query ?? {}), ...Object.values(o.headers ?? {})] : [o.command, ...o.args, ...Object.values(o.env ?? {})];
       for (const t of templates) for (const id of refs(t)) if (!fieldIds.has(id)) problems.push(`${s.id}/${o.id}: {{${id}}} has no field`);
       if (o.kind === "remote" && !o.url.includes("{{") && !o.url.startsWith("https://")) problems.push(`${s.id}/${o.id}: address must be https`);
+      if (o.app && (o.auth !== "oauth" || !(REGISTERED_APPS as readonly string[]).includes(o.app))) problems.push(`${s.id}/${o.id}: registered app needs sign-in and a known app`);
+      // A program can't register itself with a vendor: its sign-in is always through our app.
+      if (o.kind === "local" && o.auth === "oauth" && !o.app) problems.push(`${s.id}/${o.id}: a program's sign-in needs a registered app`);
+      if (o.access) {
+        const seen = new Set<string>();
+        for (const a of o.access) {
+          if (seen.has(a.id) || !/^[a-z][a-z0-9_]*$/.test(a.id)) problems.push(`${s.id}/${o.id}: access "${a.id}" must be unique, lower case and plain`);
+          seen.add(a.id);
+          if (!a.scope.trim() || !a.label.trim()) problems.push(`${s.id}/${o.id}: access "${a.id}" needs a label and a permission`);
+        }
+        if (!o.access.some((a) => a.default)) problems.push(`${s.id}/${o.id}: tick at least one access to begin with`);
+        if (o.kind !== "local" || o.command !== BUILTIN_COMMAND) problems.push(`${s.id}/${o.id}: tick boxes are only for Ringkeeper Connect's own tools`);
+      }
+      if (o.kind === "local" && o.command === BUILTIN_COMMAND && !o.args[0]) problems.push(`${s.id}/${o.id}: name the built-in service`);
       if (o.kind === "local") {
         // The command and arguments are saved as plain text: a secret goes in `env` (kept secret)
         // and, if the program wants it as an argument, is referred to there as ${NAME}.
@@ -176,7 +219,7 @@ function fill(template: string, values: Record<string, string>): string {
  * Turn the user's answers into a connection for the client store. Keys stay
  * marked secret; headers that contain a secret become secret settings.
  */
-export function buildConnection(serviceId: string, optionId: string, answers: Record<string, string>, name?: string): ConnectionInput {
+export function buildConnection(serviceId: string, optionId: string, answers: Record<string, string>, name?: string, access?: string[]): ConnectionInput {
   const service = findService(serviceId);
   const option = service?.options.find((o) => o.id === optionId);
   if (!service || !option) throw new CatalogInputError("That service isn't in the catalog anymore. Update Ringkeeper Connect.");
@@ -194,8 +237,45 @@ export function buildConnection(serviceId: string, optionId: string, answers: Re
       if (v) url.searchParams.set(k, v);
     }
     const fields: FieldInput[] = Object.entries(option.headers ?? {}).map(([k, t]) => ({ name: k, value: fill(t, values), secret: usesSecret(t) }));
-    return { kind: "remote", name: connName, url: url.toString(), fields, ...(option.auth ? { auth: option.auth } : {}) };
+    return {
+      kind: "remote",
+      name: connName,
+      url: url.toString(),
+      fields,
+      ...(option.auth ? { auth: option.auth } : {}),
+      ...(option.app ? { oauthApp: option.app } : {}),
+      ...(option.scope ? { scope: option.scope } : {}),
+    };
   }
   const fields: FieldInput[] = Object.entries(option.env ?? {}).map(([k, t]) => ({ name: k, value: fill(t, values), secret: usesSecret(t) }));
-  return { kind: "local", name: connName, command: fill(option.command, values), args: option.args.map((a) => fill(a, values)), fields };
+  let scope = option.scope;
+  if (option.access) {
+    const chosen = chosenAccess(option.access, access);
+    fields.push({ name: ACCESS_SETTING, value: chosen.map((a) => a.id).join(","), secret: false });
+    scope = scopeFor(option.scope, chosen);
+  }
+  return {
+    kind: "local",
+    name: connName,
+    command: fill(option.command, values),
+    args: option.args.map((a) => fill(a, values)),
+    fields,
+    ...(option.auth ? { auth: option.auth } : {}),
+    ...(option.app ? { oauthApp: option.app } : {}),
+    ...(scope ? { scope } : {}),
+  };
+}
+
+/** The ticked boxes, in the catalog's order (the defaults when none were sent). */
+export function chosenAccess(choices: AccessChoice[], ids: string[] | undefined): AccessChoice[] {
+  const wanted = new Set(ids ?? choices.filter((a) => a.default).map((a) => a.id));
+  for (const id of wanted) if (!choices.some((a) => a.id === id)) throw new CatalogInputError("That permission isn't offered anymore. Update Ringkeeper Connect.");
+  const chosen = choices.filter((a) => wanted.has(a.id));
+  if (!chosen.length) throw new CatalogInputError("Tick at least one thing the AI may do.");
+  return chosen;
+}
+
+/** The permissions to sign in with: the fixed ones plus each ticked box's, without repeats. */
+export function scopeFor(base: string | undefined, chosen: AccessChoice[]): string {
+  return [...new Set([...(base ?? "").split(/\s+/), ...chosen.flatMap((a) => a.scope.split(/\s+/))].filter(Boolean))].join(" ");
 }
