@@ -1,7 +1,7 @@
 {
   "name": "@ringkeeper/desktop",
   "productName": "Ringkeeper Connect",
-  "version": "0.2.0-beta.10",
+  "version": "0.2.0-beta.11",
   "private": true,
   "description": "Connect each client's tools once and never switch again.",
   "author": "Alexey Yushkin",
