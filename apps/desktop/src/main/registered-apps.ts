@@ -4,6 +4,7 @@
 // environment variables. A build without them simply doesn't offer those
 // sign-ins.
 import type { RegisteredApp } from "@ringkeeper/gateway";
+import { META_RETURN_PAGE } from "../shared/api.js";
 
 /** Filled in by scripts/build-desktop.mjs (JSON of the names below); absent in tests and plain runs. */
 declare const __RK_APPS__: string | undefined;
@@ -46,6 +47,30 @@ export function microsoftApp(id: string, clientId: string, tenant = "common", lo
     tokenEndpoint: `${login}/${tenant}/oauth2/v2.0/token`,
     authParams: { prompt: "select_account" },
     scopeOnRefresh: true,
+  };
+}
+
+export const META_GRAPH = "https://graph.facebook.com/v27.0";
+
+/**
+ * A Meta app (Facebook Login for Business, with the "Create & manage ads with ads MCP server"
+ * use case) the agency made on Meta for Developers. There's no Ringkeeper Connect Meta app:
+ * its App secret would have to ship inside every copy, and Meta's secret controls the app.
+ * Meta wants the App secret
+ * for the token; it gives no way to renew a sign-in, so the first token is swapped for one
+ * lasting about 60 days.
+ */
+export function metaApp(id: string, appId: string, appSecret: string, graph = META_GRAPH, dialog = "https://www.facebook.com/v27.0/dialog/oauth"): RegisteredApp {
+  return {
+    id,
+    clientId: appId,
+    clientSecret: appSecret,
+    authorizationEndpoint: dialog,
+    tokenEndpoint: `${graph}/oauth/access_token`,
+    returnPage: META_RETURN_PAGE,
+    scopeSeparator: ",",
+    tokenByGet: true,
+    longLivedExchange: true,
   };
 }
 

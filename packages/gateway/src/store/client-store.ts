@@ -72,7 +72,7 @@ export interface Settings {
 }
 
 export interface OwnAppRecord {
-  /** "google:<slug>" or "microsoft:<slug>": what a connection's oauthApp names. */
+  /** "google:<slug>", "microsoft:<slug>" or "meta:<slug>": what a connection's oauthApp names. */
   id: string;
   vendor: OwnAppVendor;
   name: string;
@@ -81,7 +81,13 @@ export interface OwnAppRecord {
   tenant?: string;
 }
 
-export type OwnAppVendor = "google" | "microsoft";
+export type OwnAppVendor = "google" | "microsoft" | "meta";
+
+/** "Google", "Microsoft" or "Meta", from an app id ("google", "microsoft:agency"…), for messages. */
+export function vendorName(appId: string): string {
+  const vendor = appId.split(":")[0];
+  return vendor === "microsoft" ? "Microsoft" : vendor === "meta" ? "Meta" : "Google";
+}
 
 /** Where an own app's client secret is kept. "~" never appears in a client's id, so removing a client can't touch it. */
 export function ownAppSecretKey(appId: string): string {

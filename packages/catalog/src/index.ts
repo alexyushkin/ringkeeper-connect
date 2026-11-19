@@ -67,7 +67,8 @@ export interface RemoteOption extends OptionBase {
 }
 
 /** Vendors Ringkeeper Connect has registered apps with. */
-export const REGISTERED_APPS = ["google", "microsoft"] as const;
+/** "meta" is always the user's own Meta app: Ringkeeper Connect has none (its secret would ship in every copy). */
+export const REGISTERED_APPS = ["google", "microsoft", "meta"] as const;
 export type RegisteredAppId = (typeof REGISTERED_APPS)[number];
 
 export interface LocalOption extends OptionBase {

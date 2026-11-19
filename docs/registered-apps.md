@@ -64,7 +64,7 @@ These are the same steps Ringkeeper shows its users.
 **Unverified, published:** people see Google's warning and click "Advanced > Go to Ringkeeper
 Connect (unsafe)", and the app can sign in **100 accounts in its lifetime**, across everyone using
 it. That's fine for you and the first clients. For more: agencies use their own Google app (the
-same steps, in their own project, pasted into Ringkeeper Connect under "Your own Google and Microsoft apps"), or Ringkeeper Connect's app goes
+same steps, in their own project, pasted into Ringkeeper Connect under "Your own apps"), or Ringkeeper Connect's app goes
 through Google's verification (Gmail and Drive access are "restricted": a yearly paid security
 assessment). A client's Workspace admin may also have to trust the app's client ID.
 
@@ -99,7 +99,7 @@ Microsoft Partner Network ID, so the sign-in screen shows Ringkeeper Connect as 
 companies only allow verified apps, and some require their IT admin to approve any new app once.
 
 Agencies can also use their own Microsoft app: the same steps, in their own (or a client's) Entra
-directory, pasted into Ringkeeper Connect under "Your own Google and Microsoft apps". Ringkeeper
+directory, pasted into Ringkeeper Connect under "Your own apps". Ringkeeper
 Connect checks it with a silent sign-in (nobody is signed in, nothing is created): Microsoft only
 sends the browser back when the app exists, takes that directory's accounts and has the
 `http://127.0.0.1/callback` address.
@@ -116,3 +116,18 @@ In the repository: Settings > Secrets and variables > Actions.
 
 To try a development build on your computer, set the same three names as environment variables
 before starting it.
+
+## Meta (Meta Ads)
+
+Ringkeeper Connect has no Meta app of its own. Meta's ads server (`mcp.facebook.com/ads`) lets only
+the AI apps Meta approved register themselves, so an app is needed, and a Meta app's sign-in needs
+its **App secret**, which controls the whole app: shipped inside Ringkeeper Connect, anyone could
+take it out. So, as in Ringkeeper, each agency makes its own Meta app (free, about 10 minutes) and
+pastes its App ID and App secret under "Your own apps". The secret stays encrypted on that computer.
+
+Meta only takes https return addresses, so the sign-in comes back through
+`https://yushkin.us/ringkeeper-connect/oauth/callback`, a static page (yushkin.us repo,
+`public/ringkeeper-connect/oauth/callback/index.html`) that hands the code and state straight to
+`http://127.0.0.1:<port>/callback` on the same computer. The port travels at the front of the state;
+the page keeps nothing, and a code is no use without the app's secret and the sign-in's PKCE verifier.
+Meta gives no refresh token: the first token is swapped for one lasting about 60 days.

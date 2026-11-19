@@ -7,7 +7,11 @@
 //   client's), for a client whose IT admin only approves apps they know, or for their own
 //   name on Microsoft's sign-in page. Like ours it has no secret: just its client ID, and
 //   the directory it signs in to ("common" for any account).
-// Each Google or Microsoft account picks the app it signs in through when it's added.
+// - Meta: an app the agency made on Meta for Developers, for Meta Ads. Meta's own ads server
+//   only lets the AI apps it approved sign in, and there's no Ringkeeper Connect Meta app (its
+//   secret would ship in every copy), so Meta Ads always signs in through one of these. The
+//   App ID is kept in the settings, the App secret encrypted like a Google one.
+// Each Google, Microsoft or Meta account picks the app it signs in through when it's added.
 import {
   ownAppSecretKey,
   slug,
@@ -17,7 +21,7 @@ import {
   type RegisteredApp,
   type SecretStore,
 } from "@ringkeeper/gateway";
-import { GOOGLE_TOKEN_ENDPOINT, MICROSOFT_LOGIN, googleApp, microsoftApp } from "./registered-apps.js";
+import { GOOGLE_TOKEN_ENDPOINT, META_GRAPH, MICROSOFT_LOGIN, googleApp, metaApp, microsoftApp } from "./registered-apps.js";
 
 export class OwnAppsError extends Error {}
 
@@ -38,23 +42,29 @@ export interface OwnAppInput {
   vendor?: string;
   name?: string;
   clientId?: string;
-  /** Google only. Empty or left out on an edit: keep the saved one. */
+  /** Google and Meta. Empty or left out on an edit: keep the saved one. */
   clientSecret?: string;
   /** Microsoft only: a directory (tenant) ID or domain; empty for any account ("common"). */
   tenant?: string;
 }
 
 const MOST_APPS = 20;
-const LABEL: Record<OwnAppVendor, string> = { google: "Google", microsoft: "Microsoft" };
+const LABEL: Record<OwnAppVendor, string> = { google: "Google", microsoft: "Microsoft", meta: "Meta" };
+/** The own apps that have a secret (Microsoft's are public clients). */
+const hasSecret = (vendor: OwnAppVendor) => vendor !== "microsoft";
 
 function vendorOf(value: string | undefined): OwnAppVendor {
   if (value === undefined || value === "google") return "google";
-  if (value === "microsoft") return "microsoft";
-  throw new OwnAppsError("Ringkeeper Connect can use your own Google or Microsoft app only.");
+  if (value === "microsoft" || value === "meta") return value;
+  throw new OwnAppsError("Ringkeeper Connect can use your own Google, Microsoft or Meta app only.");
 }
 
 function cleanClientId(vendor: OwnAppVendor, value: string): string {
   const id = value.trim();
+  if (vendor === "meta") {
+    if (!/^\d{5,20}$/.test(id)) throw new OwnAppsError("That isn't a Meta App ID: it's a long number. Copy it from App settings > Basic on Meta for Developers.");
+    return id;
+  }
   if (vendor === "microsoft") {
     if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
       throw new OwnAppsError("That isn't a Microsoft Application (client) ID: it looks like 1a2b3c4d-1234-5678-9abc-1a2b3c4d5e6f. Copy it from the app's Overview page.");
@@ -67,8 +77,13 @@ function cleanClientId(vendor: OwnAppVendor, value: string): string {
   return id;
 }
 
-function cleanSecret(value: string): string {
+function cleanSecret(value: string, vendor: OwnAppVendor = "google"): string {
   const secret = value.replace(/\s+/g, "");
+  if (vendor === "meta") {
+    if (!secret) throw new OwnAppsError("Paste the App secret too: App settings > Basic, then Show next to App secret.");
+    if (!/^[0-9a-f]{32}$/i.test(secret)) throw new OwnAppsError("That isn't a Meta App secret: it's 32 letters and digits. Click Show next to App secret in App settings > Basic, and copy it.");
+    return secret;
+  }
   if (!secret) throw new OwnAppsError("Paste the client secret too. Google shows it when you create the client (and under Clients > the client).");
   if (secret.length > 500) throw new OwnAppsError("That's too long to be a Google client secret.");
   return secret;
@@ -157,6 +172,24 @@ export async function checkMicrosoftApp(clientId: string, tenant: string, fetchF
   );
 }
 
+/**
+ * Asks Meta for this app's own app token (client credentials): Meta gives one only for a
+ * matching App ID and secret. Nothing is created, and the token isn't kept.
+ */
+export async function checkMetaApp(appId: string, appSecret: string, fetchFn: typeof fetch = fetch, graph = META_GRAPH): Promise<void> {
+  const query = new URLSearchParams({ client_id: appId, client_secret: appSecret, grant_type: "client_credentials" });
+  let response: Response;
+  try {
+    response = await fetchFn(`${graph}/oauth/access_token?${query}`, { signal: AbortSignal.timeout(20_000) });
+  } catch {
+    throw new OwnAppsError("Couldn't reach Meta to check this app. Check this computer's internet connection and try again.");
+  }
+  const answer = (await response.json().catch(() => ({}))) as { access_token?: unknown };
+  if (!response.ok || typeof answer.access_token !== "string") {
+    throw new OwnAppsError("Meta didn't accept this App ID and App secret. Copy both again from App settings > Basic on Meta for Developers.");
+  }
+}
+
 export class OwnApps {
   constructor(
     private readonly deps: {
@@ -171,6 +204,8 @@ export class OwnApps {
       endpoints?: { authorizationEndpoint: string; tokenEndpoint: string };
       /** Microsoft's sign-in service unless a test says otherwise. */
       microsoftLogin?: string;
+      /** Meta's Graph API and sign-in dialog unless a test says otherwise. */
+      meta?: { graph: string; dialog: string };
     },
   ) {
     this.sync();
@@ -182,7 +217,7 @@ export class OwnApps {
 
   private users(id: string): Array<{ clientId: string; connectionId: string; label: string }> {
     return this.deps.store.list().flatMap((c) =>
-      c.connections.filter((conn) => conn.kind === "local" && conn.oauthApp === id).map((conn) => ({ clientId: c.id, connectionId: conn.id, label: `${c.name} > ${conn.name}` })),
+      c.connections.filter((conn) => conn.oauthApp === id).map((conn) => ({ clientId: c.id, connectionId: conn.id, label: `${c.name} > ${conn.name}` })),
     );
   }
 
@@ -197,7 +232,7 @@ export class OwnApps {
     }));
   }
 
-  /** Puts these apps into the apps sign-ins use (a Google app without its secret is left out). */
+  /** Puts these apps into the apps sign-ins use (a Google or Meta app without its secret is left out). */
   sync(): void {
     const apps = this.deps.apps;
     for (const id of Object.keys(apps)) if (id.includes(":")) delete apps[id];
@@ -207,7 +242,11 @@ export class OwnApps {
         continue;
       }
       const secret = this.secret(r.id);
-      if (secret) apps[r.id] = { ...googleApp(r.id, r.clientId, secret), ...this.deps.endpoints };
+      if (!secret) continue;
+      apps[r.id] =
+        r.vendor === "meta"
+          ? metaApp(r.id, r.clientId, secret, this.deps.meta?.graph, this.deps.meta?.dialog)
+          : { ...googleApp(r.id, r.clientId, secret), ...this.deps.endpoints };
     }
   }
 
@@ -220,6 +259,7 @@ export class OwnApps {
   }
 
   private check(vendor: OwnAppVendor, clientId: string, secretOrTenant: string): Promise<void> {
+    if (vendor === "meta") return checkMetaApp(clientId, secretOrTenant, this.deps.fetchFn, this.deps.meta?.graph);
     return vendor === "microsoft"
       ? checkMicrosoftApp(clientId, secretOrTenant, this.deps.fetchFn, this.deps.microsoftLogin)
       : checkGoogleClient(clientId, secretOrTenant, this.deps.fetchFn, this.deps.endpoints?.tokenEndpoint);
@@ -237,7 +277,7 @@ export class OwnApps {
     const label = LABEL[vendor];
     const name = this.cleanName(vendor, input.name ?? "");
     const clientId = cleanClientId(vendor, input.clientId ?? "");
-    const secret = vendor === "google" ? cleanSecret(input.clientSecret ?? "") : undefined;
+    const secret = hasSecret(vendor) ? cleanSecret(input.clientSecret ?? "", vendor) : undefined;
     const tenant = vendor === "microsoft" ? cleanTenant(input.tenant) : undefined;
     const records = this.records();
     const theirs = records.filter((r) => r.vendor === vendor);
@@ -278,8 +318,8 @@ export class OwnApps {
     }
     if (clientId !== current.clientId && records.some((r) => r.id !== id && r.vendor === vendor && r.clientId === clientId)) throw new OwnAppsError(`That ${label} app is already set up.`);
     let newSecret: string | undefined;
-    if (vendor === "google") {
-      newSecret = input.clientSecret && input.clientSecret.trim() ? cleanSecret(input.clientSecret) : undefined;
+    if (hasSecret(vendor)) {
+      newSecret = input.clientSecret && input.clientSecret.trim() ? cleanSecret(input.clientSecret, vendor) : undefined;
       if (moved && !newSecret) throw new OwnAppsError("Paste the new client's secret too.");
       if (newSecret || moved) {
         const secret = newSecret ?? this.secret(id);

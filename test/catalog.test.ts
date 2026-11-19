@@ -15,7 +15,7 @@ describe("the catalog data", () => {
         "wordpress-com", "wordpress", "webflow", "wix", "paypal", "trello", "atlassian", "linear", "canva",
         "calendly", "calcom", "tavily", "apify", "elevenlabs", "twilio",
         "sentry", "cloudflare", "posthog", "attio", "freshbooks", "zoho-books", "odoo", "sanity", "contentful", "strapi", "payload",
-        "mollie", "paddle", "gocardless", "pipeboard", "google", "microsoft",
+        "mollie", "paddle", "gocardless", "meta_ads", "pipeboard", "google", "microsoft",
       ].sort(),
     );
     // Google and Microsoft only as our own tools, signed in through our own apps: no servers of theirs.

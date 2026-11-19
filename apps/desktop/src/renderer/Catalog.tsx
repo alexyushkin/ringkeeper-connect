@@ -12,7 +12,7 @@ export function AddFromCatalog(props: { client: ClientView; run: Run; onAdvanced
   const [service, setService] = useState<CatalogService | null>(null);
   const [signing, setSigning] = useState<{ connectionId: string; name: string } | null>(null);
   // "Your own Google (or Microsoft) apps", opened from that account's form; back to the form after.
-  const [managingApps, setManagingApps] = useState<"google" | "microsoft" | null>(null);
+  const [managingApps, setManagingApps] = useState<"google" | "microsoft" | "meta" | null>(null);
 
   async function reloadServices() {
     const r = await props.run(api().catalogServices());
@@ -185,7 +185,7 @@ function ServiceForm(props: {
   onClose: () => void;
   onNeedsSignIn: (connectionId: string, name: string) => void;
   /** Opens "Your own Google apps" or "Your own Microsoft apps". */
-  onOwnApps: (vendor: "google" | "microsoft") => void;
+  onOwnApps: (vendor: "google" | "microsoft" | "meta") => void;
 }) {
   const { service, client } = props;
   const options = useMemo(() => [...service.options].sort((a, b) => Number(!!b.recommended) - Number(!!a.recommended)), [service]);
@@ -197,9 +197,9 @@ function ServiceForm(props: {
   const [error, setError] = useState<string | null>(null);
   const option = options.find((o) => o.id === optionId)!;
   const usesSignIn = option.auth === "oauth";
-  // Needs a registered app (Google, Microsoft) this build doesn't have.
+  // Needs a registered app (Google, Microsoft, Meta) this build doesn't have and the user hasn't added.
   const unavailable = !!option.unavailable;
-  const vendor = option.app === "microsoft" ? "Microsoft" : "Google";
+  const vendor = option.app === "microsoft" ? "Microsoft" : option.app === "meta" ? "Meta" : "Google";
   // What the AI may do (a Google account): one tick box each, some ticked to begin with.
   const [access, setAccess] = useState<Record<string, Set<string>>>({});
   const ticked = access[option.id] ?? new Set((option.access ?? []).filter((a) => a.default).map((a) => a.id));
@@ -215,7 +215,7 @@ function ServiceForm(props: {
   const appChoices = option.signInApps ?? [];
   const [appId, setAppId] = useState<string | undefined>(undefined);
   const chosenApp = appChoices.find((a) => a.id === appId)?.id ?? appChoices[0]?.id;
-  const ownAppsVendor = option.app === "google" || option.app === "microsoft" ? option.app : undefined;
+  const ownAppsVendor = option.app === "google" || option.app === "microsoft" || option.app === "meta" ? option.app : undefined;
 
   async function submit() {
     setBusy(true);
@@ -319,7 +319,10 @@ function ServiceForm(props: {
         </fieldset>
       )}
 
-      {unavailable && (
+      {unavailable && option.app === "meta" && (
+        <div className="notice info">{service.name} signs in through a Meta app of your own: Meta lets only the AI apps it approved sign in directly. Set one up first.</div>
+      )}
+      {unavailable && option.app !== "meta" && (
         <div className="notice info">
           Signing in to {service.name} needs Ringkeeper Connect's own {vendor} sign-in, which isn't in this version yet.{" "}
           {ownAppsVendor ? `You can sign in through your own ${vendor} app instead.` : "It's coming in an update."}
@@ -332,7 +335,16 @@ function ServiceForm(props: {
         </button>
       )}
 
-      {usesSignIn && !unavailable && option.app && (
+      {usesSignIn && !unavailable && option.app === "meta" && (
+        <ol className="steps sign-in-steps">
+          <li>
+            Click Continue. Facebook opens in your browser: sign in with the profile that manages <strong>{client.name}'s</strong> ad accounts.
+          </li>
+          <li>Allow access, then come back here.</li>
+        </ol>
+      )}
+
+      {usesSignIn && !unavailable && option.app && option.app !== "meta" && (
         <ol className="steps sign-in-steps">
           <li>
             Click Continue. {vendor} opens in your browser: choose <strong>{client.name}'s</strong> account there, or add it.

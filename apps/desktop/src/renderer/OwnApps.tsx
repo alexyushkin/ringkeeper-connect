@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ENTRA_APP_REGISTRATIONS, GOOGLE_APIS, GOOGLE_CONSOLE, MICROSOFT_RETURN_ADDRESS, type OwnAppView, type Result } from "../shared/api";
+import { ENTRA_APP_REGISTRATIONS, GOOGLE_APIS, GOOGLE_CONSOLE, META_APPS, META_RETURN_PAGE, MICROSOFT_RETURN_ADDRESS, type OwnAppView, type Result } from "../shared/api";
 
 type Run = <T>(p: Promise<Result<T>>) => Promise<{ value: T } | null>;
 type Vendor = OwnAppView["vendor"];
@@ -9,23 +9,23 @@ const api = () => window.ringkeeper;
 const ACCOUNT_CAP = 100;
 const HOMEPAGE = "https://yushkin.us/ringkeeper-connect";
 const PRIVACY = "https://yushkin.us/ringkeeper-connect/privacy";
-const LABEL: Record<Vendor, string> = { google: "Google", microsoft: "Microsoft" };
+const LABEL: Record<Vendor, string> = { google: "Google", microsoft: "Microsoft", meta: "Meta" };
 /** What every Microsoft sign-in asks for, before what's ticked. */
 const MICROSOFT_ALWAYS = ["openid", "profile", "email", "offline_access", "User.Read"];
 
 /**
- * "Your own Google and Microsoft apps": an app in the agency's own Google Cloud project or
- * Microsoft Entra directory, which Google and Microsoft account tools can sign in through
- * instead of Ringkeeper Connect's. With a vendor, only that one's apps (from "Add a tool").
+ * "Your own apps": an app in the agency's own Google Cloud project, Microsoft Entra
+ * directory or Meta for Developers account, which Google, Microsoft 365 and Meta Ads tools
+ * sign in through (instead of Ringkeeper Connect's; Meta Ads always needs one). With a vendor, only that one's apps (from "Add a tool").
  * The body of a dialog; the caller puts it in one.
  */
 export function OwnApps(props: { run: Run; onDone: () => void; doneLabel?: string; vendor?: Vendor }) {
   const [apps, setApps] = useState<OwnAppView[] | null>(null);
   const [editing, setEditing] = useState<{ vendor: Vendor; app?: OwnAppView } | null>(null);
-  const [scopes, setScopes] = useState<Record<Vendor, string[]>>({ google: [], microsoft: [] });
+  const [scopes, setScopes] = useState<Record<Vendor, string[]>>({ google: [], microsoft: [], meta: [] });
   // Shown here, where the user is looking.
   const [error, setError] = useState<string | null>(null);
-  const vendors: Vendor[] = props.vendor ? [props.vendor] : ["google", "microsoft"];
+  const vendors: Vendor[] = props.vendor ? [props.vendor] : ["google", "microsoft", "meta"];
 
   async function reload() {
     const r = await api().listOwnApps();
@@ -43,9 +43,11 @@ export function OwnApps(props: { run: Run; onDone: () => void; doneLabel?: strin
         const of = (id: string) => (r.value.find((s) => s.id === id)?.options[0]?.access ?? []).flatMap((a) => a.scope.split(/\s+/));
         const google = of("google");
         const microsoft = of("microsoft");
+        const meta = (r.value.find((s) => s.id === "meta_ads")?.options[0]?.scope ?? "").split(/\s+/).filter(Boolean);
         setScopes({
           google: google.length ? ["openid", "https://www.googleapis.com/auth/userinfo.email", ...new Set(google)] : [],
           microsoft: microsoft.length ? [...new Set([...MICROSOFT_ALWAYS, ...microsoft])] : [],
+          meta,
         });
       });
   }, []);
@@ -74,7 +76,7 @@ export function OwnApps(props: { run: Run; onDone: () => void; doneLabel?: strin
 
   return (
     <>
-      <h2>{props.vendor ? `Your own ${LABEL[props.vendor]} apps` : "Your own Google and Microsoft apps"}</h2>
+      <h2>{props.vendor ? `Your own ${LABEL[props.vendor]} apps` : "Your own apps"}</h2>
       {vendors.includes("google") && (
         <p className="muted small">
           Google account tools sign in through Ringkeeper Connect's own Google app. Use one in your own Google Cloud project instead when you'll connect more than {ACCOUNT_CAP}{" "}
@@ -85,6 +87,11 @@ export function OwnApps(props: { run: Run; onDone: () => void; doneLabel?: strin
         <p className="muted small">
           Microsoft 365 tools sign in through Ringkeeper Connect's own Microsoft app. Use one in your own Microsoft Entra directory (or a client's) when a client's IT admin only
           approves apps they know, or to show your agency's name on Microsoft's sign-in page.
+        </p>
+      )}
+      {vendors.includes("meta") && (
+        <p className="muted small">
+          Meta Ads signs in through a Meta app of your own: Meta lets only the AI apps it approved sign in to its ads server directly.
         </p>
       )}
       {error && (
@@ -150,6 +157,7 @@ export function OwnApps(props: { run: Run; onDone: () => void; doneLabel?: strin
 function AppForm(props: { vendor: Vendor; app?: OwnAppView; scopes: string[]; run: Run; onDone: () => void }) {
   const editing = props.app;
   const microsoft = props.vendor === "microsoft";
+  const meta = props.vendor === "meta";
   const label = LABEL[props.vendor];
   const [name, setName] = useState(editing?.name ?? "");
   const [clientId, setClientId] = useState(editing?.clientId ?? "");
@@ -178,17 +186,24 @@ function AppForm(props: { vendor: Vendor; app?: OwnAppView; scopes: string[]; ru
       }}
     >
       <h2>{editing ? `Edit ${editing.name}` : `Add your own ${label} app`}</h2>
-      {!editing && (microsoft ? <MicrosoftSteps scopes={props.scopes} run={props.run} /> : <GoogleSteps scopes={props.scopes} run={props.run} />)}
+      {!editing &&
+        (microsoft ? (
+          <MicrosoftSteps scopes={props.scopes} run={props.run} />
+        ) : meta ? (
+          <MetaSteps scopes={props.scopes} run={props.run} />
+        ) : (
+          <GoogleSteps scopes={props.scopes} run={props.run} />
+        ))}
       <label className="field">
         <span>Name in Ringkeeper Connect</span>
         <input value={name} placeholder={`e.g. Our agency's ${label} app`} onChange={(e) => setName(e.target.value)} />
       </label>
       <label className="field">
-        <span>{microsoft ? "Application (client) ID" : "Client ID"}</span>
+        <span>{microsoft ? "Application (client) ID" : meta ? "App ID" : "Client ID"}</span>
         <input
           value={clientId}
           autoComplete="off"
-          placeholder={microsoft ? "1a2b3c4d-…" : "…apps.googleusercontent.com"}
+          placeholder={microsoft ? "1a2b3c4d-…" : meta ? "1234567890123456" : "…apps.googleusercontent.com"}
           disabled={inUse}
           onChange={(e) => setClientId(e.target.value)}
         />
@@ -205,9 +220,9 @@ function AppForm(props: { vendor: Vendor; app?: OwnAppView; scopes: string[]; ru
         </label>
       ) : (
         <label className="field">
-          <span>Client secret</span>
+          <span>{meta ? "App secret" : "Client secret"}</span>
           <input type="password" value={secret} autoComplete="off" placeholder={editing ? "Leave empty to keep the saved one" : ""} onChange={(e) => setSecret(e.target.value)} />
-          <span className="hint">Kept encrypted on this computer. Ringkeeper Connect checks both with Google before saving.</span>
+          <span className="hint">Kept encrypted on this computer. Ringkeeper Connect checks both with {label} before saving.</span>
         </label>
       )}
       {error && (
@@ -330,6 +345,39 @@ function MicrosoftSteps(props: { scopes: string[]; run: Run }) {
       <div className="notice info small">
         A client's IT admin may have to approve your app once before their accounts can sign in (Microsoft says "Need admin approval"). Personal Microsoft accounts sign in
         straight away.
+      </div>
+    </details>
+  );
+}
+
+/** How to make a Meta app for Meta Ads (as Ringkeeper's), and what to expect of it. */
+function MetaSteps(props: { scopes: string[]; run: Run }) {
+  return (
+    <details className="own-app-steps">
+      <summary>How to create one (about 10 minutes, free)</summary>
+      <ol className="steps">
+        <li>
+          Open{" "}
+          <button type="button" className="link inline" onClick={() => void props.run(api().openLink(META_APPS))}>
+            My Apps on Meta for Developers ↗
+          </button>{" "}
+          signed in with your own Facebook account, and click Create app. Name it after your agency.
+        </li>
+        <li>
+          Under Use cases, add <strong>Create &amp; manage ads with ads MCP server</strong>. Click Customize and add each of these permissions (a missing one stops the
+          sign-in with "Invalid Scopes"):
+          <Scopes scopes={props.scopes} />
+        </li>
+        <li>
+          Open Facebook Login for Business, then Settings (add that product first if it isn't there). Paste <Copyable text={META_RETURN_PAGE} /> under Valid OAuth Redirect
+          URIs, then Save changes. That page hands the sign-in straight back to this computer and keeps nothing.
+        </li>
+        <li>Keep yourself under App roles: until Meta reviews the app, only people with a role can sign in.</li>
+        <li>Open App settings, then Basic. Copy the App ID, and the App secret (click Show), and paste both below.</li>
+      </ol>
+      <div className="notice info small">
+        Ad accounts your own business owns work straight away. A client's ad accounts need Meta's app review for your app first (Advanced Access to ads_mcp_management). Each
+        sign-in lasts about 60 days, then you sign in again.
       </div>
     </details>
   );

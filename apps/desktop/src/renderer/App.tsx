@@ -156,7 +156,7 @@ export function App() {
           </label>
         )}
         <button className="link small left own-apps-link" onClick={() => setDialog({ kind: "own-apps" })}>
-          Your own Google and Microsoft apps
+          Your own apps
         </button>
         <div className="version">Version {state.version}</div>
       </aside>
@@ -412,7 +412,7 @@ function Dialogs(props: {
     case "own-apps":
       return (
         <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && close()}>
-          <div className="modal wide" role="dialog" aria-modal="true" aria-label="Your own Google and Microsoft apps">
+          <div className="modal wide" role="dialog" aria-modal="true" aria-label="Your own apps">
             <OwnApps run={run} onDone={close} />
           </div>
         </div>

@@ -11,6 +11,7 @@ import { OAuthError } from "@modelcontextprotocol/sdk/server/auth/errors.js";
 import type { ClientConfig, ConnectionConfig } from "./config.js";
 import { NeedsSignInError, StoredOAuthProvider, directAccessToken, type OAuthStateStore, type RegisteredApp } from "./oauth.js";
 import { BUILTIN_TOOLS_COMMAND } from "./config.js";
+import { vendorName } from "./store/client-store.js";
 import { resolveLaunch, type BundledRuntimes } from "./runtimes.js";
 import type { Logger } from "./log.js";
 
@@ -87,7 +88,7 @@ export class Upstream {
       // Needs a registered app this version of Ringkeeper Connect doesn't have, or one of the user's own that's gone.
       this.status = "needs_signin";
       this.error = conn.oauth.app.includes(":")
-        ? `${conn.name} for ${owner.name} signs in through a ${conn.oauth.app.startsWith("microsoft:") ? "Microsoft" : "Google"} app that isn't set up on this computer anymore. Add it again under "Your own Google and Microsoft apps" in Ringkeeper Connect.`
+        ? `${conn.name} for ${owner.name} signs in through a ${vendorName(conn.oauth.app)} app that isn't set up on this computer anymore. Add it again under "Your own apps" in Ringkeeper Connect.`
         : `${conn.name} for ${owner.name} needs a newer version of Ringkeeper Connect. Update it, then sign in under ${owner.name} > ${conn.name}.`;
     } else if (conn.needsSignIn) {
       this.status = "needs_signin";

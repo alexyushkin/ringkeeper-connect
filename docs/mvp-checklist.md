@@ -107,7 +107,7 @@ Needs a build made after `RINGKEEPER_MICROSOFT_CLIENT_ID` is in the repository's
 
 Works in any build, including one without Ringkeeper Connect's Google app.
 
-1. Sidebar > **Your own Google and Microsoft apps** > Add a Google app. Follow "How to create one" (the links open
+1. Sidebar > **Your own apps** > Add a Google app. Follow "How to create one" (the links open
    the right Google Cloud pages), paste the client ID and secret, Save. A wrong secret is refused
    before saving ("Google didn't accept this client ID and secret").
 2. Add a tool > Google account: "Sign in through" lists Ringkeeper Connect's app (when the build
@@ -123,7 +123,7 @@ Works in any build, including one without Ringkeeper Connect's Google app.
 Works in any build, including one without Ringkeeper Connect's Microsoft app. You need a work
 Microsoft account to register the app in Microsoft Entra (free).
 
-1. Sidebar > **Your own Google and Microsoft apps** > Add a Microsoft app. Follow "How to create
+1. Sidebar > **Your own apps** > Add a Microsoft app. Follow "How to create
    one" (App registrations opens in the Entra admin center), paste the Application (client) ID,
    leave the directory empty, Save. Ringkeeper Connect checks with Microsoft first, without
    signing anyone in.
@@ -135,3 +135,20 @@ Microsoft account to register the app in Microsoft Entra (free).
 5. A client's work account may hit "Need admin approval": their IT admin approves the app once.
 6. Your app can't be removed, or have its ID or directory changed, while a tool signs in through
    it.
+
+## 8. Meta Ads (your own Meta app)
+
+Needs the return page live first: `https://yushkin.us/ringkeeper-connect/oauth/callback` (in the
+yushkin.us repo, `public/ringkeeper-connect/oauth/callback/index.html`).
+
+1. Sidebar > **Your own apps** > Add a Meta app. Follow "How to create one": a Meta app with the
+   use case "Create & manage ads with ads MCP server", its permissions added, the return page
+   under Facebook Login for Business > Settings > Valid OAuth Redirect URIs, and you under App
+   roles. Paste the App ID and App secret, Save. A wrong secret is refused before saving.
+2. Add a tool > **Meta Ads** > Continue. Facebook opens; sign in and allow. The browser goes to
+   the yushkin.us page and straight back to Ringkeeper Connect ("You're signed in").
+3. Ask the AI for your own ad accounts' campaigns: it works. A client's ad accounts need Meta's
+   app review for your app first.
+4. A Meta Ads tool brought in from Claude Desktop (Meta's own server, `mcp.facebook.com/ads`):
+   **Sign in** without a Meta app says to set one up; with one, it signs in through it.
+5. About 60 days later the sign-in ends: the tool shows **Sign in** again.
