@@ -31,6 +31,7 @@ import { Updates } from "./updates.js";
 import { SignInFinder } from "./sign-in-finder.js";
 import { registeredApps } from "./registered-apps.js";
 import { OwnApps, OwnAppsError } from "./own-apps.js";
+import { Approvals } from "./approvals.js";
 
 const dataDir = resolveDataDir();
 const files = dataFiles(dataDir);
@@ -56,6 +57,19 @@ let gateway: Gateway;
 let tray: Tray | undefined;
 let window: BrowserWindow | undefined;
 let quitting = false;
+
+// Actions Ringkeeper Connect's own tools wait on the person for (pausing Meta ads).
+const approvals = new Approvals({
+  async ask(q, signal) {
+    const options: Electron.MessageBoxOptions = { type: "question", title: "Ringkeeper Connect", ...q, defaultId: 1, cancelId: 1, noLink: true, signal };
+    const parent = window && !window.isDestroyed() && window.isVisible() ? window : undefined;
+    if (parent) parent.flashFrame(true);
+    else app.focus({ steal: true });
+    const { response } = parent ? await dialog.showMessageBox(parent, options) : await dialog.showMessageBox(options);
+    parent?.flashFrame(false);
+    return response;
+  },
+});
 
 const cipher: Cipher = {
   isAvailable: () => safeStorage.isEncryptionAvailable(),
@@ -169,6 +183,7 @@ async function start(): Promise<void> {
       apps: signInApps,
       // Ringkeeper Connect's own tools: next to the app when installed, next to main.cjs in development.
       toolsProgram: app.isPackaged ? join(process.resourcesPath, "tools.mjs") : join(__dirname, "tools.mjs"),
+      approve: (q) => approvals.approve(q),
     },
     onAppContact: (contact) => apps.recordContact(contact),
   });
@@ -456,14 +471,16 @@ function registerIpc(): void {
       else void shell.openPath(dirname(p));
     },
     catalogServices: () => catalogActions.services(),
-    addFromCatalog: (clientId: string, serviceId: string, optionId: string, answers: Record<string, string>, name?: string, access?: string[], appId?: string) => {
-      const added = catalogActions.add(clientId, serviceId, optionId, answers, name, Array.isArray(access) ? access.map(String) : undefined, typeof appId === "string" ? appId : undefined);
+    addFromCatalog: async (clientId: string, serviceId: string, optionId: string, answers: Record<string, string>, name?: string, access?: string[], appId?: string) => {
+      const added = await catalogActions.addChecked(clientId, serviceId, optionId, answers ?? {}, name, Array.isArray(access) ? access.map(String) : undefined, typeof appId === "string" ? appId : undefined);
       dropPendingTool(clientId, serviceId);
       return added;
     },
+    testKey: (serviceId: string, optionId: string, answers: Record<string, string>, existing?: { clientId: string; connectionId: string }) =>
+      catalogActions.testKey(String(serviceId ?? ""), String(optionId ?? ""), answers ?? {}, existing ? { clientId: String(existing.clientId), connectionId: String(existing.connectionId) } : undefined),
     signIn: (clientId: string, connectionId: string) => catalogActions.signIn(clientId, connectionId),
-    editBuiltIn: (clientId: string, connectionId: string, name: string, access?: string[]) =>
-      catalogActions.editBuiltIn(String(clientId), String(connectionId), String(name ?? ""), Array.isArray(access) ? access.map(String) : undefined),
+    editBuiltIn: (clientId: string, connectionId: string, name: string, access?: string[], keys?: Record<string, string>) =>
+      catalogActions.editBuiltInChecked(String(clientId), String(connectionId), String(name ?? ""), Array.isArray(access) ? access.map(String) : undefined, keys && typeof keys === "object" ? keys : undefined),
     listOwnApps: () => ownApps.list(),
     addOwnApp: (input) => ownApps.add(input ?? {}),
     updateOwnApp: (id: string, input) => ownApps.update(String(id), input ?? {}),

@@ -154,6 +154,8 @@ export const ENTRA_APP_REGISTRATIONS = "https://entra.microsoft.com/#view/Micros
 export const MICROSOFT_RETURN_ADDRESS = "http://127.0.0.1/callback";
 /** Meta for Developers' My Apps, where "your own Meta app" is made. */
 export const META_APPS = "https://developers.facebook.com/apps";
+/** Where a tool keeps when its pasted key stops working (the catalog's KEY_EXPIRES_SETTING). */
+export const KEY_EXPIRES_SETTING = "RINGKEEPER_KEY_EXPIRES";
 /** The https page Meta sends a sign-in back to, which hands it on to this computer (yushkin.us: public/ringkeeper-connect/oauth/callback). */
 export const META_RETURN_PAGE = "https://yushkin.us/ringkeeper-connect/oauth/callback";
 export const OWN_APP_LINKS = [...GOOGLE_CONSOLE_LINKS, ENTRA_APP_REGISTRATIONS, META_APPS];
@@ -216,8 +218,18 @@ export interface RingkeeperApi {
     appId?: string,
   ): Promise<Result<{ connectionId: string; needsSignIn: boolean }>>;
   signIn(clientId: string, connectionId: string): Promise<Result>;
-  /** Rename one of Ringkeeper Connect's own tools, or change what the AI may do with it. */
-  editBuiltIn(clientId: string, connectionId: string, name: string, access?: string[]): Promise<Result<{ needsSignIn: boolean }>>;
+  /** Rename one of Ringkeeper Connect's own tools, change what the AI may do with it, or paste a new key for it (checked first). */
+  editBuiltIn(clientId: string, connectionId: string, name: string, access?: string[], keys?: Record<string, string>): Promise<Result<{ needsSignIn: boolean }>>;
+  /**
+   * "Test connection": checks a pasted key with its vendor (Meta Ads). For a tool already
+   * added, pass it as `existing`; a key left empty is then the saved one.
+   */
+  testKey(
+    serviceId: string,
+    optionId: string,
+    answers: Record<string, string>,
+    existing?: { clientId: string; connectionId: string },
+  ): Promise<Result<{ ok: boolean; message: string; expiresAt: string | null }>>;
   /** The user's own Google apps (never their secrets). */
   listOwnApps(): Promise<Result<OwnAppView[]>>;
   addOwnApp(input: OwnAppInput): Promise<Result<OwnAppView>>;

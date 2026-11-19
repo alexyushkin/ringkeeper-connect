@@ -5,7 +5,7 @@ import { StdioClientTransport, getDefaultEnvironment } from "@modelcontextprotoc
 import { StreamableHTTPClientTransport, StreamableHTTPError } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
-import { ToolListChangedNotificationSchema, type CallToolResult, type Tool } from "@modelcontextprotocol/sdk/types.js";
+import { ElicitRequestSchema, ToolListChangedNotificationSchema, type CallToolResult, type Tool } from "@modelcontextprotocol/sdk/types.js";
 import { UnauthorizedError } from "@modelcontextprotocol/sdk/client/auth.js";
 import { OAuthError } from "@modelcontextprotocol/sdk/server/auth/errors.js";
 import type { ClientConfig, ConnectionConfig } from "./config.js";
@@ -25,7 +25,22 @@ export interface UpstreamEnv {
   apps?: Record<string, RegisteredApp>;
   /** Path of the built-in tools program (tools.mjs), run with the bundled Node. */
   toolsProgram?: string;
+  /**
+   * Asks the person to allow an action one of Ringkeeper Connect's own tools wants to take
+   * (pausing ads). Resolves true only if they allowed it. Without it, such actions are refused.
+   */
+  approve?: (q: ApprovalRequest) => Promise<boolean>;
 }
+
+/** An action waiting for the person's OK, and whose it is. */
+export interface ApprovalRequest {
+  clientName: string;
+  connectionName: string;
+  message: string;
+}
+
+/** How long a tool call may take when it may wait for the person's OK (the tools wait up to 2 minutes). */
+const CALL_TIMEOUT_MS = 180_000;
 
 /** Restart a program whose access token has less than this left, so it never runs with an expired one. */
 const TOKEN_RENEW_BEFORE_MS = 2 * 60_000;
@@ -172,7 +187,19 @@ export class Upstream {
   private async start(): Promise<void> {
     this.status = "starting";
     this.error = undefined;
-    const client = new Client({ name: "ringkeeper-connect", version: "0.1.0" }, { capabilities: {} });
+    // Only Ringkeeper Connect's own tools may ask the person to allow something.
+    const builtin = this.conn.kind !== "remote" && this.conn.command === BUILTIN_TOOLS_COMMAND;
+    const approve = builtin ? this.env.approve : undefined;
+    const client = new Client({ name: "ringkeeper-connect", version: "0.1.0" }, { capabilities: approve ? { elicitation: { form: {} } } : {} });
+    if (approve) {
+      client.setRequestHandler(ElicitRequestSchema, async (req) => {
+        const message = String((req.params as { message?: unknown }).message ?? "").slice(0, 4000);
+        this.log({ ev: "approval_asked", client: this.owner.id, conn: this.conn.id });
+        const allowed = await approve({ clientName: this.owner.name, connectionName: this.conn.name, message }).catch(() => false);
+        this.log({ ev: "approval_answered", client: this.owner.id, conn: this.conn.id, allowed });
+        return allowed ? { action: "accept", content: {} } : { action: "decline" };
+      });
+    }
     client.setNotificationHandler(ToolListChangedNotificationSchema, async () => {
       await this.refreshTools().catch(() => {});
       this.onToolsChanged(this);
@@ -260,7 +287,7 @@ export class Upstream {
       throw new Error(this.error ?? `${this.conn.name} for ${this.owner.name} isn't ready yet.`);
     }
     this.lastUsed = Date.now();
-    return (await this.client.callTool({ name, arguments: args })) as CallToolResult;
+    return (await this.client.callTool({ name, arguments: args }, undefined, { timeout: CALL_TIMEOUT_MS })) as CallToolResult;
   }
 
   async stop(): Promise<void> {

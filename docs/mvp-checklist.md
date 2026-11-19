@@ -152,3 +152,25 @@ yushkin.us repo, `public/ringkeeper-connect/oauth/callback/index.html`).
 4. A Meta Ads tool brought in from Claude Desktop (Meta's own server, `mcp.facebook.com/ads`):
    **Sign in** without a Meta app says to set one up; with one, it signs in through it.
 5. About 60 days later the sign-in ends: the tool shows **Sign in** again.
+
+## 9. Meta Ads with an access token
+
+Checked live on 2026-11-19 with a System User token for a real ad account: Test connection said
+"Works: 1 ad account." (and can pause, never runs out), and the tools listed the account, its
+campaigns and ads, and a report with spend, clicks and a platform breakdown. Meta's own ads server
+(`mcp.facebook.com/ads`) turned the same token away (401), so these tools call Meta's ads API
+themselves.
+
+1. Meta Business Settings > Users > **System users** > Add (choose **Employee** if Admin is taken:
+   one admin system user per business). Assign assets: the client's ad account (Manage campaigns)
+   and an app with the ads use case. **Generate token**: that app, expiry **Never**, ads_read,
+   ads_management, business_management.
+2. Add a tool > **Meta Ads** > **Use an access token** (recommended). Paste it; **Test connection**
+   says "Works: N ad accounts". A made-up token says "Meta didn't accept this token. Check it has
+   ads_read and hasn't expired." and isn't added.
+3. Tick **Pause campaigns, ad sets and ads**, Add tool. Ask the AI for last month's spend by
+   campaign: it answers. Ask it to pause one ad: Ringkeeper Connect shows "Acme: Pause this in Meta
+   Ads?" with the ad's name. **Don't allow**: nothing changes. Allow: the ad is paused in Ads Manager.
+4. A personal token (Graph API Explorer, about 60 days): Test connection gives the end date. A week
+   before, the tool's card says "This access token stops working on …". **Edit** > paste a new
+   one > Save: the warning goes.

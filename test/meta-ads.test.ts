@@ -137,7 +137,7 @@ describe("your own Meta app", () => {
 describe("Meta Ads", () => {
   it("is offered only with your own Meta app, and says how to get one", async () => {
     const t = await setup();
-    const tile = () => t.actions.services().find((s) => s.id === "meta_ads")!.options[0]!;
+    const tile = () => t.actions.services().find((s) => s.id === "meta_ads")!.options.find((o) => o.id === "signin")!;
     expect(tile()).toMatchObject({ unavailable: true, url: "https://mcp.facebook.com/ads", app: "meta" });
     const acme = t.store.addClient("Acme");
     expect(() => t.actions.add(acme.id, "meta_ads", "signin", {}, "Meta Ads")).toThrow('Meta Ads signs in through your own Meta app. Set one up under "Your own apps" first.');

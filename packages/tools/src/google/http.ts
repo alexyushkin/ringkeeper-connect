@@ -113,7 +113,8 @@ export class Google {
     try {
       // An upload session answers 308 for "send the next part": that isn't a redirect to follow.
       const redirect = o.url ? "manual" : "follow";
-      response = await this.ctx.fetch(url, { method, headers, body, redirect, signal: AbortSignal.timeout(o.timeoutMs ?? TIMEOUT_MS) });
+      // (The cast: the app's browser typings don't count a Uint8Array as a request body; Node's fetch takes it.)
+      response = await this.ctx.fetch(url, { method, headers, body: body as RequestInit["body"], redirect, signal: AbortSignal.timeout(o.timeoutMs ?? TIMEOUT_MS) });
     } catch (err) {
       const name = err instanceof Error ? err.name : "";
       if (name === "TimeoutError" || name === "AbortError") throw this.fail("Google took too long to answer. Try again in a moment.");

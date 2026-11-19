@@ -599,6 +599,16 @@ p.muted {
   background: var(--bad-soft);
   color: var(--bad);
 }
+.notice.good {
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+.key-test {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 0 10px;
+}
 .banner.info {
   background: var(--accent-soft);
   color: var(--accent);
