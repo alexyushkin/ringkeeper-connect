@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { NOT_APPROVED, type CatalogService, type ClientView, type Result } from "../shared/api";
 import { matchesWords } from "./search";
+import { OwnGoogleApps } from "./OwnApps";
 
 type Run = <T>(p: Promise<Result<T>>) => Promise<{ value: T } | null>;
 const api = () => window.ringkeeper;
@@ -10,6 +11,15 @@ export function AddFromCatalog(props: { client: ClientView; run: Run; onAdvanced
   const [services, setServices] = useState<CatalogService[] | null>(null);
   const [service, setService] = useState<CatalogService | null>(null);
   const [signing, setSigning] = useState<{ connectionId: string; name: string } | null>(null);
+  // "Your own Google apps", opened from the Google account form; back to the form after.
+  const [managingApps, setManagingApps] = useState(false);
+
+  async function reloadServices() {
+    const r = await props.run(api().catalogServices());
+    if (!r) return;
+    setServices(r.value);
+    setService((s) => (s ? (r.value.find((x) => x.id === s.id) ?? s) : s));
+  }
 
   useEffect(() => {
     void props.run(api().catalogServices()).then((r) => {
@@ -24,6 +34,21 @@ export function AddFromCatalog(props: { client: ClientView; run: Run; onAdvanced
 
   if (signing) {
     return <SignIn client={props.client} connectionId={signing.connectionId} name={signing.name} run={props.run} onClose={props.onClose} />;
+  }
+
+  if (managingApps) {
+    return (
+      <Overlay onClose={props.onClose}>
+        <OwnGoogleApps
+          run={props.run}
+          doneLabel="Back"
+          onDone={() => {
+            setManagingApps(false);
+            void reloadServices();
+          }}
+        />
+      </Overlay>
+    );
   }
 
   return (
@@ -49,6 +74,7 @@ export function AddFromCatalog(props: { client: ClientView; run: Run; onAdvanced
           onBack={() => setService(null)}
           onClose={props.onClose}
           onNeedsSignIn={(connectionId, name) => setSigning({ connectionId, name })}
+          onOwnApps={() => setManagingApps(true)}
         />
       )}
     </Overlay>
@@ -157,6 +183,8 @@ function ServiceForm(props: {
   onBack: () => void;
   onClose: () => void;
   onNeedsSignIn: (connectionId: string, name: string) => void;
+  /** Opens "Your own Google apps". */
+  onOwnApps: () => void;
 }) {
   const { service, client } = props;
   const options = useMemo(() => [...service.options].sort((a, b) => Number(!!b.recommended) - Number(!!a.recommended)), [service]);
@@ -182,11 +210,16 @@ function ServiceForm(props: {
       return { ...all, [option.id]: next };
     });
   const nothingTicked = !!option.access && ticked.size === 0;
+  // Which app it signs in through: Ringkeeper Connect's, or one of the user's own (Google).
+  const appChoices = option.signInApps ?? [];
+  const [appId, setAppId] = useState<string | undefined>(undefined);
+  const chosenApp = appChoices.find((a) => a.id === appId)?.id ?? appChoices[0]?.id;
+  const ownAppsOffered = option.app === "google";
 
   async function submit() {
     setBusy(true);
     const chosen = option.access ? option.access.filter((a) => ticked.has(a.id)).map((a) => a.id) : undefined;
-    const r = await api().addFromCatalog(client.id, service.id, option.id, answers, name, chosen);
+    const r = await api().addFromCatalog(client.id, service.id, option.id, answers, name, chosen, option.app ? chosenApp : undefined);
     setBusy(false);
     if (!r.ok) {
       setError(r.error);
@@ -274,10 +307,28 @@ function ServiceForm(props: {
         </div>
       )}
 
+      {usesSignIn && !unavailable && option.app && appChoices.length > 1 && (
+        <fieldset className="choice">
+          <legend>Sign in through</legend>
+          {appChoices.map((a) => (
+            <label key={a.id}>
+              <input type="radio" checked={a.id === chosenApp} onChange={() => setAppId(a.id)} /> {a.name}
+            </label>
+          ))}
+        </fieldset>
+      )}
+
       {unavailable && (
         <div className="notice info">
-          Signing in to {service.name} needs Ringkeeper Connect's own {vendor} sign-in, which isn't in this version yet. It's coming in an update.
+          Signing in to {service.name} needs Ringkeeper Connect's own {vendor} sign-in, which isn't in this version yet.{" "}
+          {ownAppsOffered ? "You can sign in through your own Google app instead." : "It's coming in an update."}
         </div>
+      )}
+
+      {ownAppsOffered && (
+        <button type="button" className="link small left" onClick={props.onOwnApps}>
+          {unavailable ? "Set up your own Google app" : "Use your own Google app…"}
+        </button>
       )}
 
       {usesSignIn && !unavailable && option.app && (

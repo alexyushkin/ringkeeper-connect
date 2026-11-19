@@ -64,7 +64,7 @@ These are the same steps Ringkeeper shows its users.
 **Unverified, published:** people see Google's warning and click "Advanced > Go to Ringkeeper
 Connect (unsafe)", and the app can sign in **100 accounts in its lifetime**, across everyone using
 it. That's fine for you and the first clients. For more: agencies use their own Google app (the
-same steps, in their own project, pasted into Ringkeeper Connect), or Ringkeeper Connect's app goes
+same steps, in their own project, pasted into Ringkeeper Connect under "Your own Google apps"), or Ringkeeper Connect's app goes
 through Google's verification (Gmail and Drive access are "restricted": a yearly paid security
 assessment). A client's Workspace admin may also have to trust the app's client ID.
 

@@ -62,6 +62,25 @@ export interface Settings {
    * or web connectors) that still need a sign-in or key, per client.
    */
   pendingTools: Array<{ clientId: string; toolId: string }>;
+  /**
+   * The user's own registered apps (a Google app in their own Google Cloud project), for
+   * agencies past the 100 accounts Google allows our app, or wanting their own name on
+   * the sign-in. The secret is kept encrypted with the keys (ownAppSecretKey), not here.
+   */
+  ownApps?: OwnAppRecord[];
+}
+
+export interface OwnAppRecord {
+  /** "google:<slug>": what a connection's oauthApp names. */
+  id: string;
+  vendor: "google";
+  name: string;
+  clientId: string;
+}
+
+/** Where an own app's client secret is kept. "~" never appears in a client's id, so removing a client can't touch it. */
+export function ownAppSecretKey(appId: string): string {
+  return `~apps/${appId}/secret`;
 }
 
 interface StoreFile {

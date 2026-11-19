@@ -125,6 +125,46 @@ export interface SetupOutcome {
 }
 
 /** Every call resolves; failures carry a plain-language message instead of throwing. */
+/** Google Cloud pages the "your own Google app" steps open (the only ones the window may open besides the catalog's). */
+export const GOOGLE_CONSOLE = "https://console.cloud.google.com";
+export const GOOGLE_APIS: Array<[label: string, id: string]> = [
+  ["Gmail", "gmail.googleapis.com"],
+  ["Drive", "drive.googleapis.com"],
+  ["Calendar", "calendar-json.googleapis.com"],
+  ["Sheets", "sheets.googleapis.com"],
+  ["Docs", "docs.googleapis.com"],
+  ["Search Console", "searchconsole.googleapis.com"],
+  ["Analytics Data", "analyticsdata.googleapis.com"],
+  ["Analytics Admin", "analyticsadmin.googleapis.com"],
+  ["YouTube Data", "youtube.googleapis.com"],
+  ["YouTube Analytics", "youtubeanalytics.googleapis.com"],
+];
+export const GOOGLE_CONSOLE_LINKS = [
+  `${GOOGLE_CONSOLE}/projectcreate`,
+  ...GOOGLE_APIS.map(([, id]) => `${GOOGLE_CONSOLE}/apis/library/${id}`),
+  `${GOOGLE_CONSOLE}/auth/branding`,
+  `${GOOGLE_CONSOLE}/auth/audience`,
+  `${GOOGLE_CONSOLE}/auth/scopes`,
+  `${GOOGLE_CONSOLE}/auth/clients`,
+];
+
+/** One of the user's own Google apps, as the window sees it: never its secret. */
+export interface OwnAppView {
+  id: string;
+  vendor: "google";
+  name: string;
+  clientId: string;
+  /** The tools that sign in through it, as "Acme > Google". */
+  usedBy: string[];
+}
+
+export interface OwnAppInput {
+  name?: string;
+  clientId?: string;
+  /** Left empty on an edit: keep the saved one. */
+  clientSecret?: string;
+}
+
 export type Result<T = void> = { ok: true; value: T } | { ok: false; error: string };
 
 export interface RingkeeperApi {
@@ -156,8 +196,15 @@ export interface RingkeeperApi {
     name?: string,
     /** The ticked "what the AI may do" boxes, for a tool that has them. */
     access?: string[],
+    /** Which app it signs in through: one of the option's signInApps (the first when left out). */
+    appId?: string,
   ): Promise<Result<{ connectionId: string; needsSignIn: boolean }>>;
   signIn(clientId: string, connectionId: string): Promise<Result>;
+  /** The user's own Google apps (never their secrets). */
+  listOwnApps(): Promise<Result<OwnAppView[]>>;
+  addOwnApp(input: OwnAppInput): Promise<Result<OwnAppView>>;
+  updateOwnApp(id: string, input: OwnAppInput): Promise<Result<OwnAppView>>;
+  removeOwnApp(id: string): Promise<Result>;
   cancelSignIn(): Promise<Result>;
   openLink(url: string): Promise<Result>;
   /** Stop suggesting a picked tool for a client. */
