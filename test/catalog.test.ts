@@ -15,11 +15,12 @@ describe("the catalog data", () => {
         "wordpress-com", "wordpress", "webflow", "wix", "paypal", "trello", "atlassian", "linear", "canva",
         "calendly", "calcom", "tavily", "apify", "elevenlabs", "twilio",
         "sentry", "cloudflare", "posthog", "attio", "freshbooks", "zoho-books", "odoo", "sanity", "contentful", "strapi", "payload",
-        "mollie", "paddle", "gocardless", "pipeboard", "google",
+        "mollie", "paddle", "gocardless", "pipeboard", "google", "microsoft",
       ].sort(),
     );
-    // Google only as our own tools, signed in through our own Google app: no Google servers.
+    // Google and Microsoft only as our own tools, signed in through our own apps: no servers of theirs.
     for (const s of catalog.services) for (const o of s.options) if (JSON.stringify(o).match(/google/i)) expect(o, `${s.id}/${o.id}`).toMatchObject({ kind: "local", command: "ringkeeper-tools", app: "google" });
+    for (const s of catalog.services) for (const o of s.options) if (JSON.stringify(o).match(/microsoft|graph\.|outlook|onedrive|sharepoint/i)) expect(o, `${s.id}/${o.id}`).toMatchObject({ kind: "local", command: "ringkeeper-tools", app: "microsoft" });
   });
 
   it("puts every tool in a known group, and marks the ones not yet tried with a real sign-in as Beta", () => {

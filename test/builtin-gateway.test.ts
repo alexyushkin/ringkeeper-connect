@@ -87,7 +87,7 @@ async function start(client: ClientConfig, app: RegisteredApp, oauthStore: OAuth
     activeClientId: client.id,
     token,
     port: await freePort(),
-    upstreamEnv: { oauthStore, apps: { google: app }, toolsProgram },
+    upstreamEnv: { oauthStore, apps: { [app.id]: app }, toolsProgram },
   });
   await gateway.start();
   cleanups.push(() => gateway.stop());
@@ -144,5 +144,76 @@ describe("a Google account in the gateway", () => {
     expect(res.isError).toBe(true);
     expect(gateway.connectionStatuses().find((s) => s.connectionId === "google")?.status).toBe("needs_signin");
     expect(google.bearers).toEqual([]);
+  }, 60_000);
+});
+
+describe("a Microsoft 365 account in the gateway", () => {
+  /** Microsoft's token service and Graph's calendar, as far as this test needs them. */
+  async function fakeMicrosoft() {
+    const bearers: string[] = [];
+    const refreshes: Array<Record<string, string>> = [];
+    const server = http.createServer((req, res) => {
+      let body = "";
+      req.on("data", (c) => (body += c));
+      req.on("end", () => {
+        res.setHeader("content-type", "application/json");
+        if (req.url === "/token") {
+          refreshes.push(Object.fromEntries(new URLSearchParams(body)));
+          return res.end(JSON.stringify({ access_token: `ms-access-${refreshes.length}`, refresh_token: `ms-refresh-${refreshes.length + 1}`, expires_in: 3599, token_type: "Bearer" }));
+        }
+        if (req.url?.startsWith("/graph/me/calendarView")) {
+          bearers.push(req.headers.authorization ?? "");
+          return res.end(JSON.stringify({ value: [{ id: "e1", subject: "Kickoff with Acme" }] }));
+        }
+        res.statusCode = 404;
+        res.end(JSON.stringify({ error: { code: "itemNotFound", message: "nope" } }));
+      });
+    });
+    await new Promise<void>((r) => server.listen(0, "127.0.0.1", () => r()));
+    cleanups.push(() => new Promise<void>((r) => server.close(() => r())));
+    const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    const app: RegisteredApp = { id: "microsoft", clientId: "m-id", authorizationEndpoint: `${base}/authorize`, tokenEndpoint: `${base}/token`, scopeOnRefresh: true };
+    return { base, app, bearers, refreshes };
+  }
+
+  const scope = "openid profile email offline_access User.Read Calendars.Read";
+  const client = (base: string): ClientConfig => ({
+    id: "acme",
+    name: "Acme",
+    connections: [
+      {
+        id: "microsoft",
+        name: "Microsoft 365",
+        command: BUILTIN_TOOLS_COMMAND,
+        args: ["microsoft"],
+        env: { RINGKEEPER_ACCESS: "calendar_read", RINGKEEPER_TOOLS_BASE_GRAPH: `${base}/graph` },
+        oauth: { key: "acme/microsoft", app: "microsoft", scope },
+      },
+    ],
+  });
+  const between = { startDateTime: "2026-11-20T00:00:00Z", endDateTime: "2026-11-21T00:00:00Z" };
+
+  it("offers only the ticked things, calls Graph with the client's token, and renews it with its permissions", async () => {
+    const ms = await fakeMicrosoft();
+    const store = memoryStore();
+    vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-11-18T12:00:00Z") });
+    store.save("acme/microsoft", { tokens: { access_token: "ms-access-0", refresh_token: "ms-refresh-1", expires_in: 3600, token_type: "Bearer" }, obtainedAt: Date.now() });
+    const { mcp } = await start(client(ms.base), ms.app, store);
+
+    const res = (await mcp.callTool({ name: "ringkeeper_call_tool", arguments: { client: "Acme", tool: "list_events_between", arguments: between } })) as CallToolResult;
+    expect(res.isError, text(res)).toBeFalsy();
+    expect(text(res)).toContain("Kickoff with Acme");
+    const found = text(await mcp.callTool({ name: "ringkeeper_search_tools", arguments: { client: "Acme", query: "calendar event mail" } }));
+    expect(found).toContain("list_events_between");
+    expect(found).not.toContain("create_event");
+    expect(found).not.toContain("list_messages");
+
+    vi.setSystemTime(new Date("2026-11-18T12:59:00Z"));
+    const again = (await mcp.callTool({ name: "ringkeeper_call_tool", arguments: { client: "Acme", tool: "list_events_between", arguments: between } })) as CallToolResult;
+    expect(again.isError, text(again)).toBeFalsy();
+    expect(ms.bearers).toEqual(["Bearer ms-access-0", "Bearer ms-access-1"]);
+    // Microsoft wants the permissions again when renewing, and hands out a new refresh token.
+    expect(ms.refreshes).toEqual([{ client_id: "m-id", grant_type: "refresh_token", refresh_token: "ms-refresh-1", scope }]);
+    expect(store.load("acme/microsoft")!.tokens!.refresh_token).toBe("ms-refresh-2");
   }, 60_000);
 });
