@@ -203,6 +203,12 @@ function uniqueId(base: string, taken: Set<string>): string {
   }
 }
 
+/** Whether every permission in `scope` is already in `granted`. */
+function within(scope: string | undefined, granted: string | undefined): boolean {
+  const had = new Set((granted ?? "").split(/\s+/).filter(Boolean));
+  return (scope ?? "").split(/\s+/).filter(Boolean).every((s) => had.has(s));
+}
+
 function fieldsOf(c: StoredConnection): Record<string, StoredValue> {
   return c.kind === "local" ? c.env : c.headers;
 }
@@ -511,10 +517,11 @@ export class ClientStore {
             headers: fields,
           };
     // A sign-in belongs to one address; a new address (or no more sign-in) needs a new one.
-    // (A program signed in through a registered app: new permissions need a new sign-in too.)
+    // (A program signed in through a registered app: new permissions need a new sign-in too;
+    // fewer keep it, as the account already allowed them.)
     if (
       (prev.kind === "remote" && (conn.kind !== "remote" || conn.url !== prev.url || conn.auth !== prev.auth)) ||
-      (prev.kind === "local" && prev.auth === "oauth" && (conn.kind !== "local" || conn.auth !== prev.auth || conn.scope !== prev.scope))
+      (prev.kind === "local" && prev.auth === "oauth" && (conn.kind !== "local" || conn.auth !== prev.auth || conn.oauthApp !== prev.oauthApp || !within(conn.scope, prev.scope)))
     ) {
       this.secrets.delete(oauthKey(clientId, connId));
     }

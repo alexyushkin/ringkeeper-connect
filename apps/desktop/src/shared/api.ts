@@ -212,6 +212,8 @@ export interface RingkeeperApi {
     appId?: string,
   ): Promise<Result<{ connectionId: string; needsSignIn: boolean }>>;
   signIn(clientId: string, connectionId: string): Promise<Result>;
+  /** Rename one of Ringkeeper Connect's own tools, or change what the AI may do with it. */
+  editBuiltIn(clientId: string, connectionId: string, name: string, access?: string[]): Promise<Result<{ needsSignIn: boolean }>>;
   /** The user's own Google apps (never their secrets). */
   listOwnApps(): Promise<Result<OwnAppView[]>>;
   addOwnApp(input: OwnAppInput): Promise<Result<OwnAppView>>;
