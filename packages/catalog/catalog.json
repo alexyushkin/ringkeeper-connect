@@ -164,10 +164,10 @@
       "id": "google",
       "name": "Google account",
       "group": "Work and projects",
-      "description": "Gmail, Drive, Calendar, Sheets, Docs, Search Console, Analytics and YouTube for one of the client's Google accounts.",
+      "description": "Gmail, Drive, Calendar, Sheets, Docs, Search Console, Analytics, YouTube and Google Ads for one of the client's Google accounts.",
       "beta": true,
       "notes": [
-        "You choose what the AI may do. To change it later, remove the tool and add it again.",
+        "You choose what the AI may do. To change it later, use Edit on the tool: ticking something new asks you to sign in once more, for just that.",
         "Google shows a warning that it hasn't checked Ringkeeper Connect yet. Choose Advanced, then Go to Ringkeeper Connect."
       ],
       "options": [
@@ -281,6 +281,18 @@
               "id": "youtube_analytics",
               "label": "YouTube: read analytics",
               "scope": "https://www.googleapis.com/auth/yt-analytics.readonly"
+            },
+            {
+              "id": "ads_read",
+              "label": "Google Ads: reports",
+              "scope": "https://www.googleapis.com/auth/adwords",
+              "note": "Live ad accounts need Google's OK for the Google app first (Explorer access)."
+            },
+            {
+              "id": "ads_pause",
+              "label": "Google Ads: pause campaigns",
+              "scope": "https://www.googleapis.com/auth/adwords",
+              "note": "Ringkeeper Connect asks you before each pause."
             }
           ]
         }
@@ -293,7 +305,7 @@
       "description": "Outlook mail and calendar, OneDrive and SharePoint files for one of the client's Microsoft accounts (work, school or personal).",
       "beta": true,
       "notes": [
-        "You choose what the AI may do. To change it later, remove the tool and add it again.",
+        "You choose what the AI may do. To change it later, use Edit on the tool: ticking something new asks you to sign in once more.",
         "For a work or school account, the client's IT admin may have to approve Ringkeeper Connect once."
       ],
       "options": [

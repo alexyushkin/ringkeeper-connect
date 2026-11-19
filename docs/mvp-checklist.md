@@ -174,3 +174,19 @@ themselves.
 4. A personal token (Graph API Explorer, about 60 days): Test connection gives the end date. A week
    before, the tool's card says "This access token stops working on …". **Edit** > paste a new
    one > Save: the warning goes.
+
+## 10. Google Ads in a Google account
+
+Needs the Google Ads API turned on in the Google app's Cloud project (docs/registered-apps.md).
+
+1. Edit an existing Google account > tick **Google Ads: reports** > Save > Sign in. Google asks
+   only for Google Ads (not Gmail and the rest again), and mail still works afterwards.
+2. Ask the AI for your Google Ads accounts, then last month's clicks and cost by campaign. Before
+   Google approves the project: "Google hasn't approved this Google app for live ad accounts
+   yet…". After Explorer access: the report, with more pages read on when there are many rows.
+3. An account under a manager account: the AI gives the manager's ID and it works; without it,
+   it says to give the manager's ID.
+4. Tick **Google Ads: pause campaigns**, ask to pause one: Ringkeeper Connect asks first, naming
+   the account and campaign. **Don't allow** changes nothing.
+5. A Google account without Google Ads ticked, asked for an Ads report: "Google Ads isn't turned
+   on for this account. Edit the connection and tick Google Ads."

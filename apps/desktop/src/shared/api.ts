@@ -138,6 +138,7 @@ export const GOOGLE_APIS: Array<[label: string, id: string]> = [
   ["Analytics Admin", "analyticsadmin.googleapis.com"],
   ["YouTube Data", "youtube.googleapis.com"],
   ["YouTube Analytics", "youtubeanalytics.googleapis.com"],
+  ["Google Ads", "googleads.googleapis.com"],
 ];
 export const GOOGLE_CONSOLE_LINKS = [
   `${GOOGLE_CONSOLE}/projectcreate`,

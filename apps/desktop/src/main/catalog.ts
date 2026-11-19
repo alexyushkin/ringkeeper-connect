@@ -90,8 +90,21 @@ const allowedLinks = new Set([
   ...OWN_APP_LINKS,
 ]);
 
+/** The sign-in a Google account needs after Edit ticked something new: only the new permissions. */
+export function incrementalScope(previous: string, wanted: string): string | undefined {
+  const had = new Set(previous.split(/\s+/).filter(Boolean));
+  const added = wanted.split(/\s+/).filter((s) => s && !had.has(s));
+  return added.length ? [...new Set(["openid", "email", ...added])].join(" ") : undefined;
+}
+
 export class CatalogActions {
   private signingIn?: AbortController;
+  /**
+   * Google accounts whose Edit ticked something new, by client/connection: what they had
+   * allowed before. Their next sign-in asks only for what's new, and Google keeps the rest
+   * (include_granted_scopes). Kept until that sign-in; after a restart it's a full sign-in.
+   */
+  private readonly grantedBefore = new Map<string, string>();
 
   constructor(
     private readonly deps: {
@@ -296,6 +309,7 @@ export class CatalogActions {
       if (keyExpires) fields.push({ name: KEY_EXPIRES_SETTING, secret: false, value: keyExpires });
     }
     let scope = conn.scope;
+    const signedInBefore = conn.auth === "oauth" && !!conn.signedIn;
     if (option?.access && access) {
       let chosen;
       try {
@@ -320,6 +334,8 @@ export class CatalogActions {
       ...(conn.oauthApp ? { oauthApp: conn.oauthApp } : {}),
       ...(scope ? { scope } : {}),
     });
+    const isGoogle = conn.oauthApp === "google" || !!conn.oauthApp?.startsWith("google:");
+    if (isGoogle && signedInBefore && !updated.signedIn && conn.scope) this.grantedBefore.set(`${clientId}/${connectionId}`, conn.scope);
     // The tool restarts with the new ticks (and name).
     this.deps.gateway().applyConfig(this.deps.store.toGatewayConfig(), this.deps.store.activeClientId);
     this.deps.gateway().restartConnection(clientId, connectionId);
@@ -388,6 +404,9 @@ export class CatalogActions {
           throw new CatalogActionError(
             `Signing in to ${conn.name} needs a newer version of Ringkeeper Connect. Update it, then try again.`,
           );
+        // After Edit ticked something new on a Google account: ask only for that.
+        const before = this.grantedBefore.get(`${clientId}/${connectionId}`);
+        const onlyNew = before ? incrementalScope(before, conn.scope ?? "") : undefined;
         await signInDirect({
           label: `${conn.name} for ${client.name}`,
           store: this.deps.oauthStore,
@@ -395,8 +414,10 @@ export class CatalogActions {
           openBrowser,
           signal: ctrl.signal,
           app,
-          scope: conn.scope ?? "",
+          scope: onlyNew ?? conn.scope ?? "",
+          ...(onlyNew ? { authParams: { include_granted_scopes: "true" } } : {}),
         });
+        this.grantedBefore.delete(`${clientId}/${connectionId}`);
       } else
         await signIn({
           serverUrl: conn.url,

@@ -97,6 +97,10 @@ const RINGKEEPER_NEEDS: Record<string, string[]> = {
   youtube_videos: ["youtube_read", "youtube_manage"],
   youtube_comments: ["youtube_read", "youtube_manage"],
   youtube_report: ["youtube_analytics"],
+  // Google Ads (Ringkeeper's google_ads vendor: list_accounts, report, pause_campaign).
+  list_ads_accounts: ["ads_read", "ads_pause"],
+  ads_report: ["ads_read", "ads_pause"],
+  ads_pause_campaigns: ["ads_pause"],
   upload_video: ["youtube_upload", "youtube_manage"],
   edit_video: ["youtube_manage"],
   set_video_privacy: ["youtube_manage"],
@@ -106,7 +110,7 @@ const RINGKEEPER_NEEDS: Record<string, string[]> = {
 };
 
 describe("the Google tool list", () => {
-  it("has unique, valid names, and needs only the 18 access keys", () => {
+  it("has unique, valid names, and needs only the 20 access keys", () => {
     const names = google.tools.map((t) => t.name);
     expect(new Set(names).size).toBe(names.length);
     for (const t of google.tools) {
@@ -116,7 +120,7 @@ describe("the Google tool list", () => {
       expect(t.inputSchema.type).toBe("object");
       expect(t.description.length).toBeGreaterThan(10);
     }
-    expect(ACCESS_KEYS).toHaveLength(18);
+    expect(ACCESS_KEYS).toHaveLength(20);
   });
 
   it("matches Ringkeeper's tool-to-access table", () => {

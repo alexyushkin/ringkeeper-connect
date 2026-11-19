@@ -85,13 +85,14 @@ async function fakeVendor() {
 describe("the Google account tool in the catalog", () => {
   const option = () => findService("google")!.options[0]!;
 
-  it("runs our own tools program, signs in through our Google app, and offers Ringkeeper's 18 permissions", () => {
+  it("runs our own tools program, signs in through our Google app, and offers Ringkeeper's 18 permissions and Google Ads", () => {
     const o = option();
     expect(o).toMatchObject({ kind: "local", command: "ringkeeper-tools", args: ["google"], auth: "oauth", app: "google", scope: "openid email" });
     expect(o.access!.map((a) => a.id)).toEqual([
       "mail_read", "mail_drafts", "mail_send", "mail_trash", "drive_files", "drive_read_all",
       "calendar_read", "calendar_write", "sheets_read", "sheets_write", "docs_read", "docs_write",
       "search_console_read", "analytics_read", "youtube_read", "youtube_upload", "youtube_manage", "youtube_analytics",
+      "ads_read", "ads_pause",
     ]);
     for (const a of o.access!) expect(a.scope, a.id).toMatch(/^https:\/\/www\.googleapis\.com\/auth\/[a-z.-]+$/);
   });

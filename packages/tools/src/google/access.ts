@@ -22,6 +22,9 @@ export const GOOGLE_ACCESS = {
   youtube_upload: { label: "YouTube: upload videos", scope: G + "youtube.upload" },
   youtube_manage: { label: "YouTube: edit and delete videos, reply to comments", scope: G + "youtube.force-ssl" },
   youtube_analytics: { label: "YouTube: read analytics", scope: G + "yt-analytics.readonly" },
+  // Both are Google's one Google Ads permission; pausing also asks the person each time.
+  ads_read: { label: "Google Ads: reports", scope: G + "adwords" },
+  ads_pause: { label: "Google Ads: pause campaigns", scope: G + "adwords" },
 } as const;
 
 export type AccessKey = keyof typeof GOOGLE_ACCESS;
