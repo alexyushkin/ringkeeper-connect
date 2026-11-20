@@ -255,6 +255,24 @@ describe("bringing connections in", () => {
     expect(detectService("crm", { url: "https://mcp.airtable.com/mcp" })?.id).toBe("airtable");
     // Basecamp's own setup page gives Cursor exactly this entry.
     expect(detectService("projects", { url: "https://mcp.basecamp.com/mcp" })).toEqual({ id: "basecamp", label: "Basecamp" });
+    // The tools added on 2026-11-20, by their servers' addresses.
+    for (const [url, id] of [
+      ["https://business-api.tiktok.com/open_mcp/tt-ads-mcp-layer", "tiktok_ads"],
+      ["https://api.ahrefs.com/mcp/mcp", "ahrefs"],
+      ["https://mcp.semrush.com/v2/mcp", "semrush"],
+      ["https://mcp.brevo.com/v1/brevo/mcp", "brevo"],
+      ["https://app.kit.com/mcp", "kit"],
+      ["https://mcp.mailerlite.com/mcp", "mailerlite"],
+      ["https://mcp.buffer.com/mcp", "buffer"],
+      ["https://mcp.eu.intercom.com/mcp", "intercom"],
+      ["https://api.typeform.com/mcp", "typeform"],
+      ["https://mcp.jotform.com/", "jotform"],
+      ["https://api.tally.so/mcp", "tally"],
+      ["https://api.fireflies.ai/mcp", "fireflies"],
+    ] as const) expect(detectService("x", { url })?.id, url).toBe(id);
+    // Words that only look like one of them.
+    expect(detectService("toolkit", { command: "node", args: ["toolkit.js"] })).toBeUndefined();
+    expect(detectService("totally-mine", { command: "node" })).toBeUndefined();
     expect(detectService("files", { command: "node" })).toBeUndefined();
   });
 });

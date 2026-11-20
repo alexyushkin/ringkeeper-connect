@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "checked": "2026-11-18",
+  "checked": "2026-11-20",
   "services": [
     {
       "id": "n8n",
@@ -1241,6 +1241,103 @@
       ]
     },
     {
+      "id": "typeform",
+      "name": "Typeform",
+      "group": "Work and projects",
+      "description": "Build and change the client's Typeform forms, and read their responses.",
+      "beta": true,
+      "options": [
+        {
+          "id": "oauth",
+          "label": "Sign in with Typeform",
+          "recommended": true,
+          "kind": "remote",
+          "auth": "oauth",
+          "url": "https://api.typeform.com/mcp",
+          "fields": []
+        }
+      ]
+    },
+    {
+      "id": "jotform",
+      "name": "Jotform",
+      "group": "Work and projects",
+      "description": "Build and change the client's Jotform forms, and read their submissions.",
+      "beta": true,
+      "options": [
+        {
+          "id": "oauth",
+          "label": "Sign in with Jotform",
+          "recommended": true,
+          "kind": "remote",
+          "auth": "oauth",
+          "url": "https://mcp.jotform.com/",
+          "fields": []
+        }
+      ]
+    },
+    {
+      "id": "tally",
+      "name": "Tally",
+      "group": "Work and projects",
+      "description": "Build and change the client's Tally forms, and read their submissions.",
+      "beta": true,
+      "notes": [
+        "Works on every Tally plan, including the free one."
+      ],
+      "options": [
+        {
+          "id": "oauth",
+          "label": "Sign in with Tally",
+          "recommended": true,
+          "kind": "remote",
+          "auth": "oauth",
+          "url": "https://api.tally.so/mcp",
+          "fields": []
+        }
+      ]
+    },
+    {
+      "id": "fireflies",
+      "name": "Fireflies",
+      "group": "Work and projects",
+      "description": "Search the client's Fireflies meeting transcripts, summaries and action items.",
+      "beta": true,
+      "options": [
+        {
+          "id": "oauth",
+          "label": "Sign in with Fireflies",
+          "recommended": true,
+          "kind": "remote",
+          "auth": "oauth",
+          "url": "https://api.fireflies.ai/mcp",
+          "fields": []
+        },
+        {
+          "id": "key",
+          "label": "Use an API key",
+          "kind": "remote",
+          "url": "https://api.fireflies.ai/mcp",
+          "headers": {
+            "Authorization": "Bearer {{FIREFLIES_API_KEY}}"
+          },
+          "fields": [
+            {
+              "id": "FIREFLIES_API_KEY",
+              "label": "API key",
+              "secret": true,
+              "required": true,
+              "help": "While signed in to the client's Fireflies account: Settings > Developer Settings, then copy the API key.",
+              "where": {
+                "label": "Open Fireflies settings",
+                "url": "https://app.fireflies.ai/settings"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
       "id": "calendly",
       "name": "Calendly",
       "group": "Scheduling",
@@ -1506,6 +1603,35 @@
           "kind": "remote",
           "auth": "oauth",
           "url": "https://mcp.attio.com/mcp",
+          "fields": []
+        }
+      ]
+    },
+    {
+      "id": "intercom",
+      "name": "Intercom",
+      "group": "CRM and sales",
+      "description": "Search and read the client's Intercom conversations and contacts.",
+      "beta": true,
+      "notes": [
+        "Pick the region the client's workspace is hosted in: its address is app.intercom.com for the US and app.eu.intercom.com for Europe. Workspaces hosted in Australia aren't supported by Intercom yet."
+      ],
+      "options": [
+        {
+          "id": "oauth",
+          "label": "Sign in (US workspace)",
+          "recommended": true,
+          "kind": "remote",
+          "auth": "oauth",
+          "url": "https://mcp.intercom.com/mcp",
+          "fields": []
+        },
+        {
+          "id": "oauth-eu",
+          "label": "Sign in (EU workspace)",
+          "kind": "remote",
+          "auth": "oauth",
+          "url": "https://mcp.eu.intercom.com/mcp",
           "fields": []
         }
       ]
@@ -1871,6 +1997,221 @@
           "kind": "remote",
           "auth": "oauth",
           "url": "https://mcp.pipeboard.co/meta-ads-mcp",
+          "fields": []
+        }
+      ]
+    },
+    {
+      "id": "tiktok_ads",
+      "name": "TikTok Ads",
+      "group": "Marketing and email",
+      "description": "Report on and manage the client's TikTok ads: campaigns, budgets, audiences and creatives.",
+      "tags": [
+        "Changes ads"
+      ],
+      "beta": true,
+      "notes": [
+        "This is TikTok's own server, and it can do more than read: the AI can create campaigns and change budgets, audiences and creatives. Ask it to show you a change before it makes it.",
+        "Sign in as someone with access to the client's TikTok ad accounts."
+      ],
+      "options": [
+        {
+          "id": "oauth",
+          "label": "Sign in with TikTok",
+          "recommended": true,
+          "kind": "remote",
+          "auth": "oauth",
+          "url": "https://business-api.tiktok.com/open_mcp/tt-ads-mcp-layer",
+          "fields": []
+        }
+      ]
+    },
+    {
+      "id": "ahrefs",
+      "name": "Ahrefs",
+      "group": "Marketing and email",
+      "description": "Look up backlinks, keywords and rankings for the client's sites and their competitors, with Ahrefs.",
+      "tags": [
+        "Paid plan"
+      ],
+      "beta": true,
+      "notes": [
+        "Needs an Ahrefs Lite plan or higher.",
+        "Every lookup uses the account's API units. Signing in makes a key in Ahrefs that's limited to 200,000 units a month; a workspace admin can change that in Ahrefs under API keys."
+      ],
+      "options": [
+        {
+          "id": "oauth",
+          "label": "Sign in with Ahrefs",
+          "recommended": true,
+          "kind": "remote",
+          "auth": "oauth",
+          "url": "https://api.ahrefs.com/mcp/mcp",
+          "fields": []
+        }
+      ]
+    },
+    {
+      "id": "semrush",
+      "name": "Semrush",
+      "group": "Marketing and email",
+      "description": "Look up keywords, rankings, traffic and competitors for the client's sites, with Semrush.",
+      "tags": [
+        "Uses API units"
+      ],
+      "beta": true,
+      "notes": [
+        "Every lookup uses the account's Semrush API units, and what the AI can see depends on the account's subscription."
+      ],
+      "options": [
+        {
+          "id": "oauth",
+          "label": "Sign in with Semrush",
+          "recommended": true,
+          "kind": "remote",
+          "auth": "oauth",
+          "url": "https://mcp.semrush.com/v2/mcp",
+          "fields": []
+        },
+        {
+          "id": "key",
+          "label": "Use an API key",
+          "kind": "remote",
+          "url": "https://mcp.semrush.com/v2/mcp",
+          "headers": {
+            "Authorization": "Apikey {{SEMRUSH_API_KEY}}"
+          },
+          "fields": [
+            {
+              "id": "SEMRUSH_API_KEY",
+              "label": "API key",
+              "secret": true,
+              "required": true,
+              "help": "While signed in to the client's Semrush account: My Profile > Subscription info > API units.",
+              "where": {
+                "label": "Open Semrush subscription info",
+                "url": "https://www.semrush.com/accounts/subscription-info/api-units/"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "brevo",
+      "name": "Brevo",
+      "group": "Marketing and email",
+      "description": "Work with the client's Brevo contacts, lists, email and SMS campaigns, and deals.",
+      "tags": [
+        "Sends email"
+      ],
+      "beta": true,
+      "notes": [
+        "The AI can create and send real email and SMS campaigns from the client's Brevo account."
+      ],
+      "options": [
+        {
+          "id": "oauth",
+          "label": "Sign in with Brevo",
+          "recommended": true,
+          "kind": "remote",
+          "auth": "oauth",
+          "url": "https://mcp.brevo.com/v1/brevo/mcp",
+          "fields": []
+        },
+        {
+          "id": "key",
+          "label": "Use an MCP key",
+          "kind": "remote",
+          "url": "https://mcp.brevo.com/v1/brevo/mcp",
+          "headers": {
+            "Authorization": "Bearer {{BREVO_MCP_KEY}}"
+          },
+          "fields": [
+            {
+              "id": "BREVO_MCP_KEY",
+              "label": "MCP key",
+              "secret": true,
+              "required": true,
+              "help": "In the client's Brevo account: Account > SMTP & API > API Keys. Generate a key and tick the MCP option. An ordinary API key won't work.",
+              "where": {
+                "label": "Open Brevo API keys",
+                "url": "https://app.brevo.com/settings/keys/api"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "kit",
+      "name": "Kit (ConvertKit)",
+      "group": "Marketing and email",
+      "description": "Work with the client's Kit subscribers, tags, forms, sequences and broadcasts.",
+      "tags": [
+        "Paid plan"
+      ],
+      "beta": true,
+      "notes": [
+        "Needs a paid Kit plan (Creator or Creator Pro).",
+        "The AI can draft broadcasts to the client's subscribers and set when they go out."
+      ],
+      "options": [
+        {
+          "id": "oauth",
+          "label": "Sign in with Kit",
+          "recommended": true,
+          "kind": "remote",
+          "auth": "oauth",
+          "url": "https://app.kit.com/mcp",
+          "fields": []
+        }
+      ]
+    },
+    {
+      "id": "mailerlite",
+      "name": "MailerLite",
+      "group": "Marketing and email",
+      "description": "Work with the client's MailerLite subscribers, groups, campaigns and automations.",
+      "tags": [
+        "Sends email"
+      ],
+      "beta": true,
+      "notes": [
+        "The AI can create and send campaigns to the client's subscribers."
+      ],
+      "options": [
+        {
+          "id": "oauth",
+          "label": "Sign in with MailerLite",
+          "recommended": true,
+          "kind": "remote",
+          "auth": "oauth",
+          "url": "https://mcp.mailerlite.com/mcp",
+          "fields": []
+        }
+      ]
+    },
+    {
+      "id": "buffer",
+      "name": "Buffer",
+      "group": "Marketing and email",
+      "description": "Plan and schedule the client's social posts in Buffer, and see how they did.",
+      "tags": [
+        "Posts publicly"
+      ],
+      "beta": true,
+      "notes": [
+        "The AI can schedule and publish posts on the client's social channels."
+      ],
+      "options": [
+        {
+          "id": "oauth",
+          "label": "Sign in with Buffer",
+          "recommended": true,
+          "kind": "remote",
+          "auth": "oauth",
+          "url": "https://mcp.buffer.com/mcp",
           "fields": []
         }
       ]

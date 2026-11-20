@@ -311,7 +311,7 @@ registered). "Open" means registration is offered; that it accepts us is unteste
 sign-in, so each goes in as Beta. Addresses marked * were found on the vendor's domain and answered,
 but their docs weren't read.
 
-**Step 1: catalog entries only (sign-in or key works with today's code).**
+**Step 1: catalog entries only (sign-in or key works with today's code).** Batch 1 was added in 0.2.2 (Semrush at `/v2/mcp`, as its docs now say; Intercom with a second option for EU workspaces, `https://mcp.eu.intercom.com/mcp`; Ahrefs with sign-in only, since its key format isn't documented).
 
 | Batch | Tool | Address | How |
 | --- | --- | --- | --- |
