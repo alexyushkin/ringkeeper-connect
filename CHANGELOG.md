@@ -4,6 +4,36 @@ What's new in each version of Ringkeeper Connect, in plain words. A release's pa
 shows its section under "What's new". Versions before 0.2.0-beta.16 are described on their
 [release pages](https://github.com/alexyushkin/ringkeeper-connect/releases).
 
+## 0.2.0
+
+The first normal release since 0.1.1. Everything the 0.2.0 test versions added:
+
+- **Ask your AI app about Ringkeeper Connect.** Claude, Cursor and the others can now answer "How do I
+  add Globex's Airtable?" or "Why isn't Acme's n8n working?" from a built-in guide and from what's
+  set up on this computer: your clients, their tools and whether each works. They never see your
+  keys, and changes are still made by you in the Ringkeeper Connect window.
+- **More AI apps:** VS Code (and Copilot CLI), Kiro, Antigravity and Codex join Claude Desktop,
+  Cursor and Claude Code. Setup also brings in connections from Windsurf, Gemini CLI and other apps
+  without changing them.
+- **54 tools in Add a tool,** in groups with a search box: n8n, Airtable and Notion, Stripe and
+  PayPal, GoHighLevel, Pipedrive and Close, accounting, website builders, Basecamp and more. Sign-in is offered wherever the
+  service allows it, so there's no key to make. Tools not yet tried with a real account are marked
+  Beta.
+- **A client's Google account and Microsoft 365, built in:** Gmail, Calendar, Drive, Docs, Sheets,
+  Search Console, Analytics, YouTube and Google Ads; Outlook mail and calendar, OneDrive and
+  SharePoint. You tick what the AI may do (read mail but not send it, for example) and can change it
+  later with Edit. Sign in through Ringkeeper Connect, or through your own Google or Microsoft app
+  when a client's admin requires it.
+- **Meta Ads:** reports on campaigns, ad sets and ads, with an access token or Sign in with Meta.
+  Pausing is asked for in a window first and only runs if you click Allow.
+- **Easier setup:** a client comes first, with search and select all, Connected shown per client,
+  a searchable client list, and a "How it works" page. Restore names the apps it changes and what it
+  keeps.
+- **Steadier:** updates don't interrupt your AI apps, an AI app that drops Ringkeeper Connect gets it
+  back, and saving works when Windows briefly locks a file.
+- **Check for updates** next to the version, with what it's doing; a failed check tries again in 15
+  minutes.
+
 ## 0.2.0-beta.19
 
 - **Basecamp** in Add a tool, under Work and projects. Sign in as someone in the client's Basecamp

@@ -68,11 +68,12 @@ describe("which hosts get which mode", () => {
 });
 
 describe("fixed mode (Claude Desktop)", () => {
-  it("shows the same four tools whatever the active client, and doesn't promise list_changed", async () => {
+  it("shows the same five tools whatever the active client, and doesn't promise list_changed", async () => {
     const { gateway, client } = await setup("claude-ai");
     const before = await names(client);
     expect(before).toEqual([
       "ringkeeper_call_tool",
+      "ringkeeper_help",
       "ringkeeper_list_clients",
       "ringkeeper_search_tools",
       "ringkeeper_use_client",
