@@ -4,6 +4,23 @@ What's new in each version of Ringkeeper Connect, in plain words. A release's pa
 shows its section under "What's new". Versions before 0.2.0-beta.16 are described on their
 [release pages](https://github.com/alexyushkin/ringkeeper-connect/releases).
 
+## 0.2.3
+
+- **12 more tools in Add a tool (78 in all):**
+  - Social: **Hootsuite** and **Metricool**. Both can schedule and publish posts.
+  - Outreach: **Instantly**, **lemlist** and **Hunter**. They can start campaigns that send real
+    email, and finding or checking addresses uses the account's credits.
+  - Marketing data: **Similarweb** (paid plan, uses data credits) and **DataForSEO** (every lookup
+    is paid for from the account's balance).
+  - Customer messaging: **Customer.io**. An admin of the account turns it on first, and it starts
+    with drafts only.
+  - Meetings and tasks: **Granola**, **Otter** (read only) and **Todoist**.
+  - Voice: **Vapi**. It can place real, billed phone calls.
+
+  Each tile says before you sign in what the AI can send, publish, call or spend. Instantly,
+  lemlist, Hunter, Metricool and DataForSEO also take a pasted key. All 12 are marked Beta until
+  tried with a real account.
+
 ## 0.2.2
 
 - **12 more tools in Add a tool (66 in all),** each signing in with the service's own server:

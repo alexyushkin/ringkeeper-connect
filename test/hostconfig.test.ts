@@ -269,6 +269,18 @@ describe("bringing connections in", () => {
       ["https://mcp.jotform.com/", "jotform"],
       ["https://api.tally.so/mcp", "tally"],
       ["https://api.fireflies.ai/mcp", "fireflies"],
+      ["https://mcp.hootsuite.com/perch", "hootsuite"],
+      ["https://ai.metricool.com/mcp", "metricool"],
+      ["https://mcp-eu.customer.io/mcp", "customerio"],
+      ["https://mcp.similarweb.com", "similarweb"],
+      ["https://mcp.dataforseo.com/v3/mcp", "dataforseo"],
+      ["https://mcp.instantly.ai/mcp", "instantly"],
+      ["https://app.lemlist.com/mcp", "lemlist"],
+      ["https://mcp.hunter.io/mcp", "hunter"],
+      ["https://mcp.granola.ai/mcp", "granola"],
+      ["https://mcp.otter.ai/mcp", "otter"],
+      ["https://ai.todoist.net/mcp", "todoist"],
+      ["https://mcp.vapi.ai/mcp", "vapi"],
     ] as const) expect(detectService("x", { url })?.id, url).toBe(id);
     // Words that only look like one of them.
     expect(detectService("toolkit", { command: "node", args: ["toolkit.js"] })).toBeUndefined();

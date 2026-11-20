@@ -17,6 +17,7 @@ describe("the catalog data", () => {
         "sentry", "cloudflare", "posthog", "attio", "freshbooks", "zoho-books", "odoo", "sanity", "contentful", "strapi", "payload",
         "mollie", "paddle", "gocardless", "meta_ads", "pipeboard", "google", "microsoft",
         "tiktok_ads", "ahrefs", "semrush", "brevo", "kit", "mailerlite", "buffer", "intercom", "typeform", "jotform", "tally", "fireflies",
+        "hootsuite", "metricool", "customerio", "similarweb", "dataforseo", "instantly", "lemlist", "hunter", "granola", "otter", "todoist", "vapi",
       ].sort(),
     );
     // Google and Microsoft only as our own tools, signed in through our own apps: no servers of theirs.
@@ -117,6 +118,44 @@ describe("the catalog data", () => {
     // Tools that can spend money, send or publish say so before sign-in.
     expect(findService("tiktok_ads")!.notes!.join(" ")).toMatch(/create campaigns and change budgets/);
     for (const id of ["brevo", "mailerlite", "kit", "buffer"]) expect(findService(id)!.notes!.join(" "), id).toMatch(/send|publish|go out/);
+  });
+
+  it("the second batch (2026-11-20) uses the addresses each vendor documents, is marked Beta, and sends keys in each vendor's own format", () => {
+    const added: Record<string, string> = {
+      hootsuite: "https://mcp.hootsuite.com/perch",
+      metricool: "https://ai.metricool.com/mcp",
+      customerio: "https://mcp.customer.io/mcp",
+      similarweb: "https://mcp.similarweb.com/",
+      dataforseo: "https://mcp.dataforseo.com/v3/mcp",
+      instantly: "https://mcp.instantly.ai/mcp",
+      lemlist: "https://app.lemlist.com/mcp",
+      hunter: "https://mcp.hunter.io/mcp",
+      granola: "https://mcp.granola.ai/mcp",
+      otter: "https://mcp.otter.ai/mcp",
+      todoist: "https://ai.todoist.net/mcp",
+      vapi: "https://mcp.vapi.ai/mcp",
+    };
+    for (const [id, url] of Object.entries(added)) {
+      const s = findService(id)!;
+      expect(s.beta, id).toBe(true);
+      const c = buildConnection(id, "oauth", {});
+      expect(c, id).toMatchObject({ kind: "remote", url, auth: "oauth" });
+      expect(c.fields ?? [], id).toEqual([]);
+      // Sign-in is the recommended way, except Instantly, whose own pages document only a key.
+      expect(s.options.find((o) => o.recommended)!.id, id).toBe(id === "instantly" ? "key" : "oauth");
+    }
+    expect(buildConnection("customerio", "oauth-eu", {})).toMatchObject({ kind: "remote", url: "https://mcp-eu.customer.io/mcp", auth: "oauth" });
+    const keyOf = (id: string, values: Record<string, string>) => buildConnection(id, "key", values).fields;
+    expect(keyOf("instantly", { INSTANTLY_API_KEY: "k1" })).toEqual([{ name: "Authorization", value: "Bearer k1", secret: true }]);
+    expect(keyOf("lemlist", { LEMLIST_API_KEY: "k2" })).toEqual([{ name: "X-API-Key", value: "k2", secret: true }]);
+    expect(keyOf("hunter", { HUNTER_API_KEY: "k3" })).toEqual([{ name: "X-API-Key", value: "k3", secret: true }]);
+    expect(keyOf("metricool", { METRICOOL_API_KEY: "k4" })).toEqual([{ name: "X-Mc-Auth", value: "k4", secret: true }]);
+    expect(keyOf("dataforseo", { DATAFORSEO_TOKEN: "dG9rZW4=" })).toEqual([{ name: "Authorization", value: "Basic dG9rZW4=", secret: true }]);
+    // Tools that can call, send, publish or cost money per use say so before sign-in.
+    expect(findService("vapi")!.notes!.join(" ")).toMatch(/real phone calls/);
+    for (const id of ["instantly", "lemlist", "hunter"]) expect(findService(id)!.notes!.join(" "), id).toMatch(/real (cold )?(email|outreach)/);
+    for (const id of ["hootsuite", "metricool"]) expect(findService(id)!.notes!.join(" "), id).toMatch(/publish|schedule posts/);
+    for (const id of ["similarweb", "dataforseo", "hunter"]) expect(findService(id)!.notes!.join(" "), id).toMatch(/credits|paid for/);
   });
 
   it("gives every key a place to find it", () => {
