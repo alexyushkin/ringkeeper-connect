@@ -32,6 +32,7 @@ import { SignInFinder } from "./sign-in-finder.js";
 import { registeredApps } from "./registered-apps.js";
 import { OwnApps, OwnAppsError } from "./own-apps.js";
 import { Approvals } from "./approvals.js";
+import { helpAnswer } from "./help.js";
 
 const dataDir = resolveDataDir();
 const files = dataFiles(dataDir);
@@ -186,6 +187,10 @@ async function start(): Promise<void> {
       approve: (q) => approvals.approve(q),
     },
     onAppContact: (contact) => apps.recordContact(contact),
+    help: ({ question, host }) => {
+      const s = appState();
+      return helpAnswer({ question, host, clients: s.clients, statuses: s.statuses, hosts: s.hosts, version: s.version, update: s.update, packaged: s.packaged, settings: s.settings });
+    },
   });
   log({ ev: "runtimes", node: !!runtimes.nodeDir, uv: !!runtimes.uvDir });
   const port = await gateway.start();

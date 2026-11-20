@@ -25,6 +25,7 @@ import { originalArguments, safeInputSchema } from "./schema-names.js";
 import { nullLogger, type Logger } from "./log.js";
 import {
   META_CALL_TOOL,
+  META_HELP,
   META_LIST_CLIENTS,
   META_SEARCH_TOOLS,
   META_USE_CLIENT,
@@ -81,6 +82,11 @@ export interface GatewayOptions {
    * the name the app reports; `hostName` is that reported name.
    */
   onAppContact?: (contact: { app?: string; hostName?: string; at: number }) => void;
+  /**
+   * Answers ringkeeper_help: a guide plus what's set up on this computer. Must
+   * never include a key. `host` is the AI app asking, by the name people know.
+   */
+  help?: (request: { question: string; host: string }) => string | Promise<string>;
 }
 
 interface Session {
@@ -374,6 +380,12 @@ export class Gateway {
   async callTool(name: string, args: Record<string, unknown>, from?: Session): Promise<CallToolResult> {
     try {
       if (name === META_LIST_CLIENTS) return this.listClientsResult();
+      if (name === META_HELP) {
+        const question = typeof args.question === "string" ? args.question.slice(0, 2000) : "";
+        this.log({ ev: "help_asked", host: from?.hostName });
+        if (!this.opts.help) return text("Ringkeeper Connect's help isn't available here. Open the Ringkeeper Connect window and click How it works.");
+        return text(await this.opts.help({ question, host: hostLabel(from?.hostName) }));
+      }
       if (name === META_USE_CLIENT) {
         const wanted = typeof args.client === "string" ? args.client : "";
         const client = this.setActiveClient(wanted, from);

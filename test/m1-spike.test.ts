@@ -88,6 +88,7 @@ describe("gateway over HTTP", () => {
     expect(await toolNames(c)).toEqual([
       "n8n_main__get_workflow",
       "n8n_main__list_workflows",
+      "ringkeeper_help",
       "ringkeeper_list_clients",
       "ringkeeper_use_client",
     ]);

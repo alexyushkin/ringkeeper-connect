@@ -8,6 +8,7 @@ export const META_LIST_CLIENTS = "ringkeeper_list_clients";
 export const META_USE_CLIENT = "ringkeeper_use_client";
 export const META_SEARCH_TOOLS = "ringkeeper_search_tools";
 export const META_CALL_TOOL = "ringkeeper_call_tool";
+export const META_HELP = "ringkeeper_help";
 
 /**
  * - dynamic: the active client's tools are listed directly and swapped with
@@ -49,7 +50,8 @@ export function serverInstructions(mode: ToolMode, clientNames: string[]): strin
     routingRule(clientNames) +
     " " +
     how +
-    `Switching with ${META_USE_CLIENT} applies to every chat in this app. Every result starts with the client it ran against.`
+    `Switching with ${META_USE_CLIENT} applies to every chat in this app. Every result starts with the client it ran against. ` +
+    `For questions about Ringkeeper Connect itself (setting it up, adding or fixing a client's tools, why something isn't working), call ${META_HELP} and answer from it.`
   );
 }
 
@@ -70,6 +72,21 @@ export function metaTools(clientNames: string[]): Tool[] {
         properties: { client: { type: "string", description: 'The client\'s name, e.g. "Acme".' } },
         required: ["client"],
       },
+    },
+    {
+      name: META_HELP,
+      description:
+        "Answers questions about Ringkeeper Connect itself: how it works, setting it up, adding a client or a tool, signing in or finding a key, " +
+        "why a tool or an AI app isn't working, Restore, updates. Returns a guide, advice for the services the question names, and what is set up " +
+        "on this computer right now (clients, their tools and whether each works, connected AI apps; never keys). Call it before answering such a " +
+        "question, and answer from it in plain words. It only explains: changes are made by the user in the Ringkeeper Connect window.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          question: { type: "string", description: 'The user\'s question, in their words, e.g. "How do I add Acme\'s Airtable?"' },
+        },
+      },
+      annotations: { readOnlyHint: true },
     },
   ];
 }

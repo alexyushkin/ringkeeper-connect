@@ -113,6 +113,10 @@ export function Help(props: { hosts: HostView[]; onClose: () => void }) {
         <details>
           <summary>Something not working?</summary>
           <ul>
+            <li>
+              Ask your AI app. It can read this guide and see what's set up here (your clients, their tools and whether each works, never your
+              keys), so "Why isn't Acme's n8n working?" or "How do I add Globex's Airtable?" gets a real answer.
+            </li>
             <li>A tool marked "Not working" says why and how to fix it, right under its name.</li>
             <li>"Show me how to check" next to an AI app walks you through checking that it uses Ringkeeper Connect.</li>
             <li>Missing a service? Use "Request a tool" at the bottom of "Add a tool".</li>

@@ -81,7 +81,7 @@ describe("no clients yet", () => {
   it("still answers, and says what to do", async () => {
     const { gateway, token } = await start(config([]));
     const c = await connect(gateway.port, token, "claude-ai");
-    expect(await names(c)).toHaveLength(4);
+    expect(await names(c)).toHaveLength(5);
     const res = (await c.callTool({ name: "ringkeeper_call_tool", arguments: { client: "Acme", tool: "x" } })) as CallToolResult;
     expect(res.isError).toBe(true);
     expect(texts(res)[0]).toMatch(/No clients are set up yet/);
