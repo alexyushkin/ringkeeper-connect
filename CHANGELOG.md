@@ -4,6 +4,21 @@ What's new in each version of Ringkeeper Connect, in plain words. A release's pa
 shows its section under "What's new". Versions before 0.2.0-beta.16 are described on their
 [release pages](https://github.com/alexyushkin/ringkeeper-connect/releases).
 
+## 0.2.2
+
+- **12 more tools in Add a tool (66 in all),** each signing in with the service's own server:
+  - SEO: **Ahrefs** (Lite plan or higher) and **Semrush**. Lookups use the account's API units.
+  - Ads: **TikTok Ads**. It's TikTok's own server and can create campaigns and change budgets, not
+    only report, so ask the AI to show you a change before it makes it.
+  - Email marketing: **Brevo**, **Kit (ConvertKit)** and **MailerLite**.
+  - Social: **Buffer**.
+  - Support: **Intercom**, for workspaces hosted in the US or Europe.
+  - Forms: **Typeform**, **Jotform** and **Tally**.
+  - Meetings: **Fireflies**.
+
+  Semrush, Brevo and Fireflies also take a pasted key. All 12 are marked Beta until tried with a
+  real account.
+
 ## 0.2.1
 
 - **Codex's own helpers are left in Codex.** Codex adds helpers to its settings for its browser and

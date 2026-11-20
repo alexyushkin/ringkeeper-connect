@@ -16,6 +16,7 @@ describe("the catalog data", () => {
         "calendly", "calcom", "tavily", "apify", "elevenlabs", "twilio",
         "sentry", "cloudflare", "posthog", "attio", "freshbooks", "zoho-books", "odoo", "sanity", "contentful", "strapi", "payload",
         "mollie", "paddle", "gocardless", "meta_ads", "pipeboard", "google", "microsoft",
+        "tiktok_ads", "ahrefs", "semrush", "brevo", "kit", "mailerlite", "buffer", "intercom", "typeform", "jotform", "tally", "fireflies",
       ].sort(),
     );
     // Google and Microsoft only as our own tools, signed in through our own apps: no servers of theirs.
@@ -81,6 +82,41 @@ describe("the catalog data", () => {
     const c = buildConnection("basecamp", "oauth", {});
     expect(c).toMatchObject({ kind: "remote", url: "https://mcp.basecamp.com/mcp", auth: "oauth" });
     expect(c.fields ?? []).toEqual([]);
+  });
+
+  it("the tools added on 2026-11-20 sign in with the vendor's own server, are marked Beta, and send keys the way each vendor documents", () => {
+    const added: Record<string, string> = {
+      tiktok_ads: "https://business-api.tiktok.com/open_mcp/tt-ads-mcp-layer",
+      ahrefs: "https://api.ahrefs.com/mcp/mcp",
+      semrush: "https://mcp.semrush.com/v2/mcp",
+      brevo: "https://mcp.brevo.com/v1/brevo/mcp",
+      kit: "https://app.kit.com/mcp",
+      mailerlite: "https://mcp.mailerlite.com/mcp",
+      buffer: "https://mcp.buffer.com/mcp",
+      intercom: "https://mcp.intercom.com/mcp",
+      typeform: "https://api.typeform.com/mcp",
+      jotform: "https://mcp.jotform.com/",
+      tally: "https://api.tally.so/mcp",
+      fireflies: "https://api.fireflies.ai/mcp",
+    };
+    for (const [id, url] of Object.entries(added)) {
+      const s = findService(id)!;
+      expect(s.beta, id).toBe(true);
+      const rec = s.options.find((o) => o.recommended)!;
+      expect(rec, id).toMatchObject({ id: "oauth", kind: "remote", auth: "oauth", url, fields: [] });
+      const c = buildConnection(id, "oauth", {});
+      expect(c, id).toMatchObject({ kind: "remote", url, auth: "oauth" });
+      expect(c.fields ?? [], id).toEqual([]);
+    }
+    // Intercom keeps European workspaces on their own server.
+    expect(buildConnection("intercom", "oauth-eu", {})).toMatchObject({ kind: "remote", url: "https://mcp.eu.intercom.com/mcp", auth: "oauth" });
+    // Keys, each in the vendor's own format.
+    expect(buildConnection("semrush", "key", { SEMRUSH_API_KEY: "k1" }).fields).toEqual([{ name: "Authorization", value: "Apikey k1", secret: true }]);
+    expect(buildConnection("brevo", "key", { BREVO_MCP_KEY: "k2" }).fields).toEqual([{ name: "Authorization", value: "Bearer k2", secret: true }]);
+    expect(buildConnection("fireflies", "key", { FIREFLIES_API_KEY: "k3" }).fields).toEqual([{ name: "Authorization", value: "Bearer k3", secret: true }]);
+    // Tools that can spend money, send or publish say so before sign-in.
+    expect(findService("tiktok_ads")!.notes!.join(" ")).toMatch(/create campaigns and change budgets/);
+    for (const id of ["brevo", "mailerlite", "kit", "buffer"]) expect(findService(id)!.notes!.join(" "), id).toMatch(/send|publish|go out/);
   });
 
   it("gives every key a place to find it", () => {
