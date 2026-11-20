@@ -67,6 +67,7 @@ Ringkeeper Connect is a desktop app for agencies. It keeps each client's tools (
 ## Bringing in tools you already use
 - "Bring in connections from apps…" (sidebar) moves connections already set up in the AI apps into a client, keys included. From Windsurf, Gemini CLI and other apps they're copied, and those apps aren't changed.
 - Connectors added in a Claude or ChatGPT account online, and Claude Desktop extensions, keep their sign-ins to themselves: add those again in Ringkeeper Connect. It's once: after that every AI app uses the same connection.
+- An AI app's own helpers (such as node_repl, which Codex adds for its browser and screen control) aren't offered: they aren't a client's tool and only work inside that app. One brought in by an earlier version can be removed from the client; the app keeps its own copy.
 
 ## Connecting the AI apps
 - The first-run setup finds the AI apps and connects the ones you tick (Connect apps). Later, "Connect" next to an app in the sidebar does it. After connecting, restart that app (Claude Code: start a new session).

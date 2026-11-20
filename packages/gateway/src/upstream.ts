@@ -14,6 +14,9 @@ import { BUILTIN_TOOLS_COMMAND } from "./config.js";
 import { vendorName } from "./store/client-store.js";
 import { resolveLaunch, type BundledRuntimes } from "./runtimes.js";
 import type { Logger } from "./log.js";
+import { appOnlyHelper } from "./app-only.js";
+import fs from "node:fs";
+import { isAbsolute } from "node:path";
 
 export type UpstreamStatus = "idle" | "starting" | "ready" | "error" | "needs_key" | "needs_signin" | "stopped";
 
@@ -250,8 +253,20 @@ export class Upstream {
     if (httpStatus === 404) {
       return `${who}'s web address wasn't found. Check it in Ringkeeper Connect under ${where}.`;
     }
-    if (e?.code === "ENOENT" && this.conn.kind !== "remote") {
-      return `Couldn't start ${who}: the program "${this.conn.command}" isn't on this computer.`;
+    if (this.conn.kind !== "remote") {
+      // Another AI app's own helper (Codex's node_repl): it was never this client's tool, and can't work from here.
+      const helper = appOnlyHelper(this.conn.name, this.conn.command, this.conn.args);
+      if (helper) {
+        return `${this.conn.name} is part of ${helper.app} and only works inside ${helper.app}, so it can't run for ${this.owner.name}. Remove it under ${where}: ${helper.app} keeps its own copy.`;
+      }
+      // A full path that's no longer there: usually the app it came with updated and moved it.
+      if (isAbsolute(this.conn.command) && !fs.existsSync(this.conn.command)) {
+        return `Couldn't start ${who}: its program isn't on this computer any more ("${this.conn.command}"). If it came with another app, an update may have moved it. Set the new location under ${where}, or remove it.`;
+      }
+      // Windows starts programs through its command prompt, which reports a missing one in words, not as an error code.
+      if (e?.code === "ENOENT" || /is not recognized as an internal or external command|The system cannot find the (path|file) specified/i.test(this.stderrTail)) {
+        return `Couldn't start ${who}: the program "${this.conn.command}" isn't on this computer.`;
+      }
     }
     if (this.conn.kind === "remote" && /fetch failed|ECONNREFUSED|ENOTFOUND|ETIMEDOUT|network/i.test(String(err))) {
       const host = temporaryHost(this.conn.url);

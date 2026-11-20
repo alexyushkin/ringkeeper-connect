@@ -1,6 +1,6 @@
 // Turn an AI app's connection entry into a Ringkeeper connection.
 import { isDeepStrictEqual } from "node:util";
-import { looksSecret, type ConnectionInput, type FieldInput } from "@ringkeeper/gateway";
+import { appOnlyHelper, looksSecret, type ConnectionInput, type FieldInput } from "@ringkeeper/gateway";
 import { SOURCE_LABELS, VARIABLE_SYNTAX, type SourceId } from "./sources.js";
 
 export const RINGKEEPER_ENTRY = "ringkeeper-connect";
@@ -173,6 +173,22 @@ export interface Mapped {
   problem?: string;
   warnings: string[];
   service?: Service;
+  /** Set when it's an AI app's own helper: the app it belongs to. Never offered, never asked about. */
+  appOnly?: string;
+}
+
+function appOnlyReason(name: string, owner: string, foundIn: string): string {
+  const where = foundIn.includes(owner) ? "there" : `in ${foundIn}`;
+  return `${name} is part of ${owner} and only works inside ${owner}, so it was left ${where}.`;
+}
+
+/** Whether an app's entry is that app's (or another AI app's) own helper, which Ringkeeper Connect leaves alone. */
+export function isAppOnlyEntry(name: string, original: unknown, host: SourceId): boolean {
+  const raw = normalizeEntry(host, original);
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return false;
+  const v = raw as Record<string, unknown>;
+  if (typeof v.command !== "string") return false;
+  return !!appOnlyHelper(name, v.command, Array.isArray(v.args) ? v.args.filter((a): a is string => typeof a === "string") : []);
 }
 
 export function mapEntry(name: string, original: unknown, host: SourceId, ctx: MapContext): Mapped {
@@ -229,6 +245,9 @@ export function mapEntry(name: string, original: unknown, host: SourceId, ctx: M
   if (typeof v.command !== "string" || !v.command.trim()) {
     return { problem: `${name} in ${app} doesn't say what to run, so it was left there.`, warnings, service };
   }
+  // An AI app's own helper (Codex's node_repl): the same for every client, and it only works inside that app.
+  const helper = appOnlyHelper(name, v.command, Array.isArray(v.args) ? v.args.filter((a): a is string => typeof a === "string") : []);
+  if (helper) return { problem: appOnlyReason(name, helper.app, app), warnings: [], appOnly: helper.app };
   const cmd = expand(v.command, host, ctx);
   const args: string[] = [];
   const argProblems: string[] = [...cmd.unresolved];
@@ -283,6 +302,8 @@ export function buildCandidates(found: FoundEntry[], ctx: MapContext): Candidate
   for (const f of found) {
     if (f.name === RINGKEEPER_ENTRY) continue;
     const mapped = mapEntry(f.name, f.value, f.host, ctx);
+    // An AI app's own helper isn't a client's tool: not offered at all.
+    if (mapped.appOnly) continue;
     const ess = essence(mapped);
     const same = out.find(
       (c) => c.sources.some((s) => s.name === f.name) && ((ess !== undefined && c.essence === ess) || isDeepStrictEqual(c.raw, f.value)),

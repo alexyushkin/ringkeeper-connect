@@ -278,3 +278,78 @@ catalog too: each one is just a few lines of data, and a longer list sells the a
 4. **Developer apps and CIMD sign-in** (section 2): unlocks Google, HubSpot, Salesforce, Slack,
    Xero, QuickBooks, Asana and the rest.
 5. **Registry search** in "Add a tool" for everything else, and community tools on request.
+
+## 7. Helpers that belong to one AI app (checked 2026-11-20)
+
+Rule (agreed): don't offer a connection that is the same for every client **and** only works
+inside one AI app. Code: `packages/gateway/src/app-only.ts`; tests in `test/more-apps.test.ts`.
+
+Only the Codex / ChatGPT desktop app writes such helpers into its settings (`~/.codex/config.toml`).
+Claude Desktop, Claude Code, Cursor, VS Code, Copilot CLI, Kiro, Antigravity, Gemini CLI, Zed,
+Cline, Windsurf, Visual Studio, Amazon Q, LM Studio and Warp keep theirs out of the file (Roo Code,
+Continue and Junie weren't checked).
+
+| Skipped (approved one by one) | What it is | Where it lives |
+| --- | --- | --- |
+| `node_repl` | Codex's browser and screen-control runner; rewritten by the app at every start | `…\WindowsApps\OpenAI.Codex_<version>_…\app\resources\cua_node\bin\`, `%LOCALAPPDATA%\OpenAI\Codex\bin\<id>\` or `runtimes\cua_node\<id>\bin\`, `/Applications/ChatGPT.app/Contents/Resources/cua_node/bin/` |
+| `cua_repl` | The same helper under its newer name | Codex's bundled Node running `@oai/cua-repl/bin/cua-repl.mjs` |
+| `computer-use` | Codex's screen-control program | `Codex Computer Use.app/…/SkyComputerUseClient mcp` |
+| Anything run from Codex's own folders | Helpers it adds later under other names | The folders above, `/Applications/Codex.app`, `~/.codex/plugins/cache/`, `~/.codex/computer-use/` |
+
+Sources: a real Windows install, and openai/codex issues 26011, 26530, 42454, 44736, 53664.
+
+**Kept on purpose** (the same for everyone, but they work from any AI app, so Ringkeeper Connect is
+useful for them): the JetBrains IDE server, Figma desktop (`127.0.0.1:3845`), Xcode, Unity, Blender,
+Playwright, Chrome DevTools, Browser MCP, Docker's `MCP_DOCKER`, Kiro's default `fetch`. Some sit
+inside another app's folder (JetBrains' `java` and jar), so they can break when that app moves; the
+"its program isn't on this computer any more" message covers that.
+
+## 8. Tools to add next (checked 2026-11-20)
+
+Checked by reading each vendor server's public sign-in information (no sign-in, no app
+registered). "Open" means registration is offered; that it accepts us is untested until a real
+sign-in, so each goes in as Beta. Addresses marked * were found on the vendor's domain and answered,
+but their docs weren't read.
+
+**Step 1: catalog entries only (sign-in or key works with today's code).**
+
+| Batch | Tool | Address | How |
+| --- | --- | --- | --- |
+| 1 | Ahrefs | `https://api.ahrefs.com/mcp/mcp` | Sign in or key; uses API units; no renewal listed |
+| 1 | Semrush | `https://mcp.semrush.com/v1/mcp` | Sign in, or `Authorization: Apikey <key>`; uses API units |
+| 1 | TikTok Ads | `https://business-api.tiktok.com/open_mcp/tt-ads-mcp-layer` (about 40 tools; `-flat` has about 400) | Sign in; reads and writes |
+| 1 | Brevo | `https://mcp.brevo.com/v1/brevo/mcp` | Sign in, or an "MCP" key as `Authorization: Bearer` |
+| 1 | Kit | `https://app.kit.com/mcp` | Sign in |
+| 1 | MailerLite | `https://mcp.mailerlite.com/mcp` * | Sign in |
+| 1 | Intercom | `https://mcp.intercom.com/mcp` * | Sign in |
+| 1 | Typeform | `https://api.typeform.com/mcp` * | Sign in |
+| 1 | Jotform | `https://mcp.jotform.com/` * | Sign in |
+| 1 | Tally | `https://api.tally.so/mcp` * | Sign in |
+| 1 | Fireflies | `https://api.fireflies.ai/mcp` * | Sign in |
+| 1 | Buffer | `https://mcp.buffer.com/mcp` * | Sign in |
+| 2 | Granola, Otter | `https://mcp.granola.ai/mcp`, `https://mcp.otter.ai/mcp` * | Sign in (Otter reads only) |
+| 2 | Hootsuite, Metricool | `https://mcp.hootsuite.com/mcp`, `https://ai.metricool.com/mcp` * | Sign in |
+| 2 | Instantly, Lemlist, Smartlead, Hunter | `https://mcp.instantly.ai/mcp`, `https://app.lemlist.com/mcp`, `https://mcp.smartlead.ai/mcp`, `https://mcp.hunter.io/mcp` * | Sign in |
+| 2 | Vapi | `https://mcp.vapi.ai/mcp` * | Sign in |
+| 2 | Customer.io | `https://mcp.customer.io/mcp` (EU: `mcp-eu.customer.io`) * | Sign in |
+| 2 | Dropbox, Todoist | `https://mcp.dropbox.com/mcp`, `https://ai.todoist.net/mcp` * | Sign in |
+| 2 | Similarweb, DataForSEO | `https://mcp.similarweb.com/`, `https://mcp.dataforseo.com/http` * | Sign in (Similarweb also a key) |
+| 2 | Clerk | `https://mcp.clerk.com/mcp` * | Sign in |
+
+Registration there issues a secret (check it's stored and used before listing): Miro, Egnyte,
+Dialpad, Sprout Social, Coda, Gusto.
+
+**Step 2: sign-in with an app ID page ("CIMD").** No registration at all, only this: Shopify
+(`https://setup.shopify.com/mcp`; its help names only a few AI apps, so test first), Squarespace
+(`https://mcp.squarespace.com/mcp`), Zendesk (`https://mcp.zendesk.com/mcp`, early access), Vercel
+(`https://mcp.vercel.com`), Aircall, Synthflow. Needs a page we host and support in the sign-in code.
+
+**Step 3: the vendor requires a registered app** (extend "use your own app"): HubSpot
+(`https://mcp.hubspot.com/`, client ID and secret), Slack, Asana (`/v2/mcp`; `/sse` is shut), Xero,
+Zoom, Box, Wrike, Jobber, Salesforce (per org, by an admin).
+
+**Not now:** Square and Quo/OpenPhone (served at `/sse`; our sign-in doesn't cover that kind yet),
+ClickUp (docs say open, users report refusals: test), ActiveCampaign and Zoho CRM (a per-account
+address that holds the key), Freshdesk (key, per subdomain), Figma (closed list), QuickBooks and
+Mailchimp campaigns (closed), Google Ads (self-hosted only), LinkedIn Ads and Constant Contact
+(none), Gusto, Ramp, Brex and Mercury (payroll and money movement), Replit (address unresolved).

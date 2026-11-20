@@ -4,6 +4,18 @@ What's new in each version of Ringkeeper Connect, in plain words. A release's pa
 shows its section under "What's new". Versions before 0.2.0-beta.16 are described on their
 [release pages](https://github.com/alexyushkin/ringkeeper-connect/releases).
 
+## 0.2.1
+
+- **Codex's own helpers are left in Codex.** Codex adds helpers to its settings for its browser and
+  screen control (node_repl, cua_repl, computer-use). They aren't a client's tool, they only work
+  inside Codex, and they move every time Codex updates, so one brought into a client stopped working
+  at the next update. Ringkeeper Connect no longer offers them, never moves them out of Codex and
+  doesn't ask about them. If you brought one in earlier, remove it from the client: Codex keeps its
+  own copy.
+- **A clearer message when a program has moved.** A tool whose program is no longer where it was now
+  says so, and that an update of the app it came with may have moved it, where it used to say it
+  "stopped right after starting".
+
 ## 0.2.0
 
 The first normal release since 0.1.1. Everything the 0.2.0 test versions added:
