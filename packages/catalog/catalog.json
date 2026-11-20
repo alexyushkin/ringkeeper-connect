@@ -1338,6 +1338,70 @@
       ]
     },
     {
+      "id": "granola",
+      "name": "Granola",
+      "group": "Work and projects",
+      "description": "Search the client's Granola meeting notes and transcripts, and tidy them into folders.",
+      "beta": true,
+      "notes": [
+        "On Granola's free plan the AI sees only the last 30 days of your own notes. Transcripts and changes need a paid plan.",
+        "On an Enterprise workspace, an admin has to turn on MCP access first."
+      ],
+      "options": [
+        {
+          "id": "oauth",
+          "label": "Sign in with Granola",
+          "recommended": true,
+          "kind": "remote",
+          "auth": "oauth",
+          "url": "https://mcp.granola.ai/mcp",
+          "fields": []
+        }
+      ]
+    },
+    {
+      "id": "otter",
+      "name": "Otter",
+      "group": "Work and projects",
+      "description": "Search the client's Otter meetings and read their transcripts.",
+      "beta": true,
+      "notes": [
+        "The AI can only read: meetings the account recorded and ones shared with it."
+      ],
+      "options": [
+        {
+          "id": "oauth",
+          "label": "Sign in with Otter",
+          "recommended": true,
+          "kind": "remote",
+          "auth": "oauth",
+          "url": "https://mcp.otter.ai/mcp",
+          "fields": []
+        }
+      ]
+    },
+    {
+      "id": "todoist",
+      "name": "Todoist",
+      "group": "Work and projects",
+      "description": "Add, change and complete the client's Todoist tasks and projects.",
+      "beta": true,
+      "notes": [
+        "Works on every Todoist plan. For a repeating task, ask the AI to \"reschedule\" it: \"change the date\" can remove the repeat."
+      ],
+      "options": [
+        {
+          "id": "oauth",
+          "label": "Sign in with Todoist",
+          "recommended": true,
+          "kind": "remote",
+          "auth": "oauth",
+          "url": "https://ai.todoist.net/mcp",
+          "fields": []
+        }
+      ]
+    },
+    {
       "id": "calendly",
       "name": "Calendly",
       "group": "Scheduling",
@@ -1482,6 +1546,31 @@
               }
             }
           ]
+        }
+      ]
+    },
+    {
+      "id": "vapi",
+      "name": "Vapi",
+      "group": "Voice and research",
+      "description": "Set up the client's Vapi voice assistants, review their calls, and place calls.",
+      "tags": [
+        "Places real calls"
+      ],
+      "beta": true,
+      "notes": [
+        "The AI can place real phone calls, now or scheduled, and they're billed to the client's Vapi account. Test runs are billed too.",
+        "You choose the client's Vapi organization when you sign in."
+      ],
+      "options": [
+        {
+          "id": "oauth",
+          "label": "Sign in with Vapi",
+          "recommended": true,
+          "kind": "remote",
+          "auth": "oauth",
+          "url": "https://mcp.vapi.ai/mcp",
+          "fields": []
         }
       ]
     },
@@ -1633,6 +1722,147 @@
           "auth": "oauth",
           "url": "https://mcp.eu.intercom.com/mcp",
           "fields": []
+        }
+      ]
+    },
+    {
+      "id": "instantly",
+      "name": "Instantly",
+      "group": "CRM and sales",
+      "description": "Work with the client's Instantly campaigns, leads, replies and sending accounts.",
+      "tags": [
+        "Sends email"
+      ],
+      "beta": true,
+      "notes": [
+        "The AI can do what the dashboard can: start a campaign (real cold email goes out), reply to emails, and delete things. Ask it to show you a change before it makes it.",
+        "A key is the way Instantly documents, and the permissions you give the key limit what the AI can do. Checking and enriching emails uses Instantly credits."
+      ],
+      "options": [
+        {
+          "id": "key",
+          "label": "Use an API key",
+          "recommended": true,
+          "kind": "remote",
+          "url": "https://mcp.instantly.ai/mcp",
+          "headers": {
+            "Authorization": "Bearer {{INSTANTLY_API_KEY}}"
+          },
+          "fields": [
+            {
+              "id": "INSTANTLY_API_KEY",
+              "label": "API key",
+              "secret": true,
+              "required": true,
+              "help": "In the client's Instantly account: Settings > Integrations > API Keys. Create an API v2 key and tick only what the AI should be able to do.",
+              "where": {
+                "label": "Open Instantly integrations",
+                "url": "https://app.instantly.ai/app/settings/integrations"
+              }
+            }
+          ]
+        },
+        {
+          "id": "oauth",
+          "label": "Sign in with Instantly",
+          "kind": "remote",
+          "auth": "oauth",
+          "url": "https://mcp.instantly.ai/mcp",
+          "fields": []
+        }
+      ]
+    },
+    {
+      "id": "lemlist",
+      "name": "lemlist",
+      "group": "CRM and sales",
+      "description": "Work with the client's lemlist campaigns and leads, and find and enrich contacts.",
+      "tags": [
+        "Sends email"
+      ],
+      "beta": true,
+      "notes": [
+        "The AI can start a campaign, which sends real outreach, and can delete things. lemlist asks you to confirm those.",
+        "Finding and checking emails and phone numbers uses lemlist credits. A sign-in runs out after about 30 days without use."
+      ],
+      "options": [
+        {
+          "id": "oauth",
+          "label": "Sign in with lemlist",
+          "recommended": true,
+          "kind": "remote",
+          "auth": "oauth",
+          "url": "https://app.lemlist.com/mcp",
+          "fields": []
+        },
+        {
+          "id": "key",
+          "label": "Use an API key",
+          "kind": "remote",
+          "url": "https://app.lemlist.com/mcp",
+          "headers": {
+            "X-API-Key": "{{LEMLIST_API_KEY}}"
+          },
+          "fields": [
+            {
+              "id": "LEMLIST_API_KEY",
+              "label": "API key",
+              "secret": true,
+              "required": true,
+              "help": "In the client's lemlist account: Settings > Team > Integrations, then Generate. The key is shown once.",
+              "where": {
+                "label": "Open lemlist",
+                "url": "https://app.lemlist.com/"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "hunter",
+      "name": "Hunter",
+      "group": "CRM and sales",
+      "description": "Find and check email addresses, and manage the client's Hunter leads and sequences.",
+      "tags": [
+        "Uses credits"
+      ],
+      "beta": true,
+      "notes": [
+        "Finding and checking emails uses Hunter credits. The free plan has 50 a month.",
+        "The AI can start a sequence, which sends real email, and can delete leads and lists for good."
+      ],
+      "options": [
+        {
+          "id": "oauth",
+          "label": "Sign in with Hunter",
+          "recommended": true,
+          "kind": "remote",
+          "auth": "oauth",
+          "url": "https://mcp.hunter.io/mcp",
+          "fields": []
+        },
+        {
+          "id": "key",
+          "label": "Use an API key",
+          "kind": "remote",
+          "url": "https://mcp.hunter.io/mcp",
+          "headers": {
+            "X-API-Key": "{{HUNTER_API_KEY}}"
+          },
+          "fields": [
+            {
+              "id": "HUNTER_API_KEY",
+              "label": "API key",
+              "secret": true,
+              "required": true,
+              "help": "Create one while signed in to the client's Hunter account.",
+              "where": {
+                "label": "Open Hunter API keys",
+                "url": "https://hunter.io/api-keys"
+              }
+            }
+          ]
         }
       ]
     },
@@ -2213,6 +2443,182 @@
           "auth": "oauth",
           "url": "https://mcp.buffer.com/mcp",
           "fields": []
+        }
+      ]
+    },
+    {
+      "id": "hootsuite",
+      "name": "Hootsuite",
+      "group": "Marketing and email",
+      "description": "Draft, schedule and publish the client's social posts in Hootsuite.",
+      "tags": [
+        "Posts publicly"
+      ],
+      "beta": true,
+      "notes": [
+        "The AI can publish posts on the client's social channels. Approval steps set up in Hootsuite still apply.",
+        "The client's social accounts must already be connected in Hootsuite, and their plan must include publishing."
+      ],
+      "options": [
+        {
+          "id": "oauth",
+          "label": "Sign in with Hootsuite",
+          "recommended": true,
+          "kind": "remote",
+          "auth": "oauth",
+          "url": "https://mcp.hootsuite.com/perch",
+          "fields": []
+        }
+      ]
+    },
+    {
+      "id": "metricool",
+      "name": "Metricool",
+      "group": "Marketing and email",
+      "description": "See the client's social and ad results in Metricool, and create and edit scheduled posts.",
+      "tags": [
+        "Posts publicly"
+      ],
+      "beta": true,
+      "notes": [
+        "Works on every Metricool plan, including Free. Using a key instead of signing in needs the Advanced plan.",
+        "The AI can schedule posts for the client's social channels. Metricool's sign-in screen describes wider access than its tools actually use."
+      ],
+      "options": [
+        {
+          "id": "oauth",
+          "label": "Sign in with Metricool",
+          "recommended": true,
+          "kind": "remote",
+          "auth": "oauth",
+          "url": "https://ai.metricool.com/mcp",
+          "fields": []
+        },
+        {
+          "id": "key",
+          "label": "Use an API key",
+          "kind": "remote",
+          "url": "https://ai.metricool.com/mcp",
+          "headers": {
+            "X-Mc-Auth": "{{METRICOOL_API_KEY}}"
+          },
+          "fields": [
+            {
+              "id": "METRICOOL_API_KEY",
+              "label": "API key",
+              "secret": true,
+              "required": true,
+              "help": "In the client's Metricool account: Account Settings > API. Needs the Advanced plan or higher.",
+              "where": {
+                "label": "Open Metricool",
+                "url": "https://app.metricool.com/"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "customerio",
+      "name": "Customer.io",
+      "group": "Marketing and email",
+      "description": "Work with the client's Customer.io people, segments, campaigns and messages.",
+      "tags": [
+        "Paid plan"
+      ],
+      "beta": true,
+      "notes": [
+        "First, an admin of the client's Customer.io account turns on MCP under Account settings > AI. Until then nothing works.",
+        "To begin with the AI can read, and create and change drafts. Sending messages and changing live campaigns stays off until that admin also allows editing live data."
+      ],
+      "options": [
+        {
+          "id": "oauth",
+          "label": "Sign in with Customer.io",
+          "recommended": true,
+          "kind": "remote",
+          "auth": "oauth",
+          "url": "https://mcp.customer.io/mcp",
+          "fields": []
+        },
+        {
+          "id": "oauth-eu",
+          "label": "Sign in (if an EU account won't connect)",
+          "kind": "remote",
+          "auth": "oauth",
+          "url": "https://mcp-eu.customer.io/mcp",
+          "fields": []
+        }
+      ]
+    },
+    {
+      "id": "similarweb",
+      "name": "Similarweb",
+      "group": "Marketing and email",
+      "description": "Look up website traffic, keywords and competitors with the client's Similarweb account.",
+      "tags": [
+        "Paid plan"
+      ],
+      "beta": true,
+      "notes": [
+        "Needs a Similarweb Business or Enterprise plan with API access, or its API package.",
+        "Every question uses the account's data credits, and broad questions use more. Ask for something specific."
+      ],
+      "options": [
+        {
+          "id": "oauth",
+          "label": "Sign in with Similarweb",
+          "recommended": true,
+          "kind": "remote",
+          "auth": "oauth",
+          "url": "https://mcp.similarweb.com",
+          "fields": []
+        }
+      ]
+    },
+    {
+      "id": "dataforseo",
+      "name": "DataForSEO",
+      "group": "Marketing and email",
+      "description": "Look up search results, keywords and backlinks with the client's DataForSEO account.",
+      "tags": [
+        "Costs per lookup"
+      ],
+      "beta": true,
+      "notes": [
+        "There's no subscription: every lookup is paid for from the account's balance, usually a few cents or less. Ask for something specific."
+      ],
+      "options": [
+        {
+          "id": "oauth",
+          "label": "Sign in with DataForSEO",
+          "recommended": true,
+          "kind": "remote",
+          "auth": "oauth",
+          "url": "https://mcp.dataforseo.com/v3/mcp",
+          "fields": []
+        },
+        {
+          "id": "key",
+          "label": "Use an API token",
+          "kind": "remote",
+          "url": "https://mcp.dataforseo.com/v3/mcp",
+          "headers": {
+            "Authorization": "Basic {{DATAFORSEO_TOKEN}}"
+          },
+          "fields": [
+            {
+              "id": "DATAFORSEO_TOKEN",
+              "label": "API token",
+              "secret": true,
+              "required": true,
+              "help": "On DataForSEO's API Access page, click Send by Email to get the ready-made token (a long code), and paste it here. It isn't the API password itself.",
+              "where": {
+                "label": "Open DataForSEO API access",
+                "url": "https://app.dataforseo.com/api-access"
+              }
+            }
+          ]
         }
       ]
     }

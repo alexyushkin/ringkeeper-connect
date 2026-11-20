@@ -353,3 +353,14 @@ ClickUp (docs say open, users report refusals: test), ActiveCampaign and Zoho CR
 address that holds the key), Freshdesk (key, per subdomain), Figma (closed list), QuickBooks and
 Mailchimp campaigns (closed), Google Ads (self-hosted only), LinkedIn Ads and Constant Contact
 (none), Gusto, Ramp, Brex and Mercury (payroll and money movement), Replit (address unresolved).
+
+**Batch 2, added in 0.2.3 (vendor pages read 2026-11-20).** Added: Hootsuite (at `/perch`, its
+publishing server; its pages don't list `/mcp`), Metricool, Customer.io, Similarweb, DataForSEO (at
+`/v3/mcp`, the address its pages give), Instantly (key recommended: its pages document only a key),
+lemlist, Hunter, Granola, Otter, Todoist, Vapi. Held back:
+
+- **Smartlead:** its pages document only an older address with the key in it, for Claude Desktop.
+- **Dropbox:** says automatic registration is for a trusted list of AI apps; ask Dropbox to add us.
+- **Clerk:** a developer tool with an irreversible action; a poor fit for agency owners.
+- **Miro:** only accepts apps that hold a secret, which our sign-in doesn't do yet.
+- **Hootsuite's other servers** (`/nest` inbox, `/lumen` listening, `/parliament` advocacy): later.
