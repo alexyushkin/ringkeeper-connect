@@ -166,6 +166,29 @@ describe("keys and problems, in plain words", () => {
     expect(statusOf(gateway, "acme", "n8n")?.problem).toMatch(/isn't on this computer|stopped right after starting/);
   });
 
+  it("a program that was there and is gone (its app updated and moved it) is explained", async () => {
+    const gone = join(tmpdir(), "rk-moved-app-1.2.3", "bin", "tool.exe");
+    const broken: ClientConfig = { ...acme, connections: [{ id: "n8n", name: "n8n", command: gone }] };
+    const { gateway, token } = await start(config([broken]));
+    const c = await connect(gateway.port, token);
+    await c.listTools();
+    const problem = statusOf(gateway, "acme", "n8n")?.problem ?? "";
+    expect(problem).toContain("Couldn't start n8n for Acme: its program isn't on this computer any more");
+    expect(problem).toContain("an update may have moved it");
+    expect(problem).toContain("Acme > n8n");
+  });
+
+  it("another AI app's own helper says it can't work here and can be removed", async () => {
+    const command = "C:\\Program Files\\WindowsApps\\OpenAI.Codex_26.1111.2228.0_x64__2p2nqsd0c76g0\\app\\resources\\cua_node\\bin\\node_repl.exe";
+    const helper: ClientConfig = { ...acme, connections: [{ id: "node_repl", name: "node_repl", command }] };
+    const { gateway, token } = await start(config([helper]));
+    const c = await connect(gateway.port, token);
+    await c.listTools();
+    expect(statusOf(gateway, "acme", "node_repl")?.problem).toBe(
+      "node_repl is part of Codex and only works inside Codex, so it can't run for Acme. Remove it under Acme > node_repl: Codex keeps its own copy.",
+    );
+  });
+
   it("keys don't reach the log, even if a server prints them", async () => {
     const dir = fs.mkdtempSync(join(tmpdir(), "rk-log-"));
     cleanups.push(() => fs.rmSync(dir, { recursive: true, force: true }));

@@ -37,6 +37,26 @@ A multi-line note that mentions
 and must stay as it is.
 """
 `;
+/**
+ * The helper the Codex app writes into its own settings (copied from a real
+ * Windows install on 2026-11-20, values shortened). Its program lives in the
+ * app's install folder, whose name holds the version, so it moves with every
+ * Codex update. Ringkeeper Connect leaves it alone.
+ */
+export const codexNodeRepl = String.raw`
+[mcp_servers.node_repl]
+args = []
+command = 'C:\Program Files\WindowsApps\OpenAI.Codex_26.1111.9664.0_x64__2p2nqsd0c76g0\app\resources\cua_node\bin\node_repl.exe'
+env_vars = ["BROWSER_USE_ACCESS_EXECUTOR_ID", "BROWSER_USE_ACCESS_PIPE_PATH", "CODEX_WINDOWS_REGISTERED_CORE"]
+startup_timeout_sec = 120
+
+[mcp_servers.node_repl.env]
+NODE_REPL_NATIVE_PIPE_CONNECT_TIMEOUT_MS = "5000"
+NODE_REPL_NODE_PATH = 'C:\Program Files\WindowsApps\OpenAI.Codex_26.1111.9664.0_x64__2p2nqsd0c76g0\app\resources\cua_node\bin\node.exe'
+CODEX_HOME = 'C:\Users\pat\.codex'
+BROWSER_USE_AVAILABLE_BACKENDS = "chrome,iab"
+SKY_CUA_NATIVE_PIPE = '\\.\pipe\codex-cua-fake'
+`;
 
 /** VS Code / Copilot CLI: ~/.copilot/mcp-config.json. */
 export const copilotJson = `{

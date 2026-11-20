@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { parse } from "jsonc-parser";
 import { editHostConfig, readHostConfig, serversInText, writeAtomic, HostConfigError, type Change, type ConfigFormat, type ServerMap } from "./config-file.js";
 import { HOST_LABELS, locateHosts, vscodeUserDir, type HostId, type HostLocation, type Roots } from "./hosts.js";
-import { RINGKEEPER_ENTRY, buildCandidates, type Candidate, type FoundEntry, type MapContext } from "./import.js";
+import { RINGKEEPER_ENTRY, buildCandidates, isAppOnlyEntry, type Candidate, type FoundEntry, type MapContext } from "./import.js";
 import type { Ledger } from "./ledger.js";
 import { listDesktopExtensions, type DesktopExtension } from "./extensions.js";
 import { scanReadOnly, type SourceSeen } from "./sources.js";
@@ -241,6 +241,9 @@ export class HostManager {
       const loc = this.location(id);
       if (!loc.installed && !loc.exists) continue;
       const mine = new Set(take.filter((t) => t.host === id).map((t) => t.name));
+      // The app's own helpers stay where they are, whatever was asked.
+      const helpers = readServers(loc);
+      for (const n of [...mine]) if (n in helpers && isAppOnlyEntry(n, helpers[n], id)) mine.delete(n);
       const via = this.discoveredVia(loc);
       if (via) {
         // Never a second entry: take ours out if we added one before, and move connections as asked.
@@ -440,9 +443,12 @@ export class HostManager {
     }
 
     const before = this.known.get(id) ?? new Set<string>();
-    const nowNames = new Set(Object.keys(readServers(loc)));
+    const nowServers = readServers(loc);
+    const nowNames = new Set(Object.keys(nowServers));
     for (const name of nowNames) {
       if (name === RINGKEEPER_ENTRY || before.has(name) || this.opts.ledger.isIgnored(id, name)) continue;
+      // The app's own helper (Codex adds node_repl itself): nothing to ask about.
+      if (isAppOnlyEntry(name, nowServers[name], id)) continue;
       // Only ask about apps Ringkeeper is connected to; otherwise the user hasn't set us up there.
       if (ledgerHost) this.opts.onEvent?.({ kind: "found", host: id, name });
     }

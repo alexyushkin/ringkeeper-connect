@@ -22,6 +22,8 @@ import {
   type Roots,
 } from "../packages/hostconfig/src/index.js";
 import { applyTomlChanges, splitKey } from "../packages/hostconfig/src/toml-file.js";
+import { mapEntry } from "../packages/hostconfig/src/import.js";
+import { appOnlyHelper } from "../packages/gateway/src/app-only.js";
 import { claudeDesktop } from "./fixtures/host-configs.js";
 import * as F from "./fixtures/more-hosts.js";
 
@@ -259,6 +261,102 @@ describe("setting up the new apps", () => {
       fields: [{ name: "Authorization", value: "Bearer docs_fake_token_123456789", secret: true }],
     });
     expect(docs.warnings.join(" ")).toMatch(/turned off in Codex/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Helpers an AI app ships for itself (Codex's node_repl). They aren't a
+// client's tool and only work inside that app, so they're never offered,
+// never moved out of the app, and never asked about.
+// ---------------------------------------------------------------------------
+describe("an AI app's own helpers", () => {
+  const withHelper = F.codexToml + F.codexNodeRepl;
+  const WIN = "C:\\Program Files\\WindowsApps\\OpenAI.Codex_26.1111.9664.0_x64__2p2nqsd0c76g0\\app\\resources\\cua_node\\bin\\node_repl.exe";
+
+  it("recognises Codex's node_repl wherever the app keeps it, on Windows and on a Mac", () => {
+    expect(appOnlyHelper("node_repl", WIN, [])).toEqual({ app: "Codex" });
+    // Renamed on the way in ("node_repl (Codex / ChatGPT)"): still the same program.
+    expect(appOnlyHelper("node_repl (Codex / ChatGPT)", WIN, [])).toEqual({ app: "Codex" });
+    // The other places the app has kept it (openai/codex issues 26011, 26530, 53664).
+    expect(appOnlyHelper("node_repl", "C:\\Users\\pat\\AppData\\Local\\OpenAI\\Codex\\bin\\0a1b2c3d4e5f6a7b\\node_repl.exe", [])).toEqual({ app: "Codex" });
+    expect(appOnlyHelper("node_repl (Codex / ChatGPT)", "C:\\Users\\pat\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\0a1b2c3d4e5f6a7b\\bin\\node_repl.exe", [])).toEqual({ app: "Codex" });
+    expect(appOnlyHelper("node_repl", "/Applications/ChatGPT.app/Contents/Resources/cua_node/bin/node_repl", [])).toEqual({ app: "Codex" });
+  });
+
+  it("recognises Codex's other helpers: cua_repl, computer-use, and anything else run from the app's own folders", () => {
+    // cua_repl: the bundled Node running @oai/cua-repl (openai/codex issues 26011, 42454).
+    const node = "C:\\Program Files\\WindowsApps\\OpenAI.Codex_26.1111.9664.0_x64__2p2nqsd0c76g0\\app\\resources\\cua_node\\bin\\node.exe";
+    expect(appOnlyHelper("cua_repl", node, ["C:\\Program Files\\WindowsApps\\OpenAI.Codex_26.1111.9664.0_x64__2p2nqsd0c76g0\\app\\resources\\cua_node\\bin\\node_modules\\@oai\\cua-repl\\bin\\cua-repl.mjs"])).toEqual({ app: "Codex" });
+    expect(appOnlyHelper("cua_repl", "/Users/pat/.codex/plugins/cache/openai-bundled/unified-computer-use/1.4.0/node", ["/Users/pat/.codex/plugins/cache/openai-bundled/unified-computer-use/1.4.0/node_modules/@oai/cua-repl/bin/cua-repl.mjs"])).toEqual({ app: "Codex" });
+    // computer-use, as seen in a real Mac config: a path relative to Codex's own folder.
+    expect(appOnlyHelper("computer-use", "./Codex Computer Use.app/Contents/SharedSupport/SkyComputerUseClient.app/Contents/MacOS/SkyComputerUseClient", ["mcp"])).toEqual({ app: "Codex" });
+    // A helper under a name not known yet: run from the app's install folder, or by a system Node from it.
+    expect(appOnlyHelper("artifact_picker", node, ["server.mjs"])).toEqual({ app: "Codex" });
+    expect(appOnlyHelper("new_helper", "node", ["C:\\Users\\pat\\AppData\\Local\\OpenAI\\Codex\\runtimes\\thing\\0a1b2c3d4e5f6a7b\\main.js"])).toEqual({ app: "Codex" });
+    expect(appOnlyHelper("new_helper", "/Applications/ChatGPT.app/Contents/Resources/helper", [])).toEqual({ app: "Codex" });
+    expect(appOnlyHelper("new_helper", "/mnt/c/Users/pat/AppData/Local/OpenAI/Codex/bin/0a1b2c3d4e5f6a7b/helper", [])).toEqual({ app: "Codex" });
+  });
+
+  it("doesn't mistake ordinary tools for helpers", () => {
+    expect(appOnlyHelper("n8n", "npx", ["-y", "n8n-mcp"])).toBeUndefined();
+    expect(appOnlyHelper("playwright", "C:\\Users\\pat\\bin\\pw-mcp.cmd", [])).toBeUndefined();
+    expect(appOnlyHelper("repl", "node", ["C:\\tools\\my_node_repl_server.js"])).toBeUndefined();
+    expect(appOnlyHelper("python", "C:\\Program Files\\WindowsApps\\PythonSoftwareFoundation.Python.3.12_3.12.2800.0_x64__qbz5n2kfra8p0\\python3.12.exe", ["server.py"])).toBeUndefined();
+    // The user's own program kept in Codex's settings folder isn't the app's.
+    expect(appOnlyHelper("mine", "node", ["C:\\Users\\pat\\.codex\\my-server\\server.js"])).toBeUndefined();
+    // Tools that are the same for everyone but work from any AI app stay offered.
+    expect(appOnlyHelper("jetbrains", "/Applications/RubyMine.app/Contents/jbr/Contents/Home/bin/java", ["-classpath", "/Applications/RubyMine.app/Contents/plugins/mcpserver/lib/mcpserver-frontend.jar", "com.intellij.mcpserver.stdio.McpStdioRunnerKt"])).toBeUndefined();
+    expect(appOnlyHelper("fetch", "uvx", ["mcp-server-fetch"])).toBeUndefined();
+    expect(appOnlyHelper("MCP_DOCKER", "docker", ["mcp", "gateway", "run"])).toBeUndefined();
+    expect(appOnlyHelper("chrome-devtools", "npx", ["-y", "chrome-devtools-mcp@latest"])).toBeUndefined();
+    expect(appOnlyHelper("unity-mcp", "C:\\Users\\pat\\.unity\\relay\\relay_win.exe", ["--mcp"])).toBeUndefined();
+    expect(appOnlyHelper("docs", undefined)).toBeUndefined();
+  });
+
+  it("doesn't offer it when bringing tools in, and still offers the others", () => {
+    const m = machine({ [P.codex]: withHelper });
+    const names = m.manager.scan().candidates.map((c) => c.name);
+    expect(names).toContain("n8n");
+    expect(names).toContain("docs search");
+    expect(names).not.toContain("node_repl");
+  });
+
+  it("says why, in plain words, if it's asked for anyway", () => {
+    const m = machine({ [P.codex]: withHelper });
+    const r = readHostConfig(m.path(P.codex), CODEX_TOML);
+    if (r.status !== "ok") throw new Error("fixture unreadable");
+    const mapped = mapEntry("node_repl", r.servers.node_repl, "codex", { env: {}, home: m.home, pathSeparator: "\\" });
+    expect(mapped.input).toBeUndefined();
+    expect(mapped.problem).toBe("node_repl is part of Codex and only works inside Codex, so it was left there.");
+    // Found in another app's settings (some apps read Codex's): names both.
+    expect(mapEntry("node_repl", r.servers.node_repl, "warp", { env: {}, home: m.home, pathSeparator: "\\" }).problem).toBe(
+      "node_repl is part of Codex and only works inside Codex, so it was left in Warp.",
+    );
+  });
+
+  it("never moves it out of Codex, even when told to, and Restore still puts the file back exactly", () => {
+    const m = machine({ [P.codex]: withHelper });
+    const [res] = m.manager.connect(["codex"], [
+      { host: "codex", name: "n8n" },
+      { host: "codex", name: "node_repl" },
+    ]);
+    expect(res!.taken.map((t) => t.name)).toEqual(["n8n"]);
+    const after = m.read(P.codex);
+    expect(after).toContain(F.codexNodeRepl.trim());
+    expect(after).not.toContain("[mcp_servers.n8n]");
+    m.manager.restoreAll();
+    expect(m.read(P.codex)).toBe(withHelper);
+  });
+
+  it("doesn't ask about it when Codex adds it later, but still asks about a real tool", () => {
+    const m = machine({ [P.codex]: F.codexToml });
+    m.manager.connect(["codex"], []);
+    m.manager.watch(60_000);
+    m.manager.check("codex"); // its own write
+    fs.writeFileSync(m.path(P.codex), m.read(P.codex) + F.codexNodeRepl + '\n[mcp_servers.airtable]\ncommand = "npx"\nargs = ["-y", "airtable-mcp-server"]\n');
+    m.manager.check("codex");
+    m.manager.stop();
+    expect(m.events.filter((e) => e.kind === "found")).toEqual([{ kind: "found", host: "codex", name: "airtable" }]);
   });
 });
 

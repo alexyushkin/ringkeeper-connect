@@ -48,7 +48,8 @@ export function Help(props: { hosts: HostView[]; onClose: () => void }) {
             </li>
             <li>
               <strong>Bring in connections from apps</strong> moves tools already set up in your AI apps into a client, keys included. Tools other AI
-              apps use (Windsurf, Gemini CLI and others) are copied; those apps aren't changed.
+              apps use (Windsurf, Gemini CLI and others) are copied; those apps aren't changed. An AI app's own helpers, like the one Codex adds
+              for its browser and screen control, are left where they are: they aren't a client's tool and only work inside that app.
             </li>
             <li>
               Connectors added in your Claude or ChatGPT account online, and Claude Desktop extensions, keep their sign-ins to themselves. Add those
