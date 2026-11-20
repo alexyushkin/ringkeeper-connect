@@ -4,6 +4,14 @@ What's new in each version of Ringkeeper Connect, in plain words. A release's pa
 shows its section under "What's new". Versions before 0.2.0-beta.16 are described on their
 [release pages](https://github.com/alexyushkin/ringkeeper-connect/releases).
 
+## 0.2.0-beta.19
+
+- **Basecamp** in Add a tool, under Work and projects. Sign in as someone in the client's Basecamp
+  and choose read-only or full access; it then works with their projects, to-dos, messages, card
+  tables, docs and schedules, and only what that person can see and do. One sign-in covers one
+  Basecamp account.
+- **Basecamp connections already in an AI app** are recognised during setup, like the other tools.
+
 ## 0.2.0-beta.18
 
 - **Check for updates in the window,** next to the version at the bottom of the sidebar, with what
