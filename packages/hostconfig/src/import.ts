@@ -41,6 +41,7 @@ const SERVICES: Array<Service & { match: RegExp }> = [
   { id: "webflow", label: "Webflow", match: /webflow/i },
   { id: "wix", label: "Wix", match: /\bwix\b/i },
   { id: "trello", label: "Trello", match: /trello/i },
+  { id: "basecamp", label: "Basecamp", match: /basecamp|37signals/i },
   { id: "canva", label: "Canva", match: /canva\b|canva\./i },
   { id: "calendly", label: "Calendly", match: /calendly/i },
   { id: "calcom", label: "Cal.com", match: /cal\.com|\bcalcom\b/i },

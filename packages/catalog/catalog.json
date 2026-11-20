@@ -1135,6 +1135,28 @@
       ]
     },
     {
+      "id": "basecamp",
+      "name": "Basecamp",
+      "group": "Work and projects",
+      "description": "Work with the client's Basecamp projects, to-dos, messages, card tables, docs and schedules.",
+      "beta": true,
+      "notes": [
+        "Sign in as someone in the client's Basecamp, and choose read-only or full access. It sees and does only what that person can in Basecamp.",
+        "One sign-in covers one Basecamp account. To use another, add Basecamp again."
+      ],
+      "options": [
+        {
+          "id": "oauth",
+          "label": "Sign in with Basecamp",
+          "recommended": true,
+          "kind": "remote",
+          "auth": "oauth",
+          "url": "https://mcp.basecamp.com/mcp",
+          "fields": []
+        }
+      ]
+    },
+    {
       "id": "atlassian",
       "name": "Jira and Confluence",
       "group": "Work and projects",

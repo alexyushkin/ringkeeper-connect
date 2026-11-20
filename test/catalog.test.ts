@@ -12,7 +12,7 @@ describe("the catalog data", () => {
         "n8n", "supabase", "airtable", "notion", "stripe",
         "neon", "netlify", "github", "apollo", "leadfeeder", "upwork", "retell",
         "make", "zapier", "gohighlevel", "pipedrive", "monday", "close", "klaviyo", "resend",
-        "wordpress-com", "wordpress", "webflow", "wix", "paypal", "trello", "atlassian", "linear", "canva",
+        "wordpress-com", "wordpress", "webflow", "wix", "paypal", "trello", "basecamp", "atlassian", "linear", "canva",
         "calendly", "calcom", "tavily", "apify", "elevenlabs", "twilio",
         "sentry", "cloudflare", "posthog", "attio", "freshbooks", "zoho-books", "odoo", "sanity", "contentful", "strapi", "payload",
         "mollie", "paddle", "gocardless", "meta_ads", "pipeboard", "google", "microsoft",
@@ -71,10 +71,16 @@ describe("the catalog data", () => {
   });
 
   it("prefers sign-in where the vendor's sign-in works for any app", () => {
-    for (const id of ["supabase", "airtable", "notion"]) {
+    for (const id of ["supabase", "airtable", "notion", "basecamp"]) {
       const rec = findService(id)!.options.find((o) => o.recommended)!;
       expect(rec.kind === "remote" && rec.auth).toBe("oauth");
     }
+  });
+
+  it("Basecamp: signs in with Basecamp's own server, with nothing to type", () => {
+    const c = buildConnection("basecamp", "oauth", {});
+    expect(c).toMatchObject({ kind: "remote", url: "https://mcp.basecamp.com/mcp", auth: "oauth" });
+    expect(c.fields ?? []).toEqual([]);
   });
 
   it("gives every key a place to find it", () => {

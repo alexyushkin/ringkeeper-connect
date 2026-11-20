@@ -253,6 +253,8 @@ describe("bringing connections in", () => {
   it("recognises common services", () => {
     expect(detectService("my-tools", { command: "npx", args: ["-y", "@notionhq/notion-mcp-server"] })?.id).toBe("notion");
     expect(detectService("crm", { url: "https://mcp.airtable.com/mcp" })?.id).toBe("airtable");
+    // Basecamp's own setup page gives Cursor exactly this entry.
+    expect(detectService("projects", { url: "https://mcp.basecamp.com/mcp" })).toEqual({ id: "basecamp", label: "Basecamp" });
     expect(detectService("files", { command: "node" })).toBeUndefined();
   });
 });
