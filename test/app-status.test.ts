@@ -207,13 +207,14 @@ describe("connections brought in without a key", () => {
       id: "gi",
       name: "General Informatics",
       active: true,
+      guard: "ask_delete" as const,
       connections: [
         remote("1", "mass_home_comfort", "https://new-address.trycloudflare.com/api/mcp"),
         remote("2", "Twilio", "https://example.com/x"),
         { kind: "local" as const, id: "3", name: "playwright", command: "npx", args: ["-y", "@executeautomation/playwright-mcp-server"], fields: [], missingKeys: [] },
       ],
     };
-    const seaside = { id: "sea", name: "Seaside", active: false, connections: [remote("4", "linear", "https://mcp.linear.app/mcp/")] };
+    const seaside = { id: "sea", name: "Seaside", active: false, guard: "ask_delete" as const, connections: [remote("4", "linear", "https://mcp.linear.app/mcp/")] };
 
     // Same name, different address: in General Informatics, but not set up the same way.
     const old = { kind: "remote" as const, name: "mass_home_comfort", url: "https://chronicles-dance.trycloudflare.com/api/mcp", fields: [] };

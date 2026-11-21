@@ -1,12 +1,12 @@
 // The contract between the window and the main process. Secret values only
 // ever travel window → main (when the user types a key), never back.
 import type { ClientView, ConnectionInput, ConnectionView, Settings } from "@ringkeeper/gateway/store";
-import type { ConnectionStatus } from "@ringkeeper/gateway";
+import type { Activity, ClientGuard, ConnectionStatus } from "@ringkeeper/gateway";
 import type { CatalogService } from "@ringkeeper/catalog";
 
 export type { CatalogService };
 
-export type { ClientView, ConnectionInput, ConnectionView, Settings, ConnectionStatus };
+export type { Activity, ClientGuard, ClientView, ConnectionInput, ConnectionView, Settings, ConnectionStatus };
 
 export type HostId = "claude-desktop" | "cursor" | "claude-code" | "vscode" | "kiro" | "antigravity" | "codex";
 
@@ -60,6 +60,10 @@ export interface AppState {
   update?: UpdateState;
   /** Installed build (not a development run). */
   packaged: boolean;
+  /** Goes up each time something is added to a client's activity, so an open list knows to reload. */
+  activityCount: number;
+  /** The keyboard shortcut that opens the list of clients, as this computer writes it; absent if it couldn't be set. */
+  switchShortcut?: string;
 }
 
 /** What the setup wizard can bring in (no key values). */
@@ -219,6 +223,10 @@ export interface RingkeeperApi {
   getState(): Promise<AppState>;
   addClient(name: string): Promise<Result<ClientView>>;
   renameClient(id: string, name: string): Promise<Result>;
+  /** How much the AI may do for a client: work freely, ask before deleting, or look only. */
+  setClientGuard(id: string, guard: ClientGuard): Promise<Result>;
+  /** What AI apps did for a client, newest first. Never what was sent or returned. */
+  clientActivity(id: string): Promise<Result<Activity[]>>;
   removeClient(id: string): Promise<Result>;
   setActiveClient(id: string): Promise<Result>;
   addConnection(clientId: string, input: ConnectionInput): Promise<Result<ConnectionView>>;

@@ -36,6 +36,11 @@ export function Help(props: { hosts: HostView[]; onClose: () => void }) {
               client than the active one, nothing is run.
             </li>
             <li>"Copy to…" puts a tool into another client too. Keys aren't copied: each client uses its own.</li>
+            <li>
+              "What the AI may do", on each client's page: by default you're asked before anything is deleted for that client. "Look only" keeps
+              a client read-only. Everything else follows your AI app's own permission setting.
+            </li>
+            <li>"What AI apps did", on each client's page, lists what was run for that client and how it ended, never what was sent.</li>
           </ul>
         </details>
 

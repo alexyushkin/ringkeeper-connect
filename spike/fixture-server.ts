@@ -40,6 +40,13 @@ const toolsByService: Record<string, Tool[]> = {
       annotations: { readOnlyHint: true },
     },
   ],
+  // For the per-client guard: one tool that looks, one that changes, one that deletes. No
+  // annotations on purpose: most servers don't send them, so the names have to be enough.
+  crm: [
+    { name: "find_contacts", description: "Find contacts.", inputSchema: { type: "object", properties: { q: { type: "string" } } } },
+    { name: "update_contact", description: "Change a contact.", inputSchema: { type: "object", properties: { id: { type: "string" } } } },
+    { name: "delete_contact", description: "Delete a contact for good.", inputSchema: { type: "object", properties: { id: { type: "string" } } } },
+  ],
 };
 
 function run(tool: string, args: Record<string, unknown>): string {
@@ -54,6 +61,12 @@ function run(tool: string, args: Record<string, unknown>): string {
       return JSON.stringify({ id: args.id, name: `${account} workflow ${String(args.id)}`, nodes: 5 });
     case "airtable/list_bases":
       return JSON.stringify([{ id: `app${slug}01`, name: `${account} CRM` }]);
+    case "crm/find_contacts":
+      return JSON.stringify([{ id: `${slug}-c-1`, name: `${account} contact` }]);
+    case "crm/update_contact":
+      return `updated ${String(args.id)} for ${account}`;
+    case "crm/delete_contact":
+      return `deleted ${String(args.id)} for ${account}`;
     default:
       throw new Error(`Unknown tool ${tool}`);
   }
