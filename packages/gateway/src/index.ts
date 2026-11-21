@@ -9,5 +9,6 @@ export * from "./store/client-store.js";
 export * from "./oauth.js";
 export * from "./runtimes.js";
 export * from "./app-only.js";
+export * from "./guard.js";
 export { temporaryHost } from "./upstream.js";
 export type { ApprovalRequest, UpstreamEnv } from "./upstream.js";

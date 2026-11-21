@@ -23,6 +23,7 @@ import {
 import { Upstream, type UpstreamEnv, type UpstreamStatus } from "./upstream.js";
 import { originalArguments, safeInputSchema } from "./schema-names.js";
 import { nullLogger, type Logger } from "./log.js";
+import { DEFAULT_GUARD, actionKind, type ActionKind, type Activity } from "./guard.js";
 import {
   META_CALL_TOOL,
   META_HELP,
@@ -37,6 +38,23 @@ import {
 } from "./meta-tools.js";
 
 export const CLIENT_ARG = "ringkeeper_client";
+
+/**
+ * What the person is asked before a deletion. The first line becomes the headline (after the
+ * client's name); the rest is shown below it. What the AI sent is shown, shortened, so the
+ * person can see what would go. It is shown on this computer only and never written to the log.
+ */
+export function deleteQuestion(tool: string, args: Record<string, unknown>): string {
+  let sent = "";
+  try {
+    sent = JSON.stringify(args);
+  } catch {
+    sent = "";
+  }
+  if (sent === "{}") sent = "";
+  if (sent.length > 400) sent = `${sent.slice(0, 400)}…`;
+  return `Let the AI run "${tool}"?\n\nIt looks like this deletes or removes something, and that usually can't be undone.${sent ? `\n\nWhat it sent: ${sent}` : ""}`;
+}
 const VERSION = "0.1.0";
 const UPSTREAM_WAIT_MS = 10_000;
 const MAX_TOOL_NAME = 64;
@@ -87,6 +105,8 @@ export interface GatewayOptions {
    * never include a key. `host` is the AI app asking, by the name people know.
    */
   help?: (request: { question: string; host: string }) => string | Promise<string>;
+  /** Something was done, or refused, for a client. Never carries what was sent or returned. */
+  onActivity?: (activity: Activity) => void;
 }
 
 interface Session {
@@ -401,12 +421,12 @@ export class Gateway {
       if (name === META_CALL_TOOL) {
         const tool = typeof args.tool === "string" ? await this.resolveToolName(args.tool) : "";
         const toolArgs = (args.arguments && typeof args.arguments === "object" ? args.arguments : {}) as Record<string, unknown>;
-        return await this.callProxied(tool, toolArgs, { required: true, value: args.client });
+        return await this.callProxied(tool, toolArgs, { required: true, value: args.client }, from);
       }
       const forwarded = { ...args };
       const claimed = forwarded[CLIENT_ARG];
       delete forwarded[CLIENT_ARG];
-      return await this.callProxied(name, forwarded, { required: this.options.requireClientArg, value: claimed });
+      return await this.callProxied(name, forwarded, { required: this.options.requireClientArg, value: claimed }, from);
     } catch (err) {
       if (err instanceof UserFacingError) return errorResult(err.message);
       this.log({ ev: "call_failed", tool: name, error: String(err).slice(0, 300) });
@@ -462,6 +482,7 @@ export class Gateway {
     name: string,
     args: Record<string, unknown>,
     claim: { required: boolean; value: unknown },
+    from?: Session,
   ): Promise<CallToolResult> {
     const active = this.requireActive();
     const sep = name.indexOf(TOOL_PREFIX_SEPARATOR);
@@ -490,6 +511,16 @@ export class Gateway {
       );
     }
 
+    const tool = upstream.tools.find((t) => t.name === toolName)!;
+    const kind = actionKind(tool);
+    const note = (outcome: Activity["outcome"]): void => {
+      try {
+        this.opts.onActivity?.({ at: Date.now(), clientId: active.id, connectionId: upstream.conn.id, connectionName: upstream.conn.name, tool: toolName, kind, app: hostLabel(from?.hostName), outcome });
+      } catch {
+        // Keeping the list must never break a call.
+      }
+    };
+
     if (claim.required) {
       const claimed = claim.value;
       if (typeof claimed !== "string" || claimed.trim() === "") {
@@ -499,16 +530,50 @@ export class Gateway {
       const claimedClient = findClient(this.config, claimed);
       if (!claimedClient || claimedClient.id !== active.id) {
         this.log({ ev: "refused_client_arg_mismatch", tool: name, active: active.id, claimed });
+        note("wrong_client");
         throw new UserFacingError(
           `This call says it's for "${claimed}", but the active client is ${active.name}. Nothing was run. If you meant ${claimed}, call ringkeeper_use_client first.`,
         );
       }
     }
 
-    this.log({ ev: "call_proxied", tool: name, client: active.id });
-    const schema = upstream.tools.find((t) => t.name === toolName)?.inputSchema;
+    const schema = tool.inputSchema;
     const original = schema ? (originalArguments(args, safeInputSchema(schema).map) as Record<string, unknown>) : args;
-    const result = await upstream.callTool(toolName, original);
+
+    // What this client allows. Ordinary changes are left to the AI app's own permission mode.
+    const guard = active.guard ?? DEFAULT_GUARD;
+    if (guard === "look_only" && kind !== "read") {
+      this.log({ ev: "refused_look_only", tool: name, client: active.id, kind });
+      note("look_only");
+      throw new UserFacingError(
+        `${active.name} is set to "Look only" in Ringkeeper Connect, so ${name} wasn't run and nothing was changed. Tell the user: they can change this on ${active.name}'s page in Ringkeeper Connect.`,
+      );
+    }
+    if (guard === "ask_delete" && kind === "delete") {
+      const ask = this.opts.upstreamEnv?.approve;
+      const allowed = ask
+        ? await ask({ clientName: active.name, connectionName: upstream.conn.name, message: deleteQuestion(toolName, original) }).catch(() => false)
+        : false;
+      if (!allowed) {
+        this.log({ ev: "refused_delete_not_allowed", tool: name, client: active.id, asked: !!ask });
+        note("not_allowed");
+        throw new UserFacingError(
+          ask
+            ? `The user didn't allow ${name} for ${active.name} in Ringkeeper Connect (it asks before anything is deleted). Nothing was deleted. Don't try another way: ask the user.`
+            : `${name} would delete something for ${active.name}, and Ringkeeper Connect couldn't ask the user first. Nothing was deleted.`,
+        );
+      }
+    }
+
+    this.log({ ev: "call_proxied", tool: name, client: active.id, kind });
+    let result: CallToolResult;
+    try {
+      result = await upstream.callTool(toolName, original);
+    } catch (err) {
+      note("failed");
+      throw err;
+    }
+    note(result.isError ? "failed" : "ran");
     return labelResult(result, active, upstream.conn.name);
   }
 

@@ -1,3 +1,4 @@
+import type { ClientGuard } from "./guard.js";
 // What the gateway runs on: every client and connection with secrets already
 // filled in. Built in memory from the ClientStore; never written to disk.
 
@@ -44,6 +45,8 @@ export interface ClientConfig {
   id: string;
   name: string;
   connections: ConnectionConfig[];
+  /** How much the AI may do for this client (see guard.ts). Unset means the default: ask before deleting. */
+  guard?: ClientGuard;
 }
 
 export interface GatewayOptionsConfig {

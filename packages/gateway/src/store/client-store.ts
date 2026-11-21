@@ -4,6 +4,7 @@ import fs from "node:fs";
 import { readJson, writeJsonAtomic } from "../runtime.js";
 import type { ConnectionConfig, GatewayConfig } from "../config.js";
 import { DEFAULT_DYNAMIC_HOSTS } from "../meta-tools.js";
+import { DEFAULT_GUARD, isClientGuard, type ClientGuard } from "../guard.js";
 import type { SecretStore } from "./secrets.js";
 import type { OAuthState, OAuthStateStore } from "../oauth.js";
 
@@ -44,6 +45,8 @@ export interface StoredClient {
   id: string;
   name: string;
   connections: StoredConnection[];
+  /** How much the AI may do for this client. Left out means the default (ask before deleting). */
+  guard?: ClientGuard;
 }
 
 export interface Settings {
@@ -55,6 +58,8 @@ export interface Settings {
   setupDone: boolean;
   /** Start in the background when the user logs in, so AI apps can reach it. */
   startAtLogin: boolean;
+  /** A keyboard shortcut, from anywhere, that opens the list of clients to switch to. Left out means on. */
+  switchShortcut?: boolean;
   /** The "bring in what your apps already use" wizard was offered for an empty first client. */
   bringInOffered: boolean;
   /**
@@ -158,6 +163,8 @@ export interface ClientView {
   name: string;
   active: boolean;
   connections: ConnectionView[];
+  /** How much the AI may do for this client. */
+  guard: ClientGuard;
 }
 
 export class StoreError extends Error {}
@@ -267,6 +274,7 @@ export class ClientStore {
       name: c.name,
       active: c.id === this.data.activeClientId,
       connections: c.connections.map((conn) => this.viewConnection(conn)),
+      guard: isClientGuard(c.guard) ? c.guard : DEFAULT_GUARD,
     }));
   }
 
@@ -316,6 +324,7 @@ export class ClientStore {
       clients: this.data.clients.map((c) => ({
         id: c.id,
         name: c.name,
+        guard: isClientGuard(c.guard) ? c.guard : DEFAULT_GUARD,
         connections: c.connections.map((conn): ConnectionConfig => {
           const missing: string[] = [];
           const resolved: Record<string, string> = {};
@@ -391,6 +400,15 @@ export class ClientStore {
   renameClient(id: string, name: string): void {
     const c = this.client(id);
     c.name = this.checkClientName(name, id);
+    this.commit();
+  }
+
+  /** How much the AI may do for this client: work freely, ask before deleting, or look only. */
+  setClientGuard(id: string, guard: ClientGuard): void {
+    const c = this.client(id);
+    if (!isClientGuard(guard)) throw new StoreError("Choose one of the three options.");
+    if ((c.guard ?? DEFAULT_GUARD) === guard) return;
+    c.guard = guard;
     this.commit();
   }
 

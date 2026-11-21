@@ -996,3 +996,76 @@ p.muted {
 .own-apps-link {
   margin-top: 8px;
 }
+
+/* What the AI may do for a client, and what it did. */
+.guard {
+  display: grid;
+  gap: 6px;
+}
+.guard-choice {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.guard-choice.chosen {
+  border-color: var(--accent);
+}
+.guard-choice input {
+  width: auto;
+  margin-top: 3px;
+}
+.guard-choice > span {
+  display: grid;
+  gap: 2px;
+}
+.activity {
+  margin-top: 18px;
+}
+.activity summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.activity-list {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0 0;
+  max-height: 320px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.activity-list li {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr) auto 110px;
+  gap: 10px;
+  align-items: baseline;
+  padding: 7px 12px;
+  font-size: 13px;
+  border-bottom: 1px solid var(--border);
+}
+.activity-list li:last-child {
+  border-bottom: 0;
+}
+.activity-when,
+.activity-app {
+  font-size: 12px;
+  color: var(--muted);
+}
+.activity-what {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.activity-tool {
+  color: var(--muted);
+}
+.activity-how.warn {
+  color: var(--warn, #b7791f);
+}
+.activity-how.bad {
+  color: var(--bad, #c53030);
+}

@@ -11,6 +11,8 @@ const api: RingkeeperApi = {
   getState: () => ipcRenderer.invoke(IPC.state),
   addClient: call("addClient") as RingkeeperApi["addClient"],
   renameClient: call("renameClient") as RingkeeperApi["renameClient"],
+  setClientGuard: call("setClientGuard") as RingkeeperApi["setClientGuard"],
+  clientActivity: call("clientActivity") as RingkeeperApi["clientActivity"],
   removeClient: call("removeClient") as RingkeeperApi["removeClient"],
   setActiveClient: call("setActiveClient") as RingkeeperApi["setActiveClient"],
   addConnection: call("addConnection") as RingkeeperApi["addConnection"],

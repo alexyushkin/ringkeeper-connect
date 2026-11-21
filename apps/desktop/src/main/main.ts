@@ -2,7 +2,8 @@
 // gateway that AI apps connect to, and keeps a tray menu for switching clients.
 import fs from "node:fs";
 import { dirname, join } from "node:path";
-import { BrowserWindow, Menu, Notification, Tray, app, dialog, ipcMain, nativeImage, nativeTheme, safeStorage, shell } from "electron";
+import { BrowserWindow, Menu, Notification, Tray, app, dialog, globalShortcut, ipcMain, nativeImage, nativeTheme, safeStorage, shell } from "electron";
+import { ActivityLog } from "./activity.js";
 import {
   APP_DIR_NAME,
   ClientStore,
@@ -47,6 +48,9 @@ const startedInBackground = process.argv.includes("--background");
 // The window follows the system theme. For screenshots and testing, RINGKEEPER_THEME=light|dark overrides it.
 if (process.env.RINGKEEPER_THEME === "light" || process.env.RINGKEEPER_THEME === "dark") nativeTheme.themeSource = process.env.RINGKEEPER_THEME;
 const log = fileLogger(files.log);
+// What AI apps did for each client (never what was sent or returned).
+const activity = new ActivityLog(join(dataDir, "activity.json"));
+let activityCount = 0;
 
 let store: ClientStore;
 let apps: AppsService;
@@ -187,6 +191,11 @@ async function start(): Promise<void> {
       approve: (q) => approvals.approve(q),
     },
     onAppContact: (contact) => apps.recordContact(contact),
+    onActivity: (a) => {
+      activity.record(a);
+      activityCount++;
+      scheduleRefresh();
+    },
     help: ({ question, host }) => {
       const s = appState();
       return helpAnswer({ question, host, clients: s.clients, statuses: s.statuses, hosts: s.hosts, version: s.version, update: s.update, packaged: s.packaged, settings: s.settings });
@@ -213,6 +222,8 @@ async function start(): Promise<void> {
   store.onChange(() => {
     gateway.applyConfig(store.toGatewayConfig(), store.activeClientId);
     applyLoginItem();
+    applySwitchShortcut();
+    activity.keepOnly(store.list().map((c) => c.id));
     scheduleRefresh();
     signIns?.schedule();
   });
@@ -222,6 +233,7 @@ async function start(): Promise<void> {
   createTray();
   apps.start();
   applyLoginItem();
+  applySwitchShortcut();
   if (app.isPackaged) {
     updates = new Updates({ log, notify, onChange: () => scheduleRefresh() });
     updates.start();
@@ -251,7 +263,7 @@ function onSwitched(clientId: string, source: SwitchSource): void {
     const name = store.list().find((c) => c.id === clientId)?.name ?? clientId;
     const note = new Notification({
       title: `Switched to ${name}`,
-      body: `${source.host} switched the active client. Every chat in Claude, Cursor and Claude Code now uses ${name}.`,
+      body: `${source.host} switched the active client. Every chat in every connected AI app now uses ${name}.`,
       silent: false,
     });
     note.on("show", () => log({ ev: "notification_shown", client: clientId, host: source.host }));
@@ -322,6 +334,34 @@ function trayIcon(): Electron.NativeImage {
   const img = big.resize({ width: 16, height: 16, quality: "best" });
   img.addRepresentation({ scaleFactor: 2, buffer: big.toPNG() });
   return img;
+}
+
+/** The shortcut that opens the list of clients from anywhere. Rare on purpose, so it doesn't take a key from another app. */
+const SWITCH_SHORTCUT = "CommandOrControl+Alt+Shift+K";
+/** How the shortcut is written on this computer, once it's really set. */
+let switchShortcutLabel: string | undefined;
+
+/** Set or clear the shortcut to match the setting. If another app already has it, it's left alone and not shown. */
+function applySwitchShortcut(): void {
+  // Test runs never take a system-wide key.
+  if (process.env.RINGKEEPER_DATA_DIR && !process.env.RINGKEEPER_TEST_SHORTCUT) return;
+  const wanted = store.settings.switchShortcut !== false;
+  const has = globalShortcut.isRegistered(SWITCH_SHORTCUT);
+  if (wanted && !has) {
+    let ok = false;
+    try {
+      ok = globalShortcut.register(SWITCH_SHORTCUT, () => tray?.popUpContextMenu());
+    } catch {
+      ok = false;
+    }
+    switchShortcutLabel = ok ? (process.platform === "darwin" ? "⌘⌥⇧K" : "Ctrl+Alt+Shift+K") : undefined;
+    if (!ok) log({ ev: "switch_shortcut_unavailable" });
+  } else if (!wanted && has) {
+    globalShortcut.unregister(SWITCH_SHORTCUT);
+    switchShortcutLabel = undefined;
+  } else if (!wanted) {
+    switchShortcutLabel = undefined;
+  }
 }
 
 function createTray(): void {
@@ -448,6 +488,8 @@ function appState(): AppState {
     ...(updates ? { update: updates.state } : {}),
     packaged: app.isPackaged,
     setupDone: store.settings.setupDone,
+    activityCount,
+    ...(switchShortcutLabel ? { switchShortcut: switchShortcutLabel } : {}),
   };
 }
 
@@ -455,6 +497,8 @@ function registerIpc(): void {
   const handlers: { [K in ApiMethod]: (...args: never[]) => unknown } = {
     addClient: (name: string) => store.addClient(name),
     renameClient: (id: string, name: string) => store.renameClient(id, name),
+    setClientGuard: (id: string, guard) => store.setClientGuard(id, guard),
+    clientActivity: (id: string) => activity.list(id),
     removeClient: (id: string) => store.removeClient(id),
     setActiveClient: (id: string) => store.setActiveClient(id),
     addConnection: (clientId: string, input) => store.addConnection(clientId, input),
@@ -535,6 +579,8 @@ app.on("before-quit", () => {
 
 app.on("will-quit", (e) => {
   apps?.stop();
+  globalShortcut.unregisterAll();
+  activity?.flush();
   if (!gateway) return;
   e.preventDefault();
   const current = readRuntimeInfo(dataDir);

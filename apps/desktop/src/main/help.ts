@@ -55,6 +55,9 @@ Ringkeeper Connect is a desktop app for agencies. It keeps each client's tools (
 - The active client is the one every AI app is working with right now. Switch by clicking the client in the window, or ask the AI to switch to it.
 - "Ask AI apps to name the client on every action" (recommended, in the sidebar) makes the AI say which client each action is for; if it names a different client than the active one, nothing is run.
 - "Copy to…" on a tool puts it into another client too. Keys aren't copied: each client uses its own.
+- The active client's name shows in the tray (menu bar on a Mac): hover over the icon. A keyboard shortcut (Ctrl+Alt+Shift+K, or Cmd+Option+Shift+K on a Mac) opens the list of clients from anywhere to switch; it can be turned off in the sidebar. When an AI app switches the client itself, a notification says so.
+- "What the AI may do" on each client's page: "Ask me before it deletes anything" (the default) asks the user in a Ringkeeper Connect window before any tool deletes or removes something for that client; "Work freely" leaves everything to the AI app's own permission setting; "Look only" lets the AI read but not change, send or delete anything for that client. Ordinary changes are never asked about here: AI apps have their own permission settings for that. Whether a tool deletes is worked out from its name, so an unusually named one may not be caught.
+- "What AI apps did" on each client's page lists the last 200 actions: which tool, whether it looked, changed or deleted, which AI app asked, and how it ended (including ones that weren't run). It never shows what was sent or what came back.
 
 ## Adding a client's tools
 1. Open the client in the window and click "+ Add a tool".

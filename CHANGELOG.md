@@ -4,6 +4,22 @@ What's new in each version of Ringkeeper Connect, in plain words. A release's pa
 shows its section under "What's new". Versions before 0.2.0-beta.16 are described on their
 [release pages](https://github.com/alexyushkin/ringkeeper-connect/releases).
 
+## 0.2.4
+
+- **Choose what the AI may do for each client.** On a client's page:
+  - **Ask me before it deletes anything** (the default): before a tool deletes or removes
+    something for that client, Ringkeeper Connect shows what the AI wants to run and waits for your
+    OK, whichever AI app asked.
+  - **Work freely:** everything is left to your AI app's own permission setting.
+  - **Look only:** the AI can read but can't change, send or delete anything for that client.
+
+  Ordinary changes aren't asked about: your AI app already has its own setting for that.
+- **See what AI apps did for each client.** "What AI apps did" on a client's page lists the last 200
+  actions: which tool, whether it looked, changed or deleted, which AI app asked and how it ended,
+  including actions that weren't run. It never shows what was sent or what came back.
+- **Switch client from anywhere** with Ctrl+Alt+Shift+K (Cmd+Option+Shift+K on a Mac), which opens
+  the list of clients. It can be turned off in the sidebar.
+
 ## 0.2.3
 
 - **12 more tools in Add a tool (78 in all):**

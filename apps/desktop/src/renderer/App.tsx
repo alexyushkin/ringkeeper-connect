@@ -6,6 +6,7 @@ import { AddFromCatalog, SignIn } from "./Catalog";
 import { KeyTest, keyExpiryWarning } from "./KeyTest";
 import { CLIENT_SEARCH_FROM, matchesWords } from "./search";
 import { Help } from "./Help";
+import { ClientSafety } from "./ClientSafety";
 import { restoreBody } from "./restore-text";
 import { updateStatusText, type AppState, type CatalogService, type ClientView, type ConnectionInput, type ConnectionView, type HostView, type RingkeeperApi, type Result } from "../shared/api";
 
@@ -156,6 +157,17 @@ export function App() {
             <span>Start when I log in, so AI apps can always reach my clients</span>
           </label>
         )}
+        <label className="setting tight">
+          <input
+            type="checkbox"
+            checked={state.settings.switchShortcut !== false}
+            onChange={(e) => void run(api.updateSettings({ switchShortcut: e.target.checked }))}
+          />
+          <span>
+            Switch client from anywhere with a keyboard shortcut
+            {state.settings.switchShortcut !== false && (state.switchShortcut ? `: ${state.switchShortcut}` : state.packaged ? " (another app is using it, so it's off for now)" : "")}
+          </span>
+        </label>
         <button className="link small left own-apps-link" onClick={() => setDialog({ kind: "own-apps" })}>
           Your own apps
         </button>
@@ -212,6 +224,7 @@ export function App() {
             client={selected}
             clients={clients}
             statuses={state.statuses}
+            activityCount={state.activityCount}
             onActivate={() => void run(api.setActiveClient(selected.id))}
             onRename={() => setDialog({ kind: "rename-client", client: selected })}
             onDelete={() => setDialog({ kind: "delete-client", client: selected })}
@@ -266,6 +279,7 @@ function ClientPanel(props: {
   client: ClientView;
   clients: ClientView[];
   statuses: AppState["statuses"];
+  activityCount: number;
   onActivate: () => void;
   onRename: () => void;
   onDelete: () => void;
@@ -393,6 +407,7 @@ function ClientPanel(props: {
           })}
         </ul>
       )}
+      <ClientSafety client={client} activityCount={props.activityCount} run={props.run} />
     </section>
   );
 }
