@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { EVERY_CLIENT_ID, NOT_APPROVED, VENDOR_LABEL, type CatalogService, type ClientView, type OwnAppVendor, type Result } from "../shared/api";
-import { matchesWords } from "./search";
+import { pickerGroups } from "./tool-order";
 import { OwnApps } from "./OwnApps";
 import { KeyTest } from "./KeyTest";
 
@@ -92,25 +92,6 @@ export function AddFromCatalog(props: { client: ClientView; run: Run; onAdvanced
   );
 }
 
-/** The order "Add a tool" shows its groups in (the catalog's own order). */
-const GROUP_ORDER = [
-  "Data",
-  "Automations",
-  "CRM and sales",
-  "Marketing and email",
-  "Websites",
-  "Payments",
-  "Accounting",
-  "Work and projects",
-  "Scheduling",
-  "Developers",
-  "Voice and research",
-  "Other",
-];
-
-function matches(s: CatalogService, q: string): boolean {
-  return matchesWords(`${s.name} ${s.group} ${s.description} ${(s.tags ?? []).join(" ")}`, q);
-}
 
 /** Short facts and Beta, shown on a tile and above the form. */
 export function ToolTags(props: { service: CatalogService }) {
@@ -135,8 +116,8 @@ export function ToolTags(props: { service: CatalogService }) {
 /** Search and groups over the catalog, with "Something else" and "Request a tool". */
 export function ToolPicker(props: { services: CatalogService[]; onPick: (s: CatalogService) => void; onAdvanced?: () => void; run: Run }) {
   const [q, setQ] = useState("");
-  const shown = props.services.filter((s) => matches(s, q.trim()));
-  const groups = GROUP_ORDER.map((g) => ({ group: g, items: shown.filter((s) => s.group === g) })).filter((g) => g.items.length);
+  // Tried with a real account first in each group, then the ones marked Beta.
+  const groups = pickerGroups(props.services, q);
   return (
     <div className="tool-picker">
       <input

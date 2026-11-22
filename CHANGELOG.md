@@ -4,6 +4,11 @@ What's new in each version of Ringkeeper Connect, in plain words. A release's pa
 shows its section under "What's new". Versions before 0.2.0-beta.16 are described on their
 [release pages](https://github.com/alexyushkin/ringkeeper-connect/releases).
 
+## 0.2.10
+
+- **Tried tools first.** In "Add a tool", each group lists the tools already tried with a real
+  account first, and the ones marked Beta after them, so the surest choice is the first you see.
+
 ## 0.2.9
 
 - **HubSpot and Asana.** Both sign in through an app of your own, made in their developer
