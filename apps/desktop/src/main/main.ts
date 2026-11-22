@@ -1,7 +1,7 @@
 // Ringkeeper Connect's main process: owns the clients and keys, runs the
 // gateway that AI apps connect to, and keeps a tray menu for switching clients.
 import fs from "node:fs";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { BrowserWindow, Menu, Notification, Tray, app, dialog, globalShortcut, ipcMain, nativeImage, nativeTheme, safeStorage, shell } from "electron";
 import { ActivityLog } from "./activity.js";
 import {
@@ -20,6 +20,12 @@ import {
   writeJsonAtomic,
   EVERY_CLIENT_ID,
   UserFacingError,
+  CopyError,
+  checkNewPassword,
+  isCopyFile,
+  openCopy,
+  sealCopy,
+  type CopyPayload,
   type Cipher,
   type LaunchInfo,
   type RuntimeInfo,
@@ -409,7 +415,10 @@ function dropPendingTool(clientId: string, toolId: string): void {
 
 function refreshTray(): void {
   if (!tray) return;
-  const clients = store.list();
+  const clients = store
+    .list()
+    .filter((c) => !c.archived)
+    .sort((a, b) => Number(b.pinned) - Number(a.pinned) || a.name.localeCompare(b.name, undefined, { sensitivity: "base", numeric: true }));
   const active = clients.find((c) => c.active);
   const statuses = gateway.connectionStatuses();
   const items: Electron.MenuItemConstructorOptions[] = [];
@@ -502,14 +511,21 @@ function appState(): AppState {
 
 function registerIpc(): void {
   const handlers: { [K in ApiMethod]: (...args: never[]) => unknown } = {
-    addClient: (name: string) => store.addClient(name),
+    addClient: (name: string, likeId?: string) => store.addClient(String(name ?? ""), typeof likeId === "string" && likeId ? likeId : undefined),
     renameClient: (id: string, name: string) => store.renameClient(id, name),
+    setClientPinned: (id: string, pinned: boolean) => store.setClientPinned(String(id), pinned === true),
+    setClientArchived: (id: string, archived: boolean) => store.setClientArchived(String(id), archived === true),
     setClientGuard: (id: string, guard) => store.setClientGuard(id, guard),
     clientActivity: (id: string) => activity.list(id),
     removeClient: (id: string) => store.removeClient(id),
     setActiveClient: (id: string) => store.setActiveClient(id),
     addConnection: (clientId: string, input) => store.addConnection(clientId, input),
-    updateConnection: (clientId: string, connId: string, input) => store.updateConnection(clientId, connId, input),
+    updateConnection: (clientId: string, connId: string, input) => {
+      const updated = store.updateConnection(clientId, connId, input);
+      // Saved by the user: a tool copied from another client has been checked now.
+      store.markChecked(clientId, connId);
+      return store.view(clientId)?.connections.find((c) => c.id === updated.id) ?? updated;
+    },
     removeConnection: (clientId: string, connId: string) => store.removeConnection(clientId, connId),
     cloneConnection: (from: string, connId: string, to: string, keys: Record<string, string>) =>
       store.cloneConnection(from, connId, to, keys),
@@ -540,8 +556,18 @@ function registerIpc(): void {
     testKey: (serviceId: string, optionId: string, answers: Record<string, string>, existing?: { clientId: string; connectionId: string }) =>
       catalogActions.testKey(String(serviceId ?? ""), String(optionId ?? ""), answers ?? {}, existing ? { clientId: String(existing.clientId), connectionId: String(existing.connectionId) } : undefined),
     signIn: (clientId: string, connectionId: string) => catalogActions.signIn(clientId, connectionId),
-    editBuiltIn: (clientId: string, connectionId: string, name: string, access?: string[], keys?: Record<string, string>) =>
-      catalogActions.editBuiltInChecked(String(clientId), String(connectionId), String(name ?? ""), Array.isArray(access) ? access.map(String) : undefined, keys && typeof keys === "object" ? keys : undefined),
+    editBuiltIn: async (clientId: string, connectionId: string, name: string, access?: string[], keys?: Record<string, string>) => {
+      const r = await catalogActions.editBuiltInChecked(String(clientId), String(connectionId), String(name ?? ""), Array.isArray(access) ? access.map(String) : undefined, keys && typeof keys === "object" ? keys : undefined);
+      store.markChecked(String(clientId), String(connectionId));
+      return r;
+    },
+    saveCopy: (password: string, repeat: string) => saveCopy(String(password ?? ""), String(repeat ?? "")),
+    chooseCopy: () => chooseCopy(),
+    previewCopy: (password: string) => previewCopy(String(password ?? "")),
+    importCopy: (chosen) => importCopy(chosen),
+    cancelCopy: () => {
+      held = undefined;
+    },
     listOwnApps: () => ownApps.list(),
     addOwnApp: (input) => ownApps.add(input ?? {}),
     updateOwnApp: (id: string, input) => ownApps.update(String(id), input ?? {}),
@@ -569,13 +595,108 @@ function registerIpc(): void {
         err instanceof HostConfigError ||
         err instanceof CatalogActionError ||
         err instanceof OwnAppsError ||
-        err instanceof UserFacingError
+        err instanceof UserFacingError ||
+        err instanceof CopyError
           ? err.message
           : "Something went wrong saving that. Try again, and if it keeps happening, restart Ringkeeper Connect.";
       log({ ev: "ipc_error", method, error: String(err).slice(0, 300) });
       return { ok: false, error: plain };
     }
   });
+}
+
+// ---------- a copy for another computer ----------
+
+/** The copy being brought in: its text until the password opens it, then what's in it. Memory only. */
+let held: { file: string; text: string; payload?: CopyPayload; timer: NodeJS.Timeout } | undefined;
+const COPY_EXTENSION = "ringkeeper";
+const MOST_COPY_BYTES = 50 * 1024 * 1024;
+
+function hold(next: { file: string; text: string; payload?: CopyPayload }): void {
+  if (held) clearTimeout(held.timer);
+  // Forgotten after a while, so keys don't sit in memory if the window is left open.
+  const timer = setTimeout(() => (held = undefined), 15 * 60 * 1000);
+  timer.unref();
+  held = { ...next, timer };
+}
+
+function today(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+/** Save every client, tool, key and sign-in to a file locked with the password. Null when the user cancels. */
+async function saveCopy(password: string, repeat: string): Promise<{ file: string } | null> {
+  checkNewPassword(password, repeat);
+  const options: Electron.SaveDialogOptions = {
+    title: "Save a copy of your clients",
+    defaultPath: join(app.getPath("documents"), `Ringkeeper Connect clients ${today()}.${COPY_EXTENSION}`),
+    filters: [{ name: "Ringkeeper Connect copy", extensions: [COPY_EXTENSION] }],
+  };
+  const parent = window && !window.isDestroyed() ? window : undefined;
+  const picked = parent ? await dialog.showSaveDialog(parent, options) : await dialog.showSaveDialog(options);
+  if (picked.canceled || !picked.filePath) return null;
+  const text = await sealCopy(store.exportCopy(), password);
+  const tmp = `${picked.filePath}.${process.pid}.tmp`;
+  try {
+    fs.writeFileSync(tmp, text, { mode: 0o600 });
+    fs.renameSync(tmp, picked.filePath);
+  } catch {
+    fs.rmSync(tmp, { force: true });
+    throw new CopyError("Ringkeeper Connect couldn't save the copy there. Pick another folder, like Documents or a USB drive, and try again.");
+  }
+  log({ ev: "copy_saved", clients: store.list().length });
+  return { file: basename(picked.filePath) };
+}
+
+/** Pick a copy to bring in. Null when the user cancels. */
+async function chooseCopy(): Promise<{ file: string } | null> {
+  const options: Electron.OpenDialogOptions = {
+    title: "Bring in clients from a copy",
+    properties: ["openFile"],
+    filters: [
+      { name: "Ringkeeper Connect copy", extensions: [COPY_EXTENSION] },
+      { name: "All files", extensions: ["*"] },
+    ],
+  };
+  const parent = window && !window.isDestroyed() ? window : undefined;
+  const picked = parent ? await dialog.showOpenDialog(parent, options) : await dialog.showOpenDialog(options);
+  const path = picked.filePaths[0];
+  if (picked.canceled || !path) return null;
+  let text: string;
+  try {
+    if (fs.statSync(path).size > MOST_COPY_BYTES) throw new Error("too big");
+    text = fs.readFileSync(path, "utf8");
+  } catch {
+    throw new CopyError("Ringkeeper Connect couldn't read that file. Check it's the copy you saved, and try again.");
+  }
+  if (!isCopyFile(text)) throw new CopyError("That file isn't a copy of Ringkeeper Connect clients. Pick the file that ends in .ringkeeper.");
+  hold({ file: basename(path), text });
+  return { file: basename(path) };
+}
+
+/** Open the chosen copy with its password and say what's in it. */
+async function previewCopy(password: string) {
+  if (!held) throw new CopyError("Pick the copy again: it was closed.");
+  const payload = held.payload ?? (await openCopy(held.text, password));
+  hold({ ...held, payload });
+  return store.previewCopy(payload);
+}
+
+/** Bring in the chosen clients from the opened copy. */
+function importCopy(chosen: { clients?: unknown; everyClient?: unknown }) {
+  const payload = held?.payload;
+  if (!payload) throw new CopyError("Pick the copy again: it was closed.");
+  const result = store.importCopy(payload, {
+    clients: Array.isArray(chosen?.clients) ? chosen.clients.map(String) : [],
+    everyClient: chosen?.everyClient === true,
+  });
+  if (held) clearTimeout(held.timer);
+  held = undefined;
+  // Own apps the tools sign in through are usable straight away.
+  if (result.ownApps.length) ownApps.sync();
+  log({ ev: "copy_imported", clients: result.clients.length, every: result.everyClient.length, apps: result.ownApps.length });
+  return result;
 }
 
 // ---------- quit ----------

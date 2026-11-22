@@ -327,8 +327,8 @@ describe("words and checks in the window", () => {
     const local = (id: string, args: string[]) => ({ kind: "local" as const, id, name: id, command: "npx", args, fields: [], missingKeys: [] });
     const remote = (id: string, url: string) => ({ kind: "remote" as const, id, name: id, url, fields: [], missingKeys: [] });
     const clients = [
-      { id: "acme", name: "Acme", active: true, guard: "ask_delete" as const, connections: [local("pw", ["@playwright/mcp"])] },
-      { id: "globex", name: "Globex", active: false, guard: "ask_delete" as const, connections: [local("playwright", ["@playwright/mcp"]), local("other", ["x"]), remote("s", "https://Search.example.com/mcp/")] },
+      { id: "acme", name: "Acme", active: true, guard: "ask_delete" as const, pinned: false, archived: false, connections: [local("pw", ["@playwright/mcp"])] },
+      { id: "globex", name: "Globex", active: false, guard: "ask_delete" as const, pinned: false, archived: false, connections: [local("playwright", ["@playwright/mcp"]), local("other", ["x"]), remote("s", "https://Search.example.com/mcp/")] },
     ];
     expect(sameToolIn(clients, clients[0]!.connections[0]!, "acme").map((x) => `${x.client.id}/${x.conn.id}`)).toEqual(["globex/playwright"]);
     expect(sameToolIn(clients, remote("q", "https://search.example.com/mcp"), "acme").map((x) => x.conn.id)).toEqual(["s"]);

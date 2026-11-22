@@ -60,6 +60,8 @@ Ringkeeper Connect is a desktop app for agencies. It keeps each client's tools (
 - The active client's name shows in the tray (menu bar on a Mac): hover over the icon. A keyboard shortcut (Ctrl+Alt+Shift+K, or Cmd+Option+Shift+K on a Mac) opens the list of clients from anywhere to switch; it can be turned off in the sidebar. When an AI app switches the client itself, a notification says so.
 - "What the AI may do" on each client's page: "Ask me before it deletes anything" (the default) asks the user in a Ringkeeper Connect window before any tool deletes or removes something for that client; "Work freely" leaves everything to the AI app's own permission setting; "Look only" lets the AI read but not change, send or delete anything for that client. Ordinary changes are never asked about here: AI apps have their own permission settings for that. Whether a tool deletes is worked out from its name, so an unusually named one may not be caught.
 - "For every client" (top of the sidebar) holds tools that aren't a client's, like a browser helper or web search: they're set up once, and every client gets them next to its own. A client's account never goes there. "More… > Use for every client" on a client's tool moves it there, keys included.
+- With many clients: "More…" on a client's page pins it to the top of the list ("Pin to the top"), starts a new client with the same tools ("New client like this…": settings and what the AI may do are copied, keys and sign-ins aren't, and each copied tool isn't offered to AI apps until the user has checked its settings and saved it), or archives it ("Archive": kept with its tools and keys, but out of the list and not offered to AI apps; "Show archived" at the bottom of the list, then "Bring back"). The active client can't be archived: switch first. Once the list is long, "Recent" shows the clients used last.
+- "Needs attention" (top of the sidebar, only when something needs it) lists every tool in every client that needs a key, a sign-in or a check, or isn't working, with the button that fixes it.
 - "What AI apps did" on each client's page lists the last 200 actions: which tool, whether it looked, changed or deleted, which AI app asked, and how it ended (including ones that weren't run). It never shows what was sent or what came back.
 
 ## Adding a client's tools
@@ -89,6 +91,11 @@ Ringkeeper Connect is a desktop app for agencies. It keeps each client's tools (
 - An AI app that was open during setup may save its old settings later and drop the entry; it's put back straight away. If that keeps happening, quit the app completely and open it again.
 - Sign-ins for Google and Microsoft can go through your own registered app ("Your own apps", sidebar) when a client's admin requires that.
 
+## Moving to another computer
+- "Move to another computer" (sidebar) > "Save a copy of my clients" saves every client, with its tools, keys and sign-ins, the tools for every client and the user's own apps, into one file locked with a password the user chooses (at least 8 characters). Without that password the file can't be opened, and nobody can recover a forgotten one.
+- On the new computer, install Ringkeeper Connect, then "Move to another computer" > "Bring in clients from a copy" (or "Bring in clients from another computer" on the first screen): pick the file, type the password, and tick the clients to bring in. Nothing already there is changed; a client whose name is taken comes in as "Acme 2".
+- The AI apps are connected on each computer separately ("Connect" next to each app). A tool that says it needs a sign-in afterwards needs one more sign-in. Delete the copy file afterwards: it holds the clients' keys.
+
 ## Keys and privacy
 - Keys and sign-ins are stored encrypted with the computer account's own protection, never as plain text, and never shown to the AI. Never paste a key into a chat: put it in the Ringkeeper Connect window.
 - Everything stays on this computer; Ringkeeper Connect has no online account.
@@ -108,6 +115,7 @@ ${RESTORE_POINTS.map((p) => `- ${p}`).join("\n")}
 function connectionStatus(statuses: ConnectionStatus[], clientId: string, conn: ConnectionView): { word: string; problem?: string } {
   const s = statuses.find((x) => x.clientId === clientId && x.connectionId === conn.id);
   if (conn.off) return { word: "turned off" };
+  if (conn.copiedFrom) return { word: `copied from ${conn.copiedFrom}, not checked yet (not offered until the user checks its settings and saves it)` };
   if (conn.missingKeys.length) return { word: "needs a key", problem: s?.problem };
   if (conn.auth === "oauth" && conn.signedIn === false) return { word: "needs sign-in", problem: s?.problem };
   if (!s) return { word: "starts when needed" };
@@ -179,16 +187,18 @@ export function helpAnswer(input: HelpInput): string {
       const chosen = conn.actions === "read" ? " (only actions that read)" : Array.isArray(conn.actions) ? ` (${conn.actions.length} chosen actions)` : "";
       return `${conn.name}${svc && svc.name.toLowerCase() !== conn.name.toLowerCase() ? ` (${svc.name})` : ""}: ${st.word}${chosen}${st.problem ? ` — ${st.problem}` : ""}`;
     });
-  for (const c of input.clients) {
+  const archived = input.clients.filter((c) => c.archived);
+  for (const c of input.clients.filter((x) => !x.archived)) {
     const tools = describe(c);
     state.push(`- Client ${c.name}${c.active ? " (active)" : ""}: ${tools.length ? tools.join("; ") : "no tools yet"}.`);
   }
+  if (archived.length) state.push(`- Archived (not offered to AI apps; "Bring back" on its page): ${archived.map((c) => c.name).join(", ")}.`);
   if (input.everyClient?.connections.length) state.push(`- For every client: ${describe(input.everyClient).join("; ")}.`);
   out.push(state.join("\n"));
 
   // Advice for the services the question names, then for tools that need attention.
   const named = servicesNamed(input.question, services);
-  const troubled = [...input.clients, ...(input.everyClient ? [input.everyClient] : [])].flatMap((c) =>
+  const troubled = [...input.clients.filter((c) => !c.archived), ...(input.everyClient ? [input.everyClient] : [])].flatMap((c) =>
     c.connections
       .filter((conn) => !["working", "starts when needed", "turned off"].includes(connectionStatus(input.statuses, c.id, conn).word))
       .map((conn) => serviceOf(conn, services))

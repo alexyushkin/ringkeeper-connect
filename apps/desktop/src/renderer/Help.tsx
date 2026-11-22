@@ -40,6 +40,11 @@ export function Help(props: { hosts: HostView[]; onClose: () => void }) {
               "What the AI may do", on each client's page: by default you're asked before anything is deleted for that client. "Look only" keeps
               a client read-only. Everything else follows your AI app's own permission setting.
             </li>
+            <li>
+              With many clients: "More…" on a client pins it to the top, starts "New client like this…" with the same tools (you add the new
+              client's keys, and check each tool before AI apps get it), or archives it to keep it out of the list. "Needs attention", at the top
+              of the list, shows every tool that needs a key, a sign-in or a check, in any client.
+            </li>
             <li>"What AI apps did", on each client's page, lists what was run for that client and how it ended, never what was sent.</li>
             <li>
               "For every client", at the top of the list, holds tools that aren't a client's, like a browser helper or web search. They're set up
@@ -112,6 +117,18 @@ export function Help(props: { hosts: HostView[]; onClose: () => void }) {
             ))}
           </ul>
           <p className="muted small">Restart the AI apps afterwards. You can connect them again later with "Connect" next to each app.</p>
+        </details>
+
+        <details>
+          <summary>Moving to another computer</summary>
+          <ul>
+            <li>
+              "Move to another computer" in the sidebar saves every client, with its tools, keys and sign-ins, to one file locked with a password you
+              choose. On the new computer, bring it in from the same place. Nothing already there is changed.
+            </li>
+            <li>Without the password the file can't be opened, and nobody can recover a forgotten one. Delete the file once it's brought in.</li>
+            <li>Connect your AI apps on the new computer with "Connect" next to each one.</li>
+          </ul>
         </details>
 
         <details>

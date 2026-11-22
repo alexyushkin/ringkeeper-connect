@@ -180,6 +180,8 @@ button:focus-visible {
 .client-list.long {
   max-height: 40vh;
   overflow-y: auto;
+  /* Never squeezed by the rest of the sidebar (which scrolls instead) in a small window. */
+  flex: none;
 }
 .client-search {
   width: 100%;
@@ -1196,4 +1198,53 @@ p.muted {
   overflow: hidden;
   clip: rect(0 0 0 0);
   white-space: nowrap;
+}
+
+/* ---------- many clients: needs attention, pinned, recent, archived ---------- */
+.attention-item {
+  margin: 4px 0 2px;
+  border-color: var(--warn, #c98a1b);
+}
+.attention-item .count.warn {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--warn, #c98a1b);
+}
+.client-list .list-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  padding: 8px 8px 0;
+}
+.client-list li.list-label + li {
+  margin-top: 2px;
+}
+.badge.muted {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-weight: 400;
+}
+.archived-toggle {
+  padding: 6px 8px;
+}
+.attention-group + .attention-group {
+  margin-top: 20px;
+}
+
+/* ---------- moving to another computer ---------- */
+.choice-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 16px 0;
+}
+.file-pick {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.copy-list label {
+  text-align: left;
 }
