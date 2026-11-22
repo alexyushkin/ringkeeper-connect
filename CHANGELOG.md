@@ -4,7 +4,7 @@ What's new in each version of Ringkeeper Connect, in plain words. A release's pa
 shows its section under "What's new". Versions before 0.2.0-beta.16 are described on their
 [release pages](https://github.com/alexyushkin/ringkeeper-connect/releases).
 
-## Unreleased
+## 0.2.12
 
 - **Send to Ringkeeper.** If you also use Ringkeeper, the full app, "Send to Ringkeeper" in the
   sidebar hands it every client, with their tools and keys, and the tools for every client. No
