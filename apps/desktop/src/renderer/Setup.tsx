@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { AppState, CatalogService, ClientView, HostId, HostView, ImportScan, Result, SetupOutcome } from "../shared/api";
+import { EVERY_CLIENT_ID, type AppState, type CatalogService, type ClientView, type HostId, type HostView, type ImportScan, type Result, type SetupOutcome } from "../shared/api";
 import { CLIENT_SEARCH_FROM, matchesWords } from "./search";
 
 type Run = <T>(p: Promise<Result<T>>) => Promise<{ value: T } | null>;
@@ -32,6 +32,8 @@ export function Setup(props: { clients: ClientView[]; hosts: HostView[]; run: Ru
   const [scan, setScan] = useState<ImportScan | null>(null);
   const [tools, setTools] = useState<CatalogService[]>([]);
   const [checked, setChecked] = useState<Set<string>>(new Set());
+  // Ticked tools that go to "For every client" instead of the client (helpers like a browser).
+  const [forEvery, setForEvery] = useState<Set<string>>(new Set());
   const [apps, setApps] = useState<Set<HostId>>(new Set());
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [target, setTarget] = useState<string>(props.clients[0]?.id ?? "new");
@@ -51,8 +53,10 @@ export function Setup(props: { clients: ClientView[]; hosts: HostView[]; run: Ru
     void run(window.ringkeeper.scanApps()).then((r) => {
       if (!r) return;
       setScan(r.value);
-      // Ticked: everything that can be brought in, except what the chosen client already has (even set up differently).
-      setChecked(new Set(r.value.candidates.filter((c) => !c.problem && !c.inClients.some((x) => x.clientId === target)).map((c) => c.key)));
+      // Helpers that aren't a client's account (a browser helper) are suggested for every client.
+      setForEvery(new Set(r.value.candidates.filter((c) => c.shared && !c.problem).map((c) => c.key)));
+      // Ticked: everything that can be brought in, except what's already where it would go (even set up differently).
+      setChecked(new Set(r.value.candidates.filter((c) => !c.problem && !c.inClients.some((x) => x.clientId === (c.shared ? EVERY_CLIENT_ID : target))).map((c) => c.key)));
       // The apps from the first release are ticked; newer ones are opt-in, unless already set up.
       const alreadyUsed: HostView["status"][] = ["added", "connected", "not_seeing", "missing"];
       setApps(new Set(r.value.hosts.filter((h) => h.status !== "not_installed" && h.status !== "unreadable" && (!h.optIn || alreadyUsed.includes(h.status))).map((h) => h.id)));
@@ -103,8 +107,10 @@ export function Setup(props: { clients: ClientView[]; hosts: HostView[]; run: Ru
     setAddrError(null);
   }
   const targetName = target === "new" ? newName.trim() || "the new client" : (props.clients.find((c) => c.id === target)?.name ?? "");
-  // What the chosen client already has: shown as Connected, and not ticked by default.
-  const inTarget = (c: ImportScan["candidates"][number]) => (target === "new" ? undefined : c.inClients.find((x) => x.clientId === target));
+  // What's already where a tool would go (the chosen client, or the tools for every client): shown as Connected, and not ticked by default.
+  const inTarget = (c: ImportScan["candidates"][number]) =>
+    forEvery.has(c.key) ? c.inClients.find((x) => x.clientId === EVERY_CLIENT_ID) : target === "new" ? undefined : c.inClients.find((x) => x.clientId === target);
+  const whereTo = (c: ImportScan["candidates"][number]) => (forEvery.has(c.key) ? "For every client" : targetName);
   const targetTools = new Set(target === "new" ? [] : (scan.clientTools[target] ?? []));
 
   const searchClients = props.clients.length >= CLIENT_SEARCH_FROM;
@@ -118,7 +124,7 @@ export function Setup(props: { clients: ClientView[]; hosts: HostView[]; run: Ru
     // The client is picked first (top of the page): start over with that client's defaults.
     // Ticked: what it doesn't have yet. Nothing is added twice.
     const has = new Set(id === "new" ? [] : (scan!.clientTools[id] ?? []));
-    setChecked(new Set(scan!.candidates.filter((c) => !c.problem && !c.inClients.some((x) => x.clientId === id)).map((c) => c.key)));
+    setChecked(new Set(scan!.candidates.filter((c) => !c.problem && !c.inClients.some((x) => x.clientId === (forEvery.has(c.key) ? EVERY_CLIENT_ID : id))).map((c) => c.key)));
     setPicked((s) => {
       const fromExtensions = scan!.extensions.flatMap((e) => (e.toolId && !has.has(e.toolId) ? [e.toolId] : []));
       return new Set([...[...s].filter((t) => !has.has(t) && !extensionTools.has(t)), ...fromExtensions]);
@@ -137,7 +143,8 @@ export function Setup(props: { clients: ClientView[]; hosts: HostView[]; run: Ru
   async function connect() {
     setBusy(true);
     const client = target === "new" ? { newName: newName.trim() || "Default" } : { id: target };
-    const r = await run(window.ringkeeper.runSetup({ client, take: [...checked], hosts: [...apps], tools: [...picked], addresses }));
+    const everyClient = [...forEvery].filter((k) => checked.has(k));
+    const r = await run(window.ringkeeper.runSetup({ client, take: [...checked], everyClient, hosts: [...apps], tools: [...picked], addresses }));
     setBusy(false);
     if (r) setOutcome(r.value);
   }
@@ -211,7 +218,8 @@ export function Setup(props: { clients: ClientView[]; hosts: HostView[]; run: Ru
       ) : (
         <>
           <p className="muted small">
-            Ticked ones move into Ringkeeper Connect, so your AI apps reach them through it. Unticked ones stay where they are.
+            Ticked ones move into Ringkeeper Connect, so your AI apps reach them through it. Unticked ones stay where they are. A helper that isn't
+            a client's account, like a browser helper, can go to "For every client" instead: every client gets it.
           </p>
           <ListTools
             query={toolQuery}
@@ -231,12 +239,23 @@ export function Setup(props: { clients: ClientView[]; hosts: HostView[]; run: Ru
                     {c.service && <span className="badge">{c.service}</span>}
                     <span className="muted small">in {c.from.join(" and ")}</span>
                     {here?.same && (
-                      <span className="status ok" title={`${targetName} already has it`}>
+                      <span className="status ok" title={`${whereTo(c)} already has it`}>
                         Connected
                       </span>
                     )}
                   </label>
-                  {here && !here.same && <div className="problem warn">{targetName} already has a tool called "{c.name}", set up differently. Ticking this adds a second one.</div>}
+                  {!c.problem && checked.has(c.key) && (
+                    <label className="every-choice">
+                      <input type="checkbox" checked={forEvery.has(c.key)} onChange={() => flip(setForEvery, c.key)} /> For every client
+                      <span className="hint">{c.shared ? " (suggested: it isn't a client's account)" : " (only for a tool that isn't a client's account)"}</span>
+                    </label>
+                  )}
+                  {here && !here.same && (
+                    <div className="problem warn">
+                      {forEvery.has(c.key) ? `There's already a tool called "${c.name}" for every client` : `${targetName} already has a tool called "${c.name}"`},
+                      set up differently. Ticking this adds a second one.
+                    </div>
+                  )}
                   {!here && c.inClients.some((x) => !x.same) && (
                     <div className="problem warn">
                       {c.inClients.find((x) => !x.same)!.clientName} already has "{c.name}" set up differently. If that one works, use "Copy to…" on it instead of bringing this one in.
@@ -415,6 +434,9 @@ function SetupDone(props: { outcome: SetupOutcome; hosts: HostView[]; clients: C
     <div className="setup">
       <h1>{outcome.problems.length ? "Almost done" : allConnected ? "Your AI apps are connected" : "Almost done: restart your AI apps"}</h1>
       {outcome.imported.length > 0 && <p className="lead">Brought in: {outcome.imported.join(", ")}.</p>}
+      {outcome.toEveryClient.length > 0 && (
+        <p className="muted small">For every client, whichever is active: {outcome.toEveryClient.join(", ")}. The rest went to your client.</p>
+      )}
       {outcome.pendingTools.length > 0 && (
         <div className="notice info">
           Next, add {props.tools.filter((t) => outcome.pendingTools.includes(t.id)).map((t) => t.name).join(", ")}: each needs a sign-in or key once more. They're
@@ -558,6 +580,7 @@ export function FoundBanner(props: { state: AppState; run: Run }) {
                   {c.name}
                 </option>
               ))}
+              <option value={EVERY_CLIENT_ID}>For every client (not a client's account)</option>
             </select>
             <button className="primary" onClick={() => void props.run(window.ringkeeper.moveFound(f.host, f.name, target))}>
               Add

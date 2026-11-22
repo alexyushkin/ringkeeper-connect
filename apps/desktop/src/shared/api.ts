@@ -80,8 +80,10 @@ export interface ImportCandidateView {
   /** Why it can't be brought in. */
   problem?: string;
   warnings: string[];
-  /** Clients that already have it in Ringkeeper Connect (same name or same address). */
+  /** Clients that already have it in Ringkeeper Connect (same name or same address); EVERY_CLIENT_ID for the tools every client gets. */
   inClients: Array<{ clientId: string; clientName: string; same: boolean }>;
+  /** A helper that isn't any client's account (a browser helper, say): suggested for every client. */
+  shared?: boolean;
 }
 
 /** An app Ringkeeper only reads connections from. */
@@ -114,6 +116,8 @@ export interface SetupRequest {
   client: { id: string } | { newName: string };
   /** Candidate keys to bring in. */
   take: string[];
+  /** Of those, the ones that go to the tools for every client instead of the client. */
+  everyClient?: string[];
   /** The AI apps to set up. */
   hosts: HostId[];
   /** Catalog tools to add next (from extensions or web connectors); each still needs a sign-in or key. */
@@ -130,6 +134,8 @@ export interface SetupOutcome {
   restart: string[];
   /** Plain-language warnings about built-in connectors or extensions for the same services. */
   overlaps: string[];
+  /** Of `imported`, the ones that went to the tools for every client. */
+  toEveryClient: string[];
   /** The client the tools went to, and the catalog tools still to add for it. */
   clientId: string;
   pendingTools: string[];

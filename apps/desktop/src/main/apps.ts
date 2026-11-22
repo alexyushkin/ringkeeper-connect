@@ -25,7 +25,7 @@ import {
 } from "@ringkeeper/hostconfig";
 import { readJson, writeJsonAtomic } from "@ringkeeper/gateway";
 import { catalog, findService } from "@ringkeeper/catalog";
-import { temporaryHost, type ClientView, type ConnectionInput } from "@ringkeeper/gateway";
+import { EVERY_CLIENT_ID, temporaryHost, type ClientView, type ConnectionInput } from "@ringkeeper/gateway";
 import { AppStartWatcher } from "./app-processes.js";
 import { ensureBridgeCopy } from "./bridge-copy.js";
 import type { HostView } from "../shared/api.js";
@@ -337,10 +337,12 @@ export class AppsService {
     const { candidates, seen } = this.manager.scan();
     this.lastScan = new Map(candidates.map((c) => [c.key, c]));
     const clients = this.opts.store.list();
+    // The tools every client gets count as "already there" too.
+    const owners = [...clients, this.opts.store.everyClient()];
     return {
       hosts: this.hosts(),
       candidates: candidates.map((c) => {
-        const inClients = whereAlready(c.input, c.name, clients);
+        const inClients = whereAlready(c.input, c.name, owners);
         return {
           key: c.key,
           name: c.name,
@@ -355,6 +357,7 @@ export class AppsService {
             ...addressWarnings(c.input),
           ],
           inClients,
+          ...(sharedHelper(c.name, c.input) ? { shared: true } : {}),
         };
       }),
       clientTools: Object.fromEntries(clients.map((cl) => [cl.id, catalogToolsIn(cl)])),
@@ -377,11 +380,14 @@ export class AppsService {
     const clientId = "id" in req.client ? req.client.id : store.addClient(req.client.newName).id;
     const chosen = req.take.map((k) => this.lastScan.get(k)).filter((c): c is Candidate => !!c && !!c.input);
 
-    const added: Array<{ cand: Candidate; connId: string }> = [];
+    // Helpers that aren't a client's account can go to the tools every client gets instead.
+    const forEvery = new Set(req.everyClient ?? []);
+    const added: Array<{ cand: Candidate; connId: string; owner: string }> = [];
     const problems: string[] = [];
     for (const cand of chosen) {
+      const owner = forEvery.has(cand.key) ? EVERY_CLIENT_ID : clientId;
       try {
-        added.push({ cand, connId: store.addConnection(clientId, withSignIn(cand.input!)).id });
+        added.push({ cand, owner, connId: store.addConnection(owner, withSignIn(cand.input!)).id });
       } catch (err) {
         problems.push(`${cand.name}: ${err instanceof Error ? err.message : String(err)}`);
       }
@@ -408,7 +414,7 @@ export class AppsService {
     for (const r of results) if (!r.ok && r.error) problems.push(r.error);
 
     for (const a of added) {
-      if (a.cand.sources.every((s) => isHostId(s.host) && failedHosts.has(s.host))) store.removeConnection(clientId, a.connId);
+      if (a.cand.sources.every((s) => isHostId(s.host) && failedHosts.has(s.host))) store.removeConnection(a.owner, a.connId);
     }
     // Remember what the user chose to leave in the apps, so the watcher doesn't ask about it.
     const takenKeys = new Set(added.map((a) => a.cand.key));
@@ -422,11 +428,14 @@ export class AppsService {
     store.updateSettings({ setupDone: true, pendingTools: [...pending, ...pickedTools.map((toolId) => ({ clientId, toolId }))] });
     const connected = results.filter((r) => r.ok).map((r) => r.host);
     this.opts.onChange();
+    const kept = added.filter((a) => !a.cand.sources.every((s) => isHostId(s.host) && failedHosts.has(s.host)));
     return {
-      imported: added.filter((a) => !a.cand.sources.every((s) => isHostId(s.host) && failedHosts.has(s.host))).map((a) => a.cand.name),
+      imported: kept.map((a) => a.cand.name),
+      toEveryClient: kept.filter((a) => a.owner === EVERY_CLIENT_ID).map((a) => a.cand.name),
       problems,
       restart: connected.map((h) => RESTART_HINT[h]),
-      overlaps: this.overlapWarnings(added.map((a) => a.cand)),
+      // Only a client's own tools: a helper for every client has no client account to mix up.
+      overlaps: this.overlapWarnings(added.filter((a) => a.owner !== EVERY_CLIENT_ID).map((a) => a.cand)),
       clientId,
       pendingTools: pickedTools,
     };
@@ -463,7 +472,7 @@ export class AppsService {
     return [RESTART_HINT[host]];
   }
 
-  /** Move a connection found in an app into a client. */
+  /** Move a connection found in an app into a client, or into the tools every client gets (EVERY_CLIENT_ID). */
   moveFound(host: HostId, name: string, clientId: string): void {
     const loc = this.manager.locations().find((l) => l.id === host)!;
     const r = readHostConfig(loc.configPath, loc.format);
@@ -559,6 +568,18 @@ export function whereAlready(input: ConnectionInput | undefined, name: string, c
     if (found) out.push({ clientId: cl.id, clientName: cl.name, same });
   }
   return out;
+}
+
+/**
+ * Helpers that aren't any client's account, so they suit "For every client": browser helpers
+ * (Playwright, Puppeteer, Chrome DevTools), and a few general tools (documentation lookup, fetching
+ * a page, the time, step-by-step thinking). Only a suggestion: the user decides. Never a tool that
+ * keeps notes or files (a "memory" server could hold one client's data). Exported for tests.
+ */
+export function sharedHelper(name: string, input: ConnectionInput | undefined): boolean {
+  const said = [name, ...(input?.kind === "local" ? [input.command, ...input.args] : input ? [input.url] : [])].join(" ").toLowerCase();
+  if (/memory|filesystem|notes?\b/.test(said)) return false;
+  return /playwright|puppeteer|chrome-devtools|browser-?use|browserbase|sequential-?thinking|context7|server-fetch|mcp-server-fetch|mcp-server-time|server-time/.test(said);
 }
 
 /** Warnings about a found connection's web address. Exported for tests. */

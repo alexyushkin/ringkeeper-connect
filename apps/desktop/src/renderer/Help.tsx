@@ -48,7 +48,8 @@ export function Help(props: { hosts: HostView[]; onClose: () => void }) {
             <li>"What AI apps did", on each client's page, lists what was run for that client and how it ended, never what was sent.</li>
             <li>
               "For every client", at the top of the list, holds tools that aren't a client's, like a browser helper or web search. They're set up
-              once and every client gets them. "More… &gt; Use for every client" on a client's tool moves it there.
+              once and every client gets them. "More… &gt; Use for every client" on a client's tool moves it there, and tools brought in from your
+              AI apps can go there straight away.
             </li>
           </ul>
         </details>
