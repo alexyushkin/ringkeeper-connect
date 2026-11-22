@@ -53,6 +53,7 @@ const api: RingkeeperApi = {
   openLink: call("openLink") as RingkeeperApi["openLink"],
   requestTool: call("requestTool") as RingkeeperApi["requestTool"],
   dismissPendingTool: call("dismissPendingTool") as RingkeeperApi["dismissPendingTool"],
+  answerToolFeedback: call("answerToolFeedback") as RingkeeperApi["answerToolFeedback"],
   restartToUpdate: call("restartToUpdate") as RingkeeperApi["restartToUpdate"],
   checkForUpdates: call("checkForUpdates") as RingkeeperApi["checkForUpdates"],
   onSignInLink: (listener) => {

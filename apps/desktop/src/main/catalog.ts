@@ -28,7 +28,8 @@ import {
   vendorName,
 } from "@ringkeeper/gateway";
 
-import { OWN_APP_LINKS } from "../shared/api.js";
+import { OWN_APP_LINKS, type ConnectionView } from "../shared/api.js";
+import { serviceOf } from "./help.js";
 
 export class CatalogActionError extends Error {}
 
@@ -79,6 +80,49 @@ export function requestToolMailto(
     "What I'd like the AI to do with it: ",
     "How to reach me: ",
     "",
+  ].join("\r\n");
+  return `mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+}
+
+/** Where "Did it work?" reports go, as an email the user sees and chooses to send. */
+export const FEEDBACK_EMAIL = "alexey@yushkin.us";
+
+/** Whether to ask "Did it work?" after this sign-in: the first time for its service on this computer. */
+export function feedbackServiceFor(
+  conn: ConnectionView,
+  answered: Record<string, unknown> | undefined,
+  services: CatalogService[] = catalog.services,
+): CatalogService | undefined {
+  const service = serviceOf(conn, services);
+  return service && !(service.id in (answered ?? {})) ? service : undefined;
+}
+
+/**
+ * The email "Worked" or "Had a problem" opens. Only the service, how it connects, its status here,
+ * the version and the system: never the client's name (taken out of the status too), never a key.
+ */
+export function feedbackMailto(
+  input: {
+    worked: boolean;
+    service: { id: string; name: string; beta?: boolean };
+    how: string;
+    status: string;
+    clientName: string;
+    version: string;
+    system: string;
+  },
+  email = FEEDBACK_EMAIL,
+): string {
+  const scrub = (t: string) => (input.clientName.trim() ? t.split(input.clientName).join("[client]") : t);
+  const subject = input.worked ? `Ringkeeper Connect: ${input.service.name} worked` : `Ringkeeper Connect: a problem with ${input.service.name}`;
+  const body = [
+    `Tool: ${input.service.name}${input.service.beta ? " (Beta)" : ""}`,
+    `How it connects: ${input.how}`,
+    `Result: ${input.worked ? "Worked" : "Had a problem"}`,
+    `Status in Ringkeeper Connect: ${scrub(input.status).slice(0, 500)}`,
+    `Ringkeeper Connect ${input.version} on ${input.system}`,
+    "",
+    ...(input.worked ? ["Anything else (optional): ", ""] : ["What happened: ", "", "What you expected: ", ""]),
   ].join("\r\n");
   return `mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 }
@@ -472,6 +516,11 @@ export class CatalogActions {
         this.deps.store.activeClientId,
       );
     this.deps.gateway().restartConnection(clientId, connectionId);
+    // The first sign-in to this service here: ask "Did it work?" (answered once per service).
+    const signedIn = this.deps.store.view(clientId)?.connections.find((c) => c.id === connectionId);
+    const settings = this.deps.store.settings;
+    const ask = signedIn && feedbackServiceFor(signedIn, settings.toolFeedback);
+    if (ask) this.deps.store.updateSettings({ feedbackAsk: { clientId, connectionId, serviceId: ask.id } });
     this.deps.onChange();
   }
 

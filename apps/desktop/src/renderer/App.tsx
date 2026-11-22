@@ -282,6 +282,7 @@ export function App() {
           </div>
         )}
         <FoundBanner state={state} run={run} />
+        <FeedbackBanner state={state} run={run} />
 
         {showAttention ? (
           <AttentionPanel
@@ -332,6 +333,30 @@ export function App() {
           onAdvanced={(client) => setDialog({ kind: "connection", client })}
         />
       )}
+    </div>
+  );
+}
+
+/** "Did it work?" after the first sign-in to a tool: either answer opens an email the user can choose to send. */
+function FeedbackBanner(props: { state: AppState; run: Run }) {
+  const ask = props.state.settings.feedbackAsk;
+  const owner = ask && (ask.clientId === EVERY_CLIENT_ID ? props.state.everyClient : props.state.clients.find((c) => c.id === ask.clientId));
+  const conn = owner?.connections.find((c) => c.id === ask?.connectionId);
+  if (!ask || !owner || !conn) return null;
+  const forWhom = owner.id === EVERY_CLIENT_ID ? "" : ` for ${owner.name}`;
+  return (
+    <div className="banner info feedback" role="status">
+      <span>
+        <strong>Did {conn.name} work?</strong> You've signed in to it{forWhom}. Once you've tried it from your AI app, tell us how it went: either button
+        opens an email you can read and choose to send. Nothing is sent by itself, and your client's name and keys aren't in it.
+      </span>
+      <span className="banner-actions">
+        <button onClick={() => void props.run(api.answerToolFeedback("worked"))}>Worked</button>
+        <button onClick={() => void props.run(api.answerToolFeedback("problem"))}>Had a problem</button>
+        <button className="link" onClick={() => void props.run(api.answerToolFeedback("skipped"))}>
+          No thanks
+        </button>
+      </span>
     </div>
   );
 }

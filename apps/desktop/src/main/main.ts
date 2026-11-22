@@ -1,6 +1,7 @@
 // Ringkeeper Connect's main process: owns the clients and keys, runs the
 // gateway that AI apps connect to, and keeps a tray menu for switching clients.
 import fs from "node:fs";
+import os from "node:os";
 import { basename, dirname, join } from "node:path";
 import { BrowserWindow, Menu, Notification, Tray, app, dialog, globalShortcut, ipcMain, nativeImage, nativeTheme, safeStorage, shell } from "electron";
 import { ActivityLog } from "./activity.js";
@@ -35,7 +36,9 @@ import { HostConfigError } from "@ringkeeper/hostconfig";
 import { IPC, type ApiMethod, type AppState, type HostView, type Result } from "../shared/api.js";
 import { AppsError, AppsService, bridgeLaunch, bundledRuntimes } from "./apps.js";
 import { bridgeHome } from "./bridge-copy.js";
-import { CatalogActionError, CatalogActions } from "./catalog.js";
+import { CatalogActionError, CatalogActions, feedbackMailto } from "./catalog.js";
+import { serviceOf } from "./help.js";
+import { catalog } from "@ringkeeper/catalog";
 import { Updates } from "./updates.js";
 import { SignInFinder } from "./sign-in-finder.js";
 import { registeredApps } from "./registered-apps.js";
@@ -576,6 +579,7 @@ function registerIpc(): void {
     openLink: (url: string) => catalogActions.openLink(url),
     requestTool: (searched: string) => catalogActions.requestTool(searched),
     dismissPendingTool: (clientId: string, toolId: string) => dropPendingTool(clientId, toolId),
+    answerToolFeedback: (answer: string) => answerToolFeedback(answer),
     restartToUpdate: () => updates?.restartToUpdate(),
     checkForUpdates: () => updates?.check(true),
   };
@@ -603,6 +607,32 @@ function registerIpc(): void {
       return { ok: false, error: plain };
     }
   });
+}
+
+// ---------- "Did it work?" after a first sign-in ----------
+
+/**
+ * Record the answer (so this service isn't asked about again) and, for "Worked" or "Had a problem",
+ * open an email the user reads and chooses to send. Nothing is sent from here.
+ */
+function answerToolFeedback(answer: string): void {
+  const ask = store.settings.feedbackAsk;
+  if (!ask) return;
+  const result = answer === "worked" ? "worked" : answer === "problem" ? "problem" : "skipped";
+  store.updateSettings({ feedbackAsk: undefined, toolFeedback: { ...(store.settings.toolFeedback ?? {}), [ask.serviceId]: result } });
+  if (result === "skipped") return;
+  const client = store.view(ask.clientId);
+  const conn = client?.connections.find((c) => c.id === ask.connectionId);
+  const service = catalog.services.find((s) => s.id === ask.serviceId) ?? (conn ? serviceOf(conn, catalog.services) : undefined);
+  if (!client || !conn || !service) return;
+  const s = gateway.connectionStatuses().find((x) => x.clientId === client.id && x.connectionId === conn.id);
+  const status = s ? `${STATUS_WORDS[s.status] ?? s.status}${s.problem ? `: ${s.problem}` : ""}` : "starts when needed";
+  const how = `${conn.kind === "remote" ? "web address" : "program on this computer"}, signed in${conn.oauthApp ? (conn.oauthApp.includes(":") ? " through their own app" : " through Ringkeeper Connect's app") : ""}`;
+  const system = `${process.platform === "darwin" ? "Mac" : process.platform === "win32" ? "Windows" : process.platform} ${os.release()} (${process.arch})`;
+  void shell.openExternal(
+    feedbackMailto({ worked: result === "worked", service, how, status, clientName: client.name, version: app.getVersion(), system }),
+  );
+  log({ ev: "tool_feedback", service: service.id, result });
 }
 
 // ---------- a copy for another computer ----------

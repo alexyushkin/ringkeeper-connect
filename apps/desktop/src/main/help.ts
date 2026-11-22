@@ -70,6 +70,7 @@ Ringkeeper Connect is a desktop app for agencies. It keeps each client's tools (
 3. Choose how to connect. "Sign in with …" is offered wherever the service allows it: sign in with the client's account (not your own) in the browser that opens, then come back. Otherwise paste a key; the "where to find it" link under the field opens the right page of the service. Some tools have "Test connection" to check the key first.
 4. For Google, Microsoft 365 and Meta Ads, tick what the AI may do (for example read mail but not send it). Change it later with Edit on the tool.
 - A tool marked Beta works but hasn't been tried with a real account yet.
+- After the first sign-in to a tool, the window asks "Did it work?". "Worked" or "Had a problem" opens an email with the tool's name, its status and the version (never the client's name or keys) that the user reads and chooses to send; nothing is sent by itself. "No thanks" stops asking about that tool.
 - "More… > Choose actions" on a tool picks which of its actions the AI gets: all of them, only the ones that read, or a chosen few. Tools with hundreds of actions (Twilio has over 200) work better with fewer. An action left out isn't shown to the AI and isn't run.
 - "More… > Turn off" keeps a tool with its keys but stops offering it to the AI apps; "Turn on" brings it back.
 - Missing a service? Use "Request a tool" at the bottom of Add a tool, or "Something else" to add any connection by its web address or program.
@@ -123,7 +124,7 @@ function connectionStatus(statuses: ConnectionStatus[], clientId: string, conn: 
 }
 
 /** Which catalog service a connection is, from its name, program and address. */
-function serviceOf(conn: ConnectionView, services: CatalogService[]): CatalogService | undefined {
+export function serviceOf(conn: ConnectionView, services: CatalogService[]): CatalogService | undefined {
   const value = conn.kind === "remote" ? { url: conn.url } : { command: conn.command, args: conn.args };
   const hit = detectService(conn.name, value);
   const id = hit?.id === "meta-ads" ? "meta_ads" : hit?.id;

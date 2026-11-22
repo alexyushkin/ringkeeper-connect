@@ -237,6 +237,12 @@ describe("adding a Google account for a client", () => {
     expect(store.toGatewayConfig().clients[0]!.connections[0]).toMatchObject({ needsSignIn: false });
     const after = store.toGatewayConfig().clients[0]!.connections[0]!;
     expect(after.kind === "local" && after.oauth && oauthStore.load(after.oauth.key)?.tokens?.access_token).toBe("access-1");
+    // The first sign-in to this service here: the window asks "Did it work?".
+    expect(store.settings.feedbackAsk).toEqual({ clientId: acme.id, connectionId: added.connectionId, serviceId: "google" });
+    // Once answered, a later sign-in to the same service doesn't ask again.
+    store.updateSettings({ feedbackAsk: undefined, toolFeedback: { google: "worked" } });
+    await actions.signIn(acme.id, added.connectionId);
+    expect(store.settings.feedbackAsk).toBeUndefined();
   });
 
   it("the tools program offers a tool when any one of the permissions that allow it was ticked", () => {

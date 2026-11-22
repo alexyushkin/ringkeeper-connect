@@ -303,6 +303,8 @@ export interface RingkeeperApi {
   removeOwnApp(id: string): Promise<Result>;
   cancelSignIn(): Promise<Result>;
   openLink(url: string): Promise<Result>;
+  /** "Did it work?" after a first sign-in: "worked" or "problem" open an email to send (or not); "skipped" just stops asking. */
+  answerToolFeedback(answer: "worked" | "problem" | "skipped"): Promise<Result>;
   /** Stop suggesting a picked tool for a client. */
   dismissPendingTool(clientId: string, toolId: string): Promise<Result>;
   /** Opens an email (or the contact page) to ask for a tool that isn't in the catalog. */
