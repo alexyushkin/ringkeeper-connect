@@ -4,6 +4,24 @@ What's new in each version of Ringkeeper Connect, in plain words. A release's pa
 shows its section under "What's new". Versions before 0.2.0-beta.16 are described on their
 [release pages](https://github.com/alexyushkin/ringkeeper-connect/releases).
 
+## 0.2.6
+
+- **Move to another computer.** "Move to another computer" in the sidebar saves every client,
+  with its tools, keys and sign-ins, into one file locked with a password you choose. On the new
+  computer, bring it in from the same place (or from the first screen) and tick the clients you
+  want. Nothing already there is changed. Without the password the file can't be opened, and
+  nobody can recover a forgotten one.
+- **Pin, recent and archive.** "More…" on a client pins it to the top of the list, or archives a
+  client you've finished with: it's kept with its tools and keys, but out of the list and out of
+  your AI apps' reach until you bring it back. Once the list is long, "Recent" shows the clients
+  you used last. The list is now in A to Z order.
+- **New client like this one.** "More… > New client like this…", or "Start with" when adding a
+  client, copies another client's tools and what the AI may do. Keys and sign-ins aren't copied,
+  and each tool waits until you've checked its settings and saved it, so nothing of the other
+  client's is used by mistake.
+- **Needs attention.** One list, at the top of the sidebar, of every tool in any client that
+  needs a key, a sign-in or a check, or isn't working, so it's fixed before a client call.
+
 ## 0.2.5
 
 - **Choose which actions the AI gets from each tool.** "More… > Choose actions" on a tool: all of

@@ -4,11 +4,13 @@ import logo from "./assets/logo.png";
 import { AppsSection, FoundBanner, Setup } from "./Setup";
 import { AddFromCatalog, SignIn } from "./Catalog";
 import { KeyTest, keyExpiryWarning } from "./KeyTest";
-import { CLIENT_SEARCH_FROM, matchesWords } from "./search";
+import { CLIENT_SEARCH_FROM } from "./search";
 import { Help } from "./Help";
 import { ClientSafety } from "./ClientSafety";
 import { ActionsDialog, MoreMenu, MoveToClientDialog, MoveToEveryDialog, actionsNote } from "./ToolActions";
 import { restoreBody } from "./restore-text";
+import { clientGroups, copiedNote, needsAttention, type Attention } from "./client-list";
+import { MoveComputerDialog } from "./MoveComputer";
 import { EVERY_CLIENT_ID, updateStatusText, type AppState, type CatalogService, type ClientView, type ConnectionInput, type ConnectionView, type HostView, type RingkeeperApi, type Result } from "../shared/api";
 
 declare global {
@@ -30,7 +32,11 @@ const STATUS: Record<string, { word: string; tone: "ok" | "muted" | "warn" | "ba
   needs_signin: { word: "Needs sign-in", tone: "warn" },
   error: { word: "Not working", tone: "bad" },
   off: { word: "Turned off", tone: "muted" },
+  check: { word: "Check settings", tone: "warn" },
 };
+
+/** The sidebar entry that lists every tool needing something, across clients. */
+const ATTENTION_ID = "~attention";
 
 export function App() {
   const [state, setState] = useState<AppState | null>(null);
@@ -42,6 +48,7 @@ export function App() {
   const [hint, setHint] = useState<string | null>(null);
   const [clientQuery, setClientQuery] = useState("");
   const [showHelp, setShowHelp] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
 
   useEffect(() => {
     void api.getState().then((s) => {
@@ -59,11 +66,29 @@ export function App() {
   const clients = state?.clients ?? [];
   const every = state?.everyClient;
   const selected =
-    (selectedId === EVERY_CLIENT_ID ? every : undefined) ?? clients.find((c) => c.id === selectedId) ?? clients.find((c) => c.active) ?? clients[0];
+    (selectedId === EVERY_CLIENT_ID ? every : undefined) ??
+    clients.find((c) => c.id === selectedId) ??
+    clients.find((c) => c.active) ??
+    clients.find((c) => !c.archived) ??
+    clients[0];
   // A search box once the list is long; a short list needs none.
   const searchable = clients.length >= CLIENT_SEARCH_FROM;
   const query = searchable ? clientQuery.trim() : "";
-  const shownClients = clients.filter((c) => matchesWords(c.name, query));
+  const groups = clientGroups(clients, query);
+  const firstShown = query ? groups.matches[0] : (groups.pinned[0] ?? groups.rest[0]);
+  const attention = needsAttention(clients, every, state?.statuses ?? [], EVERY_CLIENT_ID);
+  const showAttention = selectedId === ATTENTION_ID && attention.length > 0;
+  const editDialog = (client: ClientView, conn: ConnectionView): DialogState =>
+    conn.kind === "local" && conn.command === "ringkeeper-tools" ? { kind: "built-in", client, conn } : { kind: "connection", client, conn };
+  const clientItem = (c: ClientView, group: string) => (
+    <li key={`${group}:${c.id}`}>
+      <button className={`client-item ${!showAttention && selected?.id === c.id ? "selected" : ""}`} onClick={() => setSelectedId(c.id)}>
+        <span className="client-name">{c.name}</span>
+        {c.active && <span className="badge">Active</span>}
+        {c.archived && <span className="badge muted">Archived</span>}
+      </button>
+    </li>
+  );
 
   /** Run an action; show its plain-language error if it fails. */
   async function run<T>(p: Promise<Result<T>>): Promise<Done<T> | null> {
@@ -110,9 +135,19 @@ export function App() {
           <img src={logo} alt="" width={24} height={24} />
           Ringkeeper Connect
         </div>
+        {attention.length > 0 && (
+          <button
+            className={`client-item attention-item ${showAttention ? "selected" : ""}`}
+            title="Tools in any client that need a key, a sign-in or a check before they work"
+            onClick={() => setSelectedId(ATTENTION_ID)}
+          >
+            <span className="client-name">Needs attention</span>
+            <span className="count warn">{attention.length}</span>
+          </button>
+        )}
         {clients.length > 0 && every && (
           <button
-            className={`client-item every-item ${selected?.id === EVERY_CLIENT_ID ? "selected" : ""}`}
+            className={`client-item every-item ${!showAttention && selected?.id === EVERY_CLIENT_ID ? "selected" : ""}`}
             title="Tools that aren't a client's, like a browser helper or web search. Every client gets them."
             onClick={() => setSelectedId(EVERY_CLIENT_ID)}
           >
@@ -130,21 +165,35 @@ export function App() {
             value={clientQuery}
             onChange={(e) => setClientQuery(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter" && shownClients[0]) setSelectedId(shownClients[0].id);
+              if (e.key === "Enter" && firstShown) setSelectedId(firstShown.id);
               if (e.key === "Escape") setClientQuery("");
             }}
           />
         )}
         <ul className={`client-list ${searchable ? "long" : ""}`}>
-          {shownClients.map((c) => (
-            <li key={c.id}>
-              <button className={`client-item ${selected?.id === c.id ? "selected" : ""}`} onClick={() => setSelectedId(c.id)}>
-                <span className="client-name">{c.name}</span>
-                {c.active && <span className="badge">Active</span>}
-              </button>
-            </li>
-          ))}
-          {shownClients.length === 0 && <li className="muted small no-match">No client matches "{query}".</li>}
+          {query ? (
+            <>
+              {groups.matches.map((c) => clientItem(c, "match"))}
+              {groups.matches.length === 0 && <li className="muted small no-match">No client matches "{query}".</li>}
+            </>
+          ) : (
+            <>
+              {groups.pinned.length > 0 && <li className="list-label">Pinned</li>}
+              {groups.pinned.map((c) => clientItem(c, "pinned"))}
+              {groups.recent.length > 0 && <li className="list-label">Recent</li>}
+              {groups.recent.map((c) => clientItem(c, "recent"))}
+              {(groups.pinned.length > 0 || groups.recent.length > 0) && groups.rest.length > 0 && <li className="list-label">All clients</li>}
+              {groups.rest.map((c) => clientItem(c, "all"))}
+              {groups.archived.length > 0 && (
+                <li>
+                  <button className="link small archived-toggle" aria-expanded={showArchived} onClick={() => setShowArchived((v) => !v)}>
+                    {showArchived ? "Hide" : "Show"} archived ({groups.archived.length})
+                  </button>
+                </li>
+              )}
+              {showArchived && groups.archived.map((c) => clientItem(c, "archived"))}
+            </>
+          )}
         </ul>
         <button className="add-client" onClick={() => setDialog({ kind: "add-client" })}>
           + Add client
@@ -184,6 +233,9 @@ export function App() {
         </label>
         <button className="link small left own-apps-link" onClick={() => setDialog({ kind: "own-apps" })}>
           Your own apps
+        </button>
+        <button className="link small left own-apps-link" onClick={() => setDialog({ kind: "move-computer" })}>
+          Move to another computer
         </button>
         <div className="version">
           Version {state.version}
@@ -231,8 +283,14 @@ export function App() {
         )}
         <FoundBanner state={state} run={run} />
 
-        {!selected ? (
-          <Empty onAdd={() => setDialog({ kind: "add-client" })} />
+        {showAttention ? (
+          <AttentionPanel
+            items={attention}
+            onOpen={(id) => setSelectedId(id)}
+            onFix={(a) => setDialog(a.fix === "signin" ? { kind: "signin", client: a.client, conn: a.conn } : editDialog(a.client, a.conn))}
+          />
+        ) : !selected ? (
+          <Empty onAdd={() => setDialog({ kind: "add-client" })} onBringIn={() => setDialog({ kind: "move-computer", start: "bring-in" })} />
         ) : (
           <ClientPanel
             client={selected}
@@ -240,6 +298,9 @@ export function App() {
             statuses={state.statuses}
             activityCount={state.activityCount}
             onActivate={() => void run(api.setActiveClient(selected.id))}
+            onPin={(pinned) => void run(api.setClientPinned(selected.id, pinned))}
+            onArchive={(archived) => void run(api.setClientArchived(selected.id, archived))}
+            onLike={() => setDialog({ kind: "add-client", likeId: selected.id })}
             onRename={() => setDialog({ kind: "rename-client", client: selected })}
             onDelete={() => setDialog({ kind: "delete-client", client: selected })}
             onAddConnection={() => setDialog({ kind: "add", client: selected })}
@@ -248,9 +309,7 @@ export function App() {
             run={run}
             onBringIn={() => setShowSetup(true)}
             onSignIn={(conn) => setDialog({ kind: "signin", client: selected, conn })}
-            onEditConnection={(conn) =>
-              setDialog(conn.kind === "local" && conn.command === "ringkeeper-tools" ? { kind: "built-in", client: selected, conn } : { kind: "connection", client: selected, conn })
-            }
+            onEditConnection={(conn) => setDialog(editDialog(selected, conn))}
             onCopyConnection={(conn) => setDialog({ kind: "copy", client: selected, conn })}
             onRemoveConnection={(conn) => setDialog({ kind: "remove-connection", client: selected, conn })}
             onChooseActions={(conn) => setDialog({ kind: "actions", client: selected, conn })}
@@ -277,7 +336,52 @@ export function App() {
   );
 }
 
-function Empty({ onAdd }: { onAdd: () => void }) {
+/** Every tool that needs something before it works, in every client, so they're fixed before a client call. */
+function AttentionPanel(props: { items: Attention[]; onOpen: (clientId: string) => void; onFix: (a: Attention) => void }) {
+  const byClient = new Map<string, Attention[]>();
+  for (const a of props.items) byClient.set(a.client.id, [...(byClient.get(a.client.id) ?? []), a]);
+  return (
+    <section>
+      <header className="client-header">
+        <div>
+          <h1>Needs attention</h1>
+          <p className="muted">Tools in any client that need a key, a sign-in or a check before they work. Fix them here, before a client call.</p>
+        </div>
+      </header>
+      {[...byClient.values()].map((items) => {
+        const client = items[0]!.client;
+        const title = client.id === EVERY_CLIENT_ID ? "For every client" : client.name;
+        return (
+          <div key={client.id} className="attention-group">
+            <div className="section-title">
+              <h2>{title}</h2>
+              <button className="link" onClick={() => props.onOpen(client.id)}>
+                Open {title}
+              </button>
+            </div>
+            <ul className="connections">
+              {items.map((a) => (
+                <li key={a.conn.id} className="connection">
+                  <div className="connection-main">
+                    <div className="connection-name">{a.conn.name}</div>
+                    <div className="problem warn">{a.problem}</div>
+                  </div>
+                  <div className="connection-actions">
+                    <button className="primary" onClick={() => props.onFix(a)}>
+                      {a.fix === "signin" ? "Sign in" : a.fix === "check" ? "Check settings" : "Edit"}
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+        );
+      })}
+    </section>
+  );
+}
+
+function Empty({ onAdd, onBringIn }: { onAdd: () => void; onBringIn: () => void }) {
   return (
     <div className="empty">
       <h1>Add your first client</h1>
@@ -285,9 +389,12 @@ function Empty({ onAdd }: { onAdd: () => void }) {
         A client is one of the businesses you work for. Give each client its own connections (their n8n, their Airtable, …) once, and
         Claude, Cursor and Claude Code will always use the right ones.
       </p>
-      <button className="primary" onClick={onAdd}>
-        Add client
-      </button>
+      <div className="empty-actions">
+        <button className="primary" onClick={onAdd}>
+          Add client
+        </button>
+        <button onClick={onBringIn}>Bring in clients from another computer</button>
+      </div>
     </div>
   );
 }
@@ -298,6 +405,10 @@ function ClientPanel(props: {
   statuses: AppState["statuses"];
   activityCount: number;
   onActivate: () => void;
+  onPin: (pinned: boolean) => void;
+  onArchive: (archived: boolean) => void;
+  /** "New client like this one". */
+  onLike: () => void;
   onRename: () => void;
   onDelete: () => void;
   onAddConnection: () => void;
@@ -340,22 +451,36 @@ function ClientPanel(props: {
       <header className="client-header">
         <div>
           <h1>{client.name}</h1>
-          {client.active ? (
+          {client.archived ? (
+            <p className="muted">Archived. AI apps don't see {client.name} or its tools. Its tools and keys are kept, ready if you bring it back.</p>
+          ) : client.active ? (
             <p className="active-note">AI apps are working on {client.name} right now, in every chat.</p>
           ) : (
             <p className="muted">Not active. AI apps can't use {client.name}'s connections until you switch to it.</p>
           )}
         </div>
         <div className="header-actions">
-          {!client.active && (
-            <button className="primary" onClick={props.onActivate}>
-              Switch to {client.name}
+          {client.archived ? (
+            <button className="primary" onClick={() => props.onArchive(false)}>
+              Bring back
             </button>
+          ) : (
+            !client.active && (
+              <button className="primary" onClick={props.onActivate}>
+                Switch to {client.name}
+              </button>
+            )
           )}
           <button onClick={props.onRename}>Rename</button>
-          <button className="danger-quiet" onClick={props.onDelete}>
-            Delete
-          </button>
+          <MoreMenu
+            label={`More for ${client.name}`}
+            items={[
+              { label: client.pinned ? "Unpin" : "Pin to the top", onClick: () => props.onPin(!client.pinned), hidden: client.archived },
+              { label: "New client like this…", onClick: props.onLike },
+              { label: "Archive", onClick: () => props.onArchive(true), hidden: client.archived },
+              { label: "Delete", onClick: props.onDelete, danger: true },
+            ]}
+          />
         </div>
       </header>
       )}
@@ -412,11 +537,14 @@ function ClientPanel(props: {
             const notSignedIn = conn.auth === "oauth" && !conn.signedIn;
             // Ringkeeper Connect's own tools (a Google or Microsoft account): its name and what the AI may do are edited in their own dialog.
             const builtIn = conn.kind === "local" && conn.command === "ringkeeper-tools";
-            const status = STATUS[conn.off ? "off" : conn.missingKeys.length ? "needs_key" : notSignedIn ? "needs_signin" : (s?.status ?? "idle")] ?? STATUS.idle!;
+            const status =
+              STATUS[conn.off ? "off" : conn.copiedFrom ? "check" : conn.missingKeys.length ? "needs_key" : notSignedIn ? "needs_signin" : (s?.status ?? "idle")] ?? STATUS.idle!;
             // Inside the app, say what to do here rather than repeating "in Ringkeeper Connect".
             const problem = conn.off
               ? "Kept with its keys, but AI apps don't get it."
-              : conn.missingKeys.length
+              : conn.copiedFrom
+                ? copiedNote(client, conn)
+                : conn.missingKeys.length
                 ? `Add ${conn.missingKeys.join(" and ")} with Edit to use it.`
                 : notSignedIn || s?.status === "needs_signin"
                   ? `Sign in with ${isEvery ? "your" : `${client.name}'s`} account to use it.`
@@ -441,6 +569,10 @@ function ClientPanel(props: {
                     <button className="primary" onClick={() => void props.run(api.setConnectionOff(client.id, conn.id, false))}>
                       Turn on
                     </button>
+                  ) : conn.copiedFrom ? (
+                    <button className="primary" onClick={() => props.onEditConnection(conn)}>
+                      Check settings
+                    </button>
                   ) : (
                     conn.auth === "oauth" &&
                     (s?.status === "needs_signin" || !conn.signedIn) && (
@@ -449,7 +581,7 @@ function ClientPanel(props: {
                       </button>
                     )
                   )}
-                  <button onClick={() => props.onEditConnection(conn)}>Edit</button>
+                  {!conn.copiedFrom && <button onClick={() => props.onEditConnection(conn)}>Edit</button>}
                   <MoreMenu
                     label={`More for ${conn.name}`}
                     items={[
@@ -479,7 +611,8 @@ type Done<T> = { value: T };
 type Run = <T>(p: Promise<Result<T>>) => Promise<Done<T> | null>;
 
 type DialogState =
-  | { kind: "add-client" }
+  | { kind: "add-client"; likeId?: string }
+  | { kind: "move-computer"; start?: "save" | "bring-in" }
   | { kind: "rename-client"; client: ClientView }
   | { kind: "delete-client"; client: ClientView }
   | { kind: "connection"; client: ClientView; conn?: ConnectionView }
@@ -516,14 +649,12 @@ function Dialogs(props: {
       );
     case "add-client":
       return (
-        <NameDialog
-          title="Add a client"
-          label="Client name"
-          placeholder="e.g. Acme"
-          confirm="Add client"
+        <AddClientDialog
+          clients={props.clients}
+          likeId={dialog.likeId}
           onClose={close}
-          onSubmit={async (name) => {
-            const c = await run(api.addClient(name));
+          onSubmit={async (name, likeId) => {
+            const c = await run(api.addClient(name, likeId));
             if (c) {
               props.onClientAdded(c.value.id);
               close();
@@ -531,6 +662,8 @@ function Dialogs(props: {
           }}
         />
       );
+    case "move-computer":
+      return <MoveComputerDialog start={dialog.start} hasClients={props.clients.length > 0} onClose={close} run={run} onHint={props.onHint} />;
     case "rename-client":
       return (
         <NameDialog
@@ -633,6 +766,56 @@ function Modal(props: { title: string; children: React.ReactNode; onClose: () =>
         {props.children}
       </div>
     </div>
+  );
+}
+
+/** A new client, empty or starting with another client's tools (keys left to fill in). */
+function AddClientDialog(props: { clients: ClientView[]; likeId?: string; onClose: () => void; onSubmit: (name: string, likeId?: string) => Promise<void> }) {
+  const [name, setName] = useState("");
+  const [likeId, setLikeId] = useState(props.likeId ?? "");
+  const like = props.clients.find((c) => c.id === likeId);
+  return (
+    <Modal title={like && props.likeId ? `New client like ${like.name}` : "Add a client"} onClose={props.onClose}>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          void props.onSubmit(name, likeId || undefined);
+        }}
+      >
+        <label className="field">
+          <span>Client name</span>
+          <input autoFocus value={name} placeholder="e.g. Acme" onChange={(e) => setName(e.target.value)} />
+        </label>
+        {props.clients.length > 0 && (
+          <label className="field">
+            <span>Start with</span>
+            <select value={likeId} onChange={(e) => setLikeId(e.target.value)}>
+              <option value="">No tools yet</option>
+              {props.clients.map((c) => (
+                <option key={c.id} value={c.id}>
+                  The same tools as {c.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+        {like && (
+          <p className="muted small">
+            {like.connections.length === 0
+              ? `${like.name} has no tools yet, so the new client starts empty.`
+              : `${like.connections.length === 1 ? "Its 1 tool is" : `Its ${like.connections.length} tools are`} copied with their settings and what the AI may do. Keys and sign-ins aren't: you add the new client's own. Each tool waits until you've checked it, since an address may still be ${like.name}'s.`}
+          </p>
+        )}
+        <div className="modal-actions">
+          <button type="button" onClick={props.onClose}>
+            Cancel
+          </button>
+          <button type="submit" className="primary" disabled={!name.trim()}>
+            Add client
+          </button>
+        </div>
+      </form>
+    </Modal>
   );
 }
 
@@ -743,6 +926,12 @@ function BuiltInDialog(props: { client: ClientView; conn: ConnectionView; onClos
 
   return (
     <Modal title={`Edit ${conn.name} for ${client.name}`} onClose={props.onClose} wide>
+      {conn.copiedFrom && (
+        <div className="notice warn small">
+          Copied from {conn.copiedFrom}. Check what the AI may do and which app it signs in through, then save, and sign in with {client.name}'s
+          account.
+        </div>
+      )}
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -841,6 +1030,12 @@ function ConnectionDialog(props: {
 
   return (
     <Modal title={conn ? `Edit ${conn.name} for ${client.name}` : `Add a tool for ${client.name}`} onClose={props.onClose} wide>
+      {conn?.copiedFrom && (
+        <div className="notice warn small">
+          Copied from {conn.copiedFrom}. Check that the address and settings are {client.name}'s, and add {client.name}'s keys. Saving makes it
+          available to AI apps.
+        </div>
+      )}
       <form
         onSubmit={(e) => {
           e.preventDefault();

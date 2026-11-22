@@ -26,7 +26,7 @@ const clients: ClientView[] = [
     id: "acme",
     name: "Acme",
     active: true,
-    guard: "ask_delete",
+    guard: "ask_delete", pinned: false, archived: false,
     connections: [
       {
         kind: "remote",
@@ -40,7 +40,7 @@ const clients: ClientView[] = [
       { kind: "local", id: "stripe", name: "Stripe", command: "npx", args: ["-y", "@stripe/mcp"], fields: [{ name: "STRIPE_SECRET_KEY", secret: true, isSet: false }], missingKeys: ["STRIPE_SECRET_KEY"] },
     ],
   },
-  { id: "globex", name: "Globex", active: false, guard: "ask_delete" as const, connections: [] },
+  { id: "globex", name: "Globex", active: false, guard: "ask_delete" as const, pinned: false, archived: false, connections: [] },
 ];
 
 const hosts = [
@@ -104,7 +104,7 @@ describe("the help answer", () => {
   });
 
   it("lists what's in Add a tool when the question names no service", () => {
-    const calm = input("Which tools can I add?", { clients: [{ id: "x", name: "X", active: true, guard: "ask_delete" as const, connections: [] }], statuses: [] });
+    const calm = input("Which tools can I add?", { clients: [{ id: "x", name: "X", active: true, guard: "ask_delete" as const, pinned: false, archived: false, connections: [] }], statuses: [] });
     const a = helpAnswer(calm);
     expect(a).toMatch(/## Services in Add a tool\n- /);
     expect(a).toContain("Basecamp (Beta)");

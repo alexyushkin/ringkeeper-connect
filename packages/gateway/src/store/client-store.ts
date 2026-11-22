@@ -7,6 +7,7 @@ import { DEFAULT_DYNAMIC_HOSTS } from "../meta-tools.js";
 import { DEFAULT_GUARD, isActionChoice, isClientGuard, type ActionChoice, type ClientGuard } from "../guard.js";
 import type { SecretStore } from "./secrets.js";
 import type { OAuthState, OAuthStateStore } from "../oauth.js";
+import type { CopyClient, CopyConnection, CopyField, CopyPayload } from "./copy.js";
 
 // ---------- stored shapes ----------
 
@@ -20,6 +21,11 @@ interface StoredBase {
   actions?: ActionChoice;
   /** Turned off: kept with its keys, not offered to the AI apps. */
   off?: true;
+  /**
+   * Copied from another client's tools (the name of that client) when this client was started
+   * from it: not offered until the user has checked its settings are this client's and saved.
+   */
+  copiedFrom?: string;
 }
 export interface StoredLocalConnection extends StoredBase {
   kind: "local";
@@ -51,6 +57,12 @@ export interface StoredClient {
   connections: StoredConnection[];
   /** How much the AI may do for this client. Left out means the default (ask before deleting). */
   guard?: ClientGuard;
+  /** Kept at the top of the list. */
+  pinned?: true;
+  /** Finished with for now: kept with its keys, but not in the list, never active, its tools not offered. */
+  archived?: true;
+  /** When it last became the active client (ms since 1970), for "Recent". */
+  lastUsedAt?: number;
 }
 
 export interface Settings {
@@ -116,8 +128,30 @@ interface StoreFile {
 export const EVERY_CLIENT_NAME = "every client";
 
 /** The choice and switch a connection keeps through an edit. */
-function kept(c: StoredConnection): { actions?: ActionChoice; off?: true } {
-  return { ...(c.actions ? { actions: Array.isArray(c.actions) ? [...c.actions] : c.actions } : {}), ...(c.off ? { off: true as const } : {}) };
+function kept(c: StoredConnection): { actions?: ActionChoice; off?: true; copiedFrom?: string } {
+  return {
+    ...(c.actions ? { actions: Array.isArray(c.actions) ? [...c.actions] : c.actions } : {}),
+    ...(c.off ? { off: true as const } : {}),
+    ...(c.copiedFrom ? { copiedFrom: c.copiedFrom } : {}),
+  };
+}
+
+/** What a copy holds, shown before anything is brought in. */
+export interface CopyPreview {
+  clients: Array<{ name: string; tools: number; archived: boolean; /** A client with this name is here already. */ exists: boolean }>;
+  everyClient: Array<{ name: string; exists: boolean }>;
+  ownApps: Array<{ name: string; exists: boolean }>;
+}
+
+/** What bringing in a copy did. */
+export interface CopyResult {
+  /** Clients added, by the name they got here. */
+  clients: string[];
+  /** Clients added under a new name because the name was taken. */
+  renamed: Array<{ from: string; to: string }>;
+  /** Tools for every client added; ones already here by name are left out. */
+  everyClient: string[];
+  ownApps: string[];
 }
 
 export const DEFAULT_SETTINGS: Settings = { requireClientArg: true, dynamicHosts: [...DEFAULT_DYNAMIC_HOSTS], setupDone: false, startAtLogin: true, bringInOffered: false, pendingTools: [] };
@@ -158,6 +192,7 @@ export type ConnectionView =
       missingKeys: string[];
       actions?: ActionChoice;
       off?: boolean;
+      copiedFrom?: string;
     }
   | {
       kind: "remote";
@@ -176,6 +211,8 @@ export type ConnectionView =
       actions?: ActionChoice;
       /** Turned off by the user. */
       off?: boolean;
+      /** Copied from this client's tools and not checked yet: not offered until it's saved. */
+      copiedFrom?: string;
     };
 
 export interface ClientView {
@@ -185,6 +222,9 @@ export interface ClientView {
   connections: ConnectionView[];
   /** How much the AI may do for this client. */
   guard: ClientGuard;
+  pinned: boolean;
+  archived: boolean;
+  lastUsedAt?: number;
 }
 
 export class StoreError extends Error {}
@@ -314,6 +354,9 @@ export class ClientStore {
       active: c.id === this.data.activeClientId,
       connections: c.connections.map((conn) => this.viewConnection(conn)),
       guard: isClientGuard(c.guard) ? c.guard : DEFAULT_GUARD,
+      pinned: !!c.pinned,
+      archived: !!c.archived,
+      ...(typeof c.lastUsedAt === "number" ? { lastUsedAt: c.lastUsedAt } : {}),
     };
   }
 
@@ -367,7 +410,7 @@ export class ClientStore {
     const every = this.data.everyClient?.connections ?? [];
     return {
       options: { requireClientArg: this.data.settings.requireClientArg, dynamicHosts: [...this.data.settings.dynamicHosts] },
-      clients: this.data.clients.map((c) => ({
+      clients: this.data.clients.filter((c) => !c.archived).map((c) => ({
         id: c.id,
         name: c.name,
         guard: isClientGuard(c.guard) ? c.guard : DEFAULT_GUARD,
@@ -388,7 +431,8 @@ export class ClientStore {
         else resolved[name] = s;
       }
     }
-    const base = { id: conn.id, name: conn.name, ...(missing.length ? { missingKeys: missing } : {}), ...kept(conn) };
+    const { copiedFrom, ...chosen } = kept(conn);
+    const base = { id: conn.id, name: conn.name, ...(missing.length ? { missingKeys: missing } : {}), ...chosen, ...(copiedFrom ? { off: true } : {}) };
     const oauth =
       conn.auth === "oauth"
         ? {
@@ -426,11 +470,35 @@ export class ClientStore {
     return trimmed;
   }
 
-  addClient(name: string): ClientView {
+  /**
+   * Add a client. With `likeId`, it starts with that client's tools and what the AI may do:
+   * settings are copied, keys and sign-ins aren't, and each tool waits until it's been checked
+   * (an address or setting may still be the other client's).
+   */
+  addClient(name: string, likeId?: string): ClientView {
     const clean = this.checkClientName(name);
+    const like = likeId ? this.realClient(likeId) : undefined;
     const id = uniqueId(slug(clean, "client", 30), new Set(this.data.clients.map((c) => c.id)));
-    this.data.clients.push({ id, name: clean, connections: [] });
-    this.data.activeClientId ??= id;
+    const client: StoredClient = { id, name: clean, connections: [], ...(like?.guard ? { guard: like.guard } : {}) };
+    if (like) {
+      const taken = this.takenConnectionIds(client);
+      for (const src of like.connections) {
+        const connId = uniqueId(src.id, taken);
+        taken.add(connId);
+        const fields: Record<string, StoredValue> = {};
+        for (const [n, v] of Object.entries(fieldsOf(src))) fields[n] = "value" in v ? { value: v.value } : { secret: this.secretKey(id, connId, n) };
+        const { copiedFrom: _was, ...rest } = src;
+        const copy: StoredConnection = src.kind === "local" ? { ...(rest as StoredLocalConnection), id: connId, args: [...src.args], env: fields } : { ...(rest as StoredRemoteConnection), id: connId, headers: fields };
+        if (Array.isArray(src.actions)) copy.actions = [...src.actions];
+        copy.copiedFrom = like.name;
+        client.connections.push(copy);
+      }
+    }
+    this.data.clients.push(client);
+    if (this.data.activeClientId === null) {
+      this.data.activeClientId = id;
+      client.lastUsedAt = Date.now();
+    }
     this.commit();
     return this.list().find((c) => c.id === id)!;
   }
@@ -455,14 +523,43 @@ export class ClientStore {
     this.realClient(id);
     this.data.clients = this.data.clients.filter((c) => c.id !== id);
     this.secrets.deletePrefix(`${id}/`);
-    if (this.data.activeClientId === id) this.data.activeClientId = this.data.clients[0]?.id ?? null;
+    if (this.data.activeClientId === id) this.data.activeClientId = this.data.clients.find((c) => !c.archived)?.id ?? null;
     this.commit();
   }
 
   setActiveClient(id: string): void {
-    this.realClient(id);
+    const c = this.realClient(id);
+    if (c.archived) throw new StoreError(`${c.name} is archived. Bring it back first, then switch to it.`);
     if (this.data.activeClientId === id) return;
     this.data.activeClientId = id;
+    c.lastUsedAt = Date.now();
+    this.commit();
+  }
+
+  /** Keep a client at the top of the list, or not. */
+  setClientPinned(id: string, pinned: boolean): void {
+    const c = this.realClient(id);
+    if (!!c.pinned === pinned) return;
+    if (pinned) c.pinned = true;
+    else delete c.pinned;
+    this.commit();
+  }
+
+  /**
+   * Archive a client you're finished with for now (its tools and keys are kept, the AI apps
+   * don't see it), or bring it back. The active client can't be archived: switching for the
+   * user would change every chat without asking.
+   */
+  setClientArchived(id: string, archived: boolean): void {
+    const c = this.realClient(id);
+    if (!!c.archived === archived) return;
+    if (archived) {
+      if (this.data.activeClientId === id) {
+        throw new StoreError(`${c.name} is the active client. Switch to another client first, then archive ${c.name}.`);
+      }
+      c.archived = true;
+      delete c.pinned;
+    } else delete c.archived;
     this.commit();
   }
 
@@ -657,6 +754,14 @@ export class ClientStore {
     return this.viewConnection(conn);
   }
 
+  /** The user checked a tool copied from another client (they saved it): it's offered from now on. */
+  markChecked(clientId: string, connId: string): void {
+    const conn = this.connection(this.client(clientId), connId);
+    if (!conn.copiedFrom) return;
+    delete conn.copiedFrom;
+    this.commit();
+  }
+
   /** Turn a tool off (kept with its keys, not offered to the AI apps) or on again. */
   setConnectionOff(clientId: string, connId: string, off: boolean): ConnectionView {
     const conn = this.connection(this.client(clientId), connId);
@@ -706,5 +811,153 @@ export class ClientStore {
     this.secrets.deletePrefix(`${from.id}/${src.id}/`);
     this.commit();
     return this.viewConnection(moved);
+  }
+
+  // ---------- copies for another computer ----------
+
+  /** Everything a copy holds, keys and sign-ins included. In memory only: sealed with a password before it's written. */
+  exportCopy(): CopyPayload {
+    const conn = (ownerId: string, c: StoredConnection): CopyConnection => {
+      const fields: Record<string, CopyField> = {};
+      for (const [n, v] of Object.entries(fieldsOf(c))) fields[n] = "value" in v ? { value: v.value } : { secret: this.secrets.get(v.secret) ?? null };
+      const signIn = c.auth === "oauth" ? this.secrets.get(oauthKey(ownerId, c.id)) : undefined;
+      const base = {
+        id: c.id,
+        name: c.name,
+        fields,
+        ...(c.auth ? { auth: c.auth } : {}),
+        ...appOf(c),
+        ...kept(c),
+        ...(signIn !== undefined ? { signIn } : {}),
+      };
+      return c.kind === "local"
+        ? { ...base, kind: "local", command: c.command, args: [...c.args] }
+        : { ...base, kind: "remote", url: c.url, ...(c.transport ? { transport: c.transport } : {}) };
+    };
+    return {
+      kind: "ringkeeper-connect-clients",
+      version: 1,
+      createdAt: new Date().toISOString(),
+      clients: this.data.clients.map(
+        (c): CopyClient => ({
+          name: c.name,
+          ...(isClientGuard(c.guard) ? { guard: c.guard } : {}),
+          ...(c.pinned ? { pinned: true as const } : {}),
+          ...(c.archived ? { archived: true as const } : {}),
+          connections: c.connections.map((x) => conn(c.id, x)),
+        }),
+      ),
+      everyClient: (this.data.everyClient?.connections ?? []).map((x) => conn(EVERY_CLIENT_ID, x)),
+      ownApps: (this.data.settings.ownApps ?? []).map((a) => {
+        const secret = this.secrets.get(ownAppSecretKey(a.id));
+        return { ...a, ...(secret !== undefined ? { secret } : {}) };
+      }),
+    };
+  }
+
+  previewCopy(copy: CopyPayload): CopyPreview {
+    const names = new Set(this.data.clients.map((c) => c.name.toLowerCase()));
+    const every = new Set((this.data.everyClient?.connections ?? []).map((c) => c.name.toLowerCase()));
+    const apps = new Set((this.data.settings.ownApps ?? []).map((a) => a.id));
+    return {
+      clients: copy.clients.map((c) => ({ name: c.name, tools: c.connections.length, archived: !!c.archived, exists: names.has(c.name.toLowerCase()) })),
+      everyClient: copy.everyClient.map((c) => ({ name: c.name, exists: every.has(c.name.toLowerCase()) })),
+      ownApps: copy.ownApps.map((a) => ({ name: a.name, exists: apps.has(a.id) })),
+    };
+  }
+
+  /**
+   * Bring in the chosen clients from a copy (by their name in the copy), and the tools for every
+   * client and own apps that aren't here yet. Nothing already here is changed: a client whose
+   * name is taken comes in under a new one ("Acme 2").
+   */
+  importCopy(copy: CopyPayload, chosen: { clients: string[]; everyClient: boolean }): CopyResult {
+    const result: CopyResult = { clients: [], renamed: [], everyClient: [], ownApps: [] };
+    const want = new Set(chosen.clients.map((n) => n.toLowerCase()));
+
+    // Own apps first: the tools that sign in through them name them.
+    const apps = this.data.settings.ownApps ?? [];
+    for (const a of copy.ownApps) {
+      if (apps.some((x) => x.id === a.id)) continue;
+      const { secret, ...record } = a;
+      apps.push({ id: record.id, vendor: record.vendor, name: record.name, clientId: record.clientId, ...(record.tenant ? { tenant: record.tenant } : {}) });
+      if (secret !== undefined) this.secrets.set(ownAppSecretKey(a.id), secret);
+      result.ownApps.push(a.name);
+    }
+    if (result.ownApps.length) this.data.settings.ownApps = apps;
+
+    const place = (owner: StoredClient, c: CopyConnection, taken: Set<string>): StoredConnection => {
+      const id = uniqueId(slug(c.id, "connection", 40), taken);
+      taken.add(id);
+      const fields: Record<string, StoredValue> = {};
+      for (const [n, f] of Object.entries(c.fields)) {
+        if ("value" in f) fields[n] = { value: f.value };
+        else {
+          const key = this.secretKey(owner.id, id, n);
+          if (f.secret !== null) this.secrets.set(key, f.secret);
+          fields[n] = { secret: key };
+        }
+      }
+      if (c.signIn !== undefined && c.auth === "oauth") this.secrets.set(oauthKey(owner.id, id), c.signIn);
+      const base = {
+        id,
+        name: c.name,
+        ...(c.auth ? { auth: c.auth } : {}),
+        ...appOf(c),
+        ...(c.actions ? { actions: Array.isArray(c.actions) ? [...c.actions] : c.actions } : {}),
+        ...(c.off ? { off: true as const } : {}),
+        ...(c.copiedFrom ? { copiedFrom: c.copiedFrom } : {}),
+      };
+      return c.kind === "local"
+        ? { ...base, kind: "local", command: c.command, args: [...c.args], env: fields }
+        : { ...base, kind: "remote", url: c.url, ...(c.transport ? { transport: c.transport } : {}), headers: fields };
+    };
+
+    const ids = new Set(this.data.clients.map((c) => c.id));
+    for (const c of copy.clients) {
+      if (!want.has(c.name.toLowerCase())) continue;
+      let name = c.name.trim().slice(0, 60) || "Client";
+      if (this.data.clients.some((x) => x.name.toLowerCase() === name.toLowerCase())) {
+        let i = 2;
+        while (this.data.clients.some((x) => x.name.toLowerCase() === `${name} ${i}`.toLowerCase())) i++;
+        result.renamed.push({ from: name, to: `${name} ${i}` });
+        name = `${name} ${i}`;
+      }
+      const id = uniqueId(slug(name, "client", 30), ids);
+      ids.add(id);
+      const client: StoredClient = {
+        id,
+        name,
+        connections: [],
+        ...(c.guard ? { guard: c.guard } : {}),
+        ...(c.pinned ? { pinned: true as const } : {}),
+        ...(c.archived ? { archived: true as const } : {}),
+      };
+      const taken = this.takenConnectionIds(client);
+      for (const conn of c.connections) {
+        if (client.connections.some((x) => x.name.toLowerCase() === conn.name.toLowerCase())) continue;
+        client.connections.push(place(client, conn, taken));
+      }
+      this.data.clients.push(client);
+      result.clients.push(name);
+    }
+
+    if (chosen.everyClient && copy.everyClient.length) {
+      const every = (this.data.everyClient ??= { id: EVERY_CLIENT_ID, name: EVERY_CLIENT_NAME, connections: [] });
+      const taken = this.takenConnectionIds(every);
+      for (const conn of copy.everyClient) {
+        if (every.connections.some((x) => x.name.toLowerCase() === conn.name.toLowerCase())) continue;
+        every.connections.push(place(every, conn, taken));
+        result.everyClient.push(conn.name);
+      }
+    }
+
+    if (this.data.activeClientId === null || !this.data.clients.some((c) => c.id === this.data.activeClientId)) {
+      const first = this.data.clients.find((c) => !c.archived);
+      this.data.activeClientId = first?.id ?? null;
+      if (first) first.lastUsedAt = Date.now();
+    }
+    this.commit();
+    return result;
   }
 }

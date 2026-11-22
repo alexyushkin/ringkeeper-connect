@@ -6,6 +6,7 @@ export * from "./spike-config.js";
 export * from "./meta-tools.js";
 export * from "./store/secrets.js";
 export * from "./store/client-store.js";
+export * from "./store/copy.js";
 export * from "./oauth.js";
 export * from "./runtimes.js";
 export * from "./app-only.js";

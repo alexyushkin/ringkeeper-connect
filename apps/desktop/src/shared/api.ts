@@ -1,12 +1,12 @@
 // The contract between the window and the main process. Secret values only
 // ever travel window → main (when the user types a key), never back.
-import type { ClientView, ConnectionInput, ConnectionView, Settings } from "@ringkeeper/gateway/store";
+import type { ClientView, ConnectionInput, ConnectionView, CopyPreview, CopyResult, Settings } from "@ringkeeper/gateway/store";
 import type { ActionChoice, ActionInfo, Activity, ClientGuard, ConnectionStatus } from "@ringkeeper/gateway";
 import type { CatalogService } from "@ringkeeper/catalog";
 
 export type { CatalogService };
 
-export type { ActionChoice, ActionInfo, Activity, ClientGuard, ClientView, ConnectionInput, ConnectionView, Settings, ConnectionStatus };
+export type { ActionChoice, ActionInfo, Activity, ClientGuard, ClientView, ConnectionInput, ConnectionView, CopyPreview, CopyResult, Settings, ConnectionStatus };
 
 /** The tools every client gets are kept under this id (same as EVERY_CLIENT_ID in the gateway). */
 export const EVERY_CLIENT_ID = "~every";
@@ -226,8 +226,23 @@ export type Result<T = void> = { ok: true; value: T } | { ok: false; error: stri
 
 export interface RingkeeperApi {
   getState(): Promise<AppState>;
-  addClient(name: string): Promise<Result<ClientView>>;
+  /** Add a client; with `likeId`, it starts with that client's tools (keys left to fill in). */
+  addClient(name: string, likeId?: string): Promise<Result<ClientView>>;
   renameClient(id: string, name: string): Promise<Result>;
+  /** Keep a client at the top of the list, or not. */
+  setClientPinned(id: string, pinned: boolean): Promise<Result>;
+  /** Archive a client (kept, but not offered to AI apps), or bring it back. */
+  setClientArchived(id: string, archived: boolean): Promise<Result>;
+  /** Save every client, keys included, to a file locked with this password. Null: the user cancelled. */
+  saveCopy(password: string, repeat: string): Promise<Result<{ file: string } | null>>;
+  /** Pick a copy to bring in. Null: the user cancelled. */
+  chooseCopy(): Promise<Result<{ file: string } | null>>;
+  /** Open the picked copy with its password: what's in it. */
+  previewCopy(password: string): Promise<Result<CopyPreview>>;
+  /** Bring in the chosen clients (by their name in the copy) from the opened copy. */
+  importCopy(chosen: { clients: string[]; everyClient: boolean }): Promise<Result<CopyResult>>;
+  /** Forget the picked copy. */
+  cancelCopy(): Promise<Result>;
   /** How much the AI may do for a client: work freely, ask before deleting, or look only. */
   setClientGuard(id: string, guard: ClientGuard): Promise<Result>;
   /** What AI apps did for a client, newest first. Never what was sent or returned. */
