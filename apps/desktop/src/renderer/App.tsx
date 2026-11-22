@@ -10,7 +10,7 @@ import { ClientSafety } from "./ClientSafety";
 import { ActionsDialog, MoreMenu, MoveToClientDialog, MoveToEveryDialog, actionsNote } from "./ToolActions";
 import { restoreBody } from "./restore-text";
 import { clientGroups, copiedNote, needsAttention, type Attention } from "./client-list";
-import { MoveComputerDialog } from "./MoveComputer";
+import { MoveComputerDialog, SendToRingkeeperDialog } from "./MoveComputer";
 import { SupportDialog } from "./SupportDialog";
 import { signInEndWarning } from "../shared/key-expiry";
 import { EVERY_CLIENT_ID, updateStatusText, type AppState, type CatalogService, type ClientView, type ConnectionInput, type ConnectionView, type HostView, type RingkeeperApi, type Result } from "../shared/api";
@@ -238,6 +238,9 @@ export function App() {
         </button>
         <button className="link small left own-apps-link" onClick={() => setDialog({ kind: "move-computer" })}>
           Move to another computer
+        </button>
+        <button className="link small left own-apps-link" onClick={() => setDialog({ kind: "send-to-ringkeeper" })}>
+          Send to Ringkeeper
         </button>
         <div className="version">
           Version {state.version}
@@ -651,6 +654,7 @@ type Run = <T>(p: Promise<Result<T>>) => Promise<Done<T> | null>;
 type DialogState =
   | { kind: "add-client"; likeId?: string }
   | { kind: "move-computer"; start?: "save" | "bring-in" }
+  | { kind: "send-to-ringkeeper" }
   | { kind: "rename-client"; client: ClientView }
   | { kind: "delete-client"; client: ClientView }
   | { kind: "connection"; client: ClientView; conn?: ConnectionView }
@@ -701,6 +705,8 @@ function Dialogs(props: {
           }}
         />
       );
+    case "send-to-ringkeeper":
+      return <SendToRingkeeperDialog clients={props.clients.length} onClose={close} onHint={props.onHint} />;
     case "move-computer":
       return <MoveComputerDialog start={dialog.start} hasClients={props.clients.length > 0} onClose={close} run={run} onHint={props.onHint} />;
     case "rename-client":

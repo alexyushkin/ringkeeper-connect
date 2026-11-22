@@ -249,6 +249,8 @@ export interface RingkeeperApi {
   setClientArchived(id: string, archived: boolean): Promise<Result>;
   /** Save every client, keys included, to a file locked with this password. Null: the user cancelled. */
   saveCopy(password: string, repeat: string): Promise<Result<{ file: string } | null>>;
+  /** Hand every client, keys included, to the full Ringkeeper app on this computer. */
+  sendToRingkeeper(): Promise<Result<{ file: string; clients: number }>>;
   /** Pick a copy to bring in. Null: the user cancelled. */
   chooseCopy(): Promise<Result<{ file: string } | null>>;
   /** Open the picked copy with its password: what's in it. */
