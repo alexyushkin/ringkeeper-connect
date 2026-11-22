@@ -18,6 +18,7 @@ describe("the catalog data", () => {
         "mollie", "paddle", "gocardless", "meta_ads", "pipeboard", "google", "microsoft",
         "tiktok_ads", "ahrefs", "semrush", "brevo", "kit", "mailerlite", "buffer", "intercom", "typeform", "jotform", "tally", "fireflies",
         "hootsuite", "metricool", "customerio", "similarweb", "dataforseo", "instantly", "lemlist", "hunter", "granola", "otter", "todoist", "vapi",
+        "vercel", "hubspot", "asana",
       ].sort(),
     );
     // Google and Microsoft only as our own tools, signed in through our own apps: no servers of theirs.

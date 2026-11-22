@@ -35,7 +35,7 @@ export interface CopyClient {
 
 export interface CopyOwnApp {
   id: string;
-  vendor: "google" | "microsoft" | "meta";
+  vendor: "google" | "microsoft" | "meta" | "hubspot" | "asana";
   name: string;
   clientId: string;
   tenant?: string;
@@ -187,6 +187,6 @@ function isPayload(v: unknown): v is CopyPayload {
     Array.isArray(c.connections) &&
     c.connections.every(isConnection);
   const appOk = (a: Record<string, unknown>) =>
-    a && str(a.id, 200) && ["google", "microsoft", "meta"].includes(a.vendor as string) && str(a.name, 200) && str(a.clientId, 2000) && optStr(a.tenant) && optStr(a.secret);
+    a && str(a.id, 200) && ["google", "microsoft", "meta", "hubspot", "asana"].includes(a.vendor as string) && str(a.name, 200) && str(a.clientId, 2000) && optStr(a.tenant) && optStr(a.secret);
   return (p.clients as Record<string, unknown>[]).every(clientOk) && p.everyClient.every(isConnection) && (p.ownApps as Record<string, unknown>[]).every(appOk);
 }

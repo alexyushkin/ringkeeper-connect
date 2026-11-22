@@ -74,6 +74,16 @@ export function metaApp(id: string, appId: string, appSecret: string, graph = ME
   };
 }
 
+/**
+ * An app the agency made with a vendor whose own MCP server only lets registered apps in
+ * (HubSpot's "MCP connector", an Asana "MCP app"). The server's sign-in addresses come from the
+ * server itself; the sign-in comes back through the https page, the one return address the app
+ * registers. Asana refuses any permissions it's sent, so none are.
+ */
+export function mcpServerApp(vendor: "hubspot" | "asana", id: string, clientId: string, clientSecret: string): RegisteredApp {
+  return { id, clientId, clientSecret, returnPage: META_RETURN_PAGE, ...(vendor === "asana" ? { noScope: true } : {}) };
+}
+
 /** The registered apps this build can use, by id. */
 export function registeredApps(env: Record<string, string | undefined> = process.env, built: Record<string, string> = fromBuild()): Record<string, RegisteredApp> {
   const value = (name: string) => (env[name] || built[name] || "").trim();

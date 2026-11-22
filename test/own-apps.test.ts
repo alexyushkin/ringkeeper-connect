@@ -307,7 +307,7 @@ describe("your own Microsoft apps", () => {
     expect(await errorOf(own.add({ vendor: "microsoft", name: "X", clientId: MS_ID, tenant: "fabrikam.onmicrosoft.com" }))).toBe(
       `Microsoft doesn't know the directory "fabrikam.onmicrosoft.com". Copy the Directory (tenant) ID from the app's Overview page, or leave it empty for any account.`,
     );
-    expect(await errorOf(own.add({ vendor: "dropbox", name: "X", clientId: MS_ID }))).toMatch(/your own Google, Microsoft or Meta app only/);
+    expect(await errorOf(own.add({ vendor: "dropbox", name: "X", clientId: MS_ID }))).toMatch(/your own Google, Microsoft, Meta, HubSpot or Asana app only/);
     expect(own.list()).toEqual([]);
     await own.add({ vendor: "microsoft", name: "First", clientId: MS_ID });
     expect(await errorOf(own.add({ vendor: "microsoft", name: "Second", clientId: MS_ID }))).toBe('That Microsoft app is already set up, as "First".');
@@ -368,5 +368,47 @@ describe("your own Microsoft apps", () => {
     t.own.remove("microsoft:agency");
     expect(t.own.list()).toEqual([]);
     expect(t.apps["microsoft:agency"]).toBeUndefined();
+  });
+});
+
+describe("your own HubSpot and Asana apps (for their MCP servers)", () => {
+  const HS_ID = "1A2B3C4D-1234-5678-9ABC-1A2B3C4D5E6F";
+
+  it("saves them without a check (there's none before a sign-in), with the secret encrypted, coming back through the https page", async () => {
+    const { own, apps, dir, google } = await setup();
+    const hs = await own.add({ vendor: "hubspot", name: "Agency HubSpot", clientId: HS_ID, clientSecret: " hs-secret-1 " });
+    expect(hs).toMatchObject({ id: "hubspot:agency_hubspot", vendor: "hubspot", clientId: HS_ID.toLowerCase() });
+    expect(apps["hubspot:agency_hubspot"]).toEqual({
+      id: "hubspot:agency_hubspot",
+      clientId: HS_ID.toLowerCase(),
+      clientSecret: "hs-secret-1",
+      returnPage: "https://yushkin.us/ringkeeper-connect/oauth/callback",
+    });
+    const as = await own.add({ vendor: "asana", name: "Agency Asana", clientId: "1209876543210987", clientSecret: "as-secret-1" });
+    expect(apps[as.id]).toMatchObject({ clientId: "1209876543210987", clientSecret: "as-secret-1", noScope: true });
+    expect(google.seen).toEqual([]); // nothing was sent anywhere
+    const onDisk = fs.readFileSync(join(dir, "clients.json"), "utf8") + fs.readFileSync(join(dir, "secrets.json"), "utf8");
+    expect(onDisk).not.toContain("hs-secret-1");
+    expect(onDisk).not.toContain("as-secret-1");
+  });
+
+  it("refuses what isn't their client ID, or no secret", async () => {
+    const { own } = await setup();
+    expect(await errorOf(own.add({ vendor: "hubspot", name: "X", clientId: "abc", clientSecret: "s" }))).toMatch(/isn't a HubSpot client ID/);
+    expect(await errorOf(own.add({ vendor: "asana", name: "X", clientId: "abc", clientSecret: "s" }))).toMatch(/isn't an Asana client ID/);
+    expect(await errorOf(own.add({ vendor: "asana", name: "X", clientId: "1209876543210987", clientSecret: " " }))).toMatch(/Paste the client secret too: it's on the app's OAuth page/);
+  });
+
+  it("HubSpot and Asana tools are offered only once an app is set up, and sign in through it", async () => {
+    const { own, actions, store } = await setup();
+    for (const id of ["hubspot", "asana"]) expect(actions.services().find((s) => s.id === id)!.options[0]).toMatchObject({ unavailable: true });
+    const acme = store.addClient("Acme");
+    expect(() => actions.add(acme.id, "hubspot", "oauth", {})).toThrow(/HubSpot signs in through your own HubSpot app/);
+    await own.add({ vendor: "hubspot", name: "Agency", clientId: HS_ID, clientSecret: "hs-secret-1" });
+    const option = actions.services().find((s) => s.id === "hubspot")!.options[0]!;
+    expect(option.signInApps).toEqual([{ id: "hubspot:agency", name: "Agency" }]);
+    const added = actions.add(acme.id, "hubspot", "oauth", {});
+    expect(added.needsSignIn).toBe(true);
+    expect(store.view(acme.id)!.connections[0]).toMatchObject({ kind: "remote", url: "https://mcp.hubspot.com/", oauthApp: "hubspot:agency", auth: "oauth" });
   });
 });

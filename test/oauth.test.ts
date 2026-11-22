@@ -11,7 +11,7 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import { Gateway } from "../packages/gateway/src/gateway.js";
 import { spikeDefaultConfig } from "../packages/gateway/src/spike-config.js";
 import { mcpUrl, newToken } from "../packages/gateway/src/runtime.js";
-import { SignInError, signIn, type OAuthState, type OAuthStateStore } from "../packages/gateway/src/oauth.js";
+import { APP_ID_PAGE, RETURN_PAGE, SignInError, signIn, type OAuthState, type OAuthStateStore } from "../packages/gateway/src/oauth.js";
 import type { ClientConfig } from "../packages/gateway/src/config.js";
 
 const dist = resolve("dist");
@@ -36,7 +36,10 @@ function memoryStore(): OAuthStateStore & { data: Map<string, OAuthState> } {
 
 /** The vendor: an OAuth server in front of a real MCP server (a Ringkeeper gateway). */
 /** `registered`: like Google, no self-registration; only this pre-registered app (with its secret) is accepted. */
-async function fakeVendor(opts: { denyConsent?: boolean; registered?: { clientId: string; secret: string } } = {}) {
+/** `cimd`: takes Ringkeeper Connect's app-ID page (and still offers registration, like Vercel). `returnPage`: the registered app comes back through the https page. `refuseScope`: like Asana, any permissions sent are refused. */
+async function fakeVendor(
+  opts: { denyConsent?: boolean; registered?: { clientId: string; secret: string }; cimd?: boolean; returnPage?: boolean; refuseScope?: boolean } = {},
+) {
   const innerToken = newToken();
   const inner = new Gateway({ config: spikeDefaultConfig(join(dist, "fixture-server.mjs")), activeClientId: "acme", token: innerToken, port: await freePort() });
   await inner.start();
@@ -81,6 +84,7 @@ async function fakeVendor(opts: { denyConsent?: boolean; registered?: { clientId
         authorization_endpoint: `${base}/authorize`,
         token_endpoint: `${base}/token`,
         ...(opts.registered ? {} : { registration_endpoint: `${base}/register` }),
+        ...(opts.cimd ? { client_id_metadata_document_supported: true } : {}),
         response_types_supported: ["code"],
         grant_types_supported: ["authorization_code", "refresh_token"],
         code_challenge_methods_supported: ["S256"],
@@ -100,10 +104,14 @@ async function fakeVendor(opts: { denyConsent?: boolean; registered?: { clientId
       const redirect = url.searchParams.get("redirect_uri")!;
       state.lastAuthorize = url.searchParams;
       // A registered desktop app may come back to any loopback port.
-      const okClient = opts.registered
-        ? url.searchParams.get("client_id") === opts.registered.clientId && /^http:\/\/127\.0\.0\.1:\d+\/callback$/.test(redirect)
-        : state.clients.get(url.searchParams.get("client_id") ?? "")?.includes(redirect);
+      const okClient = opts.cimd
+        ? url.searchParams.get("client_id") === APP_ID_PAGE && redirect === RETURN_PAGE
+        : opts.registered
+          ? url.searchParams.get("client_id") === opts.registered.clientId &&
+            (opts.returnPage ? redirect === RETURN_PAGE : /^http:\/\/127\.0\.0\.1:\d+\/callback$/.test(redirect))
+          : state.clients.get(url.searchParams.get("client_id") ?? "")?.includes(redirect);
       if (!okClient || url.searchParams.get("code_challenge_method") !== "S256") return json(res, 400, { error: "invalid_request" });
+      if (opts.refuseScope && url.searchParams.has("scope")) return json(res, 400, { error: "invalid_scope", error_description: "Invalid scope(s) requested" });
       const back = new URL(redirect);
       back.searchParams.set("state", url.searchParams.get("state") ?? "");
       if (opts.denyConsent) back.searchParams.set("error", "access_denied");
@@ -117,6 +125,7 @@ async function fakeVendor(opts: { denyConsent?: boolean; registered?: { clientId
     }
     if (url.pathname === "/token") {
       const form = new URLSearchParams(await readBody(req));
+      if (opts.cimd && form.get("client_id") !== APP_ID_PAGE) return json(res, 401, { error: "invalid_client" });
       if (opts.registered) {
         state.tokenSecrets.push(form.get("client_secret"));
         if (form.get("client_id") !== opts.registered.clientId || form.get("client_secret") !== opts.registered.secret) return json(res, 401, { error: "invalid_client" });
@@ -164,11 +173,21 @@ async function fakeVendor(opts: { denyConsent?: boolean; registered?: { clientId
   return { base, url: `${base}/mcp`, state };
 }
 
-/** Plays the user's browser: follow the vendor's redirect back to Ringkeeper's loopback address. */
+/**
+ * Plays the user's browser: follow the vendor's redirect back to Ringkeeper's loopback address,
+ * or through the https return page, which (like the real one) takes the port from the state.
+ */
 async function browser(url: string) {
   const r = await fetch(url, { redirect: "manual" });
   const back = r.headers.get("location");
-  if (back) await fetch(back);
+  if (!back) return;
+  if (back.startsWith(RETURN_PAGE)) {
+    const given = new URL(back).searchParams;
+    const port = /^(\d{4,5})\./.exec(given.get("state") ?? "")?.[1];
+    if (port) await fetch(`http://127.0.0.1:${port}/callback?${given}`);
+    return;
+  }
+  await fetch(back);
 }
 
 async function gatewayWith(conn: ClientConfig["connections"][number], store: OAuthStateStore) {
@@ -253,6 +272,57 @@ describe("signing in through Ringkeeper Connect's registered app (Google, Micros
     await g.start();
     cleanups.push(() => g.stop());
     expect(g.connectionStatuses()[0]).toMatchObject({ status: "needs_signin", problem: expect.stringMatching(/needs a newer version of Ringkeeper Connect/) });
+  });
+});
+
+describe("the newer sign-in method and apps of the user's own (Vercel, HubSpot, Asana)", () => {
+  it("uses the app-ID page where the service takes it, even when it also offers registration, and comes back through the https page", async () => {
+    const vendor = await fakeVendor({ cimd: true });
+    const store = memoryStore();
+    await signIn({ serverUrl: vendor.url, label: "Vercel for Initech", store, key: "k", openBrowser: (u) => void browser(u), appIdPage: true });
+    expect(vendor.state.registerCalls).toBe(0);
+    const asked = vendor.state.lastAuthorize!;
+    expect(asked.get("client_id")).toBe(APP_ID_PAGE);
+    expect(asked.get("redirect_uri")).toBe(RETURN_PAGE);
+    expect(asked.get("state")).toMatch(/^\d{4,5}\./);
+    const saved = store.load("k")!;
+    expect(saved.tokens?.access_token).toMatch(/^at_/);
+    expect(saved.client?.client_id).toBe(APP_ID_PAGE);
+    expect(saved.redirectUrl).toBe(RETURN_PAGE);
+
+    // The gateway uses it, and renews it with the same app ID.
+    vendor.state.validAccess.clear();
+    const { g, host } = await gatewayWith({ kind: "remote", id: "vercel", name: "Vercel", url: vendor.url, oauth: { key: "k" } }, store);
+    expect((await host.listTools()).tools.length).toBeGreaterThan(0);
+    expect(vendor.state.refreshCount).toBe(1);
+    expect(g.connectionStatuses()[0]).toMatchObject({ status: "ready" });
+  });
+
+  it("without the app-ID page asked for, registers as before", async () => {
+    const vendor = await fakeVendor();
+    await signIn({ serverUrl: vendor.url, label: "Notion for Initech", store: memoryStore(), key: "k", openBrowser: (u) => void browser(u) });
+    expect(vendor.state.registerCalls).toBe(1);
+    expect(vendor.state.lastAuthorize!.get("redirect_uri")).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/callback$/);
+  });
+
+  it("an app of the user's own (HubSpot) signs in with its secret, through the https page", async () => {
+    const own = { id: "hubspot:agency", clientId: "1a2b3c4d-1234-5678-9abc-1a2b3c4d5e6f", clientSecret: "hs-secret", returnPage: RETURN_PAGE };
+    const vendor = await fakeVendor({ registered: { clientId: own.clientId, secret: own.clientSecret }, returnPage: true });
+    const store = memoryStore();
+    await signIn({ serverUrl: vendor.url, label: "HubSpot for Initech", store, key: "k", openBrowser: (u) => void browser(u), app: own });
+    expect(vendor.state.registerCalls).toBe(0);
+    expect(vendor.state.lastAuthorize!.get("redirect_uri")).toBe(RETURN_PAGE);
+    expect(vendor.state.tokenSecrets).toEqual(["hs-secret"]);
+    expect(store.load("k")!.tokens?.access_token).toMatch(/^at_/);
+  });
+
+  it("Asana: sends no permissions at all, since it refuses any", async () => {
+    const own = { id: "asana:agency", clientId: "1209876543210987", clientSecret: "as-secret", returnPage: RETURN_PAGE, noScope: true };
+    const vendor = await fakeVendor({ registered: { clientId: own.clientId, secret: own.clientSecret }, returnPage: true, refuseScope: true });
+    const store = memoryStore();
+    await signIn({ serverUrl: vendor.url, label: "Asana for Initech", store, key: "k", openBrowser: (u) => void browser(u), app: own, scope: "default" });
+    expect(vendor.state.lastAuthorize!.has("scope")).toBe(false);
+    expect(store.load("k")!.tokens?.access_token).toMatch(/^at_/);
   });
 });
 

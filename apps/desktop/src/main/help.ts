@@ -93,6 +93,8 @@ Ringkeeper Connect is a desktop app for agencies. It keeps each client's tools (
 - An AI app that doesn't see the client's tools: check it's connected in the sidebar, then restart it completely. If its entry went missing, click Fix next to it.
 - An AI app that was open during setup may save its old settings later and drop the entry; it's put back straight away. If that keeps happening, quit the app completely and open it again.
 - Sign-ins for Google and Microsoft can go through your own registered app ("Your own apps", sidebar) when a client's admin requires that.
+- HubSpot and Asana always sign in through an app of the user's own: their servers only let in apps made in their developer consoles. "Your own apps" (sidebar) has the steps for each (a HubSpot "MCP connector", an Asana "MCP app"); the redirect URL to give them is https://yushkin.us/ringkeeper-connect/oauth/callback. One app works for every client. A HubSpot account's admin has to connect first; an Asana Enterprise admin may have to allow the app.
+- Vercel signs in with Ringkeeper Connect's app ID, which Vercel reads from yushkin.us (its consent page names yushkin.us): nothing to set up.
 
 ## Moving to another computer
 - "Move to another computer" (sidebar) > "Save a copy of my clients" saves every client, with its tools, keys and sign-ins, the tools for every client and the user's own apps, into one file locked with a password the user chooses (at least 8 characters). Without that password the file can't be opened, and nobody can recover a forgotten one.
