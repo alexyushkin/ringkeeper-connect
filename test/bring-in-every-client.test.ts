@@ -27,6 +27,11 @@ function fakeHomeSetup() {
   cleanups.push(() => fs.rmSync(dir, { recursive: true, force: true }));
   const home = join(dir, "home");
   execFileSync(process.execPath, [resolve("spike/make-fake-home.mjs"), home], { stdio: "ignore" });
+  // The made-up home is laid out like Windows; on a Mac, Claude Desktop keeps its settings under
+  // Library/Application Support instead (the other apps' files are the same on both).
+  if (process.platform === "darwin") {
+    fs.cpSync(join(home, "AppData", "Roaming", "Claude"), join(home, "Library", "Application Support", "Claude"), { recursive: true });
+  }
   const before = process.env.RINGKEEPER_FAKE_HOME;
   process.env.RINGKEEPER_FAKE_HOME = home;
   cleanups.push(() => {
@@ -82,7 +87,8 @@ describe("the setup bringing a helper in for every client", () => {
     // The n8n key came along, kept with the client; the helper had none.
     expect(acme.connections[0]!.missingKeys).toEqual([]);
     // Claude Desktop now reaches both through Ringkeeper Connect, and keeps its other settings.
-    const desktop = JSON.parse(fs.readFileSync(join(home, "AppData", "Roaming", "Claude", "claude_desktop_config.json"), "utf8"));
+    const desktopDir = process.platform === "darwin" ? join(home, "Library", "Application Support", "Claude") : join(home, "AppData", "Roaming", "Claude");
+    const desktop = JSON.parse(fs.readFileSync(join(desktopDir, "claude_desktop_config.json"), "utf8"));
     expect(Object.keys(desktop.mcpServers)).toEqual(["ringkeeper-connect"]);
     expect(desktop.preferences).toEqual({ sidebarMode: "chat", menuBarEnabled: false });
 
