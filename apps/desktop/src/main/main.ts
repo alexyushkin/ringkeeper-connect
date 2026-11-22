@@ -18,6 +18,8 @@ import {
   readRuntimeInfo,
   resolveDataDir,
   writeJsonAtomic,
+  EVERY_CLIENT_ID,
+  UserFacingError,
   type Cipher,
   type LaunchInfo,
   type RuntimeInfo,
@@ -198,7 +200,7 @@ async function start(): Promise<void> {
     },
     help: ({ question, host }) => {
       const s = appState();
-      return helpAnswer({ question, host, clients: s.clients, statuses: s.statuses, hosts: s.hosts, version: s.version, update: s.update, packaged: s.packaged, settings: s.settings });
+      return helpAnswer({ question, host, clients: s.clients, everyClient: s.everyClient, statuses: s.statuses, hosts: s.hosts, version: s.version, update: s.update, packaged: s.packaged, settings: s.settings });
     },
   });
   log({ ev: "runtimes", node: !!runtimes.nodeDir, uv: !!runtimes.uvDir });
@@ -424,7 +426,11 @@ function refreshTray(): void {
     if (active.connections.length === 0) items.push({ label: `${active.name} has no tools yet`, enabled: false });
     for (const conn of active.connections) {
       const s = statuses.find((x) => x.clientId === active.id && x.connectionId === conn.id);
-      items.push({ label: `${conn.name}: ${STATUS_WORDS[s?.status ?? "idle"]}`, enabled: false });
+      items.push({ label: `${conn.name}: ${conn.off ? "turned off" : STATUS_WORDS[s?.status ?? "idle"]}`, enabled: false });
+    }
+    for (const conn of store.everyClient().connections) {
+      const s = statuses.find((x) => x.clientId === EVERY_CLIENT_ID && x.connectionId === conn.id);
+      items.push({ label: `${conn.name} (every client): ${conn.off ? "turned off" : STATUS_WORDS[s?.status ?? "idle"]}`, enabled: false });
     }
     items.push({ type: "separator" });
   }
@@ -438,7 +444,7 @@ function refreshTray(): void {
     items.push({ type: "separator" });
   }
   const problems = active
-    ? statuses.filter((s) => s.clientId === active.id && (s.status === "error" || s.status === "needs_key" || s.status === "needs_signin")).length
+    ? statuses.filter((s) => (s.clientId === active.id || s.clientId === EVERY_CLIENT_ID) && (s.status === "error" || s.status === "needs_key" || s.status === "needs_signin")).length
     : 0;
   if (problems) items.push({ label: `Fix ${problems === 1 ? "1 connection" : `${problems} connections`}…`, click: () => showWindow() });
   items.push({ label: "Manage clients…", click: () => showWindow() });
@@ -479,6 +485,7 @@ function scheduleRefresh(): void {
 function appState(): AppState {
   return {
     clients: store.list(),
+    everyClient: store.everyClient(),
     statuses: gateway.connectionStatuses(),
     settings: store.settings,
     hosts: apps.hosts(),
@@ -506,6 +513,10 @@ function registerIpc(): void {
     removeConnection: (clientId: string, connId: string) => store.removeConnection(clientId, connId),
     cloneConnection: (from: string, connId: string, to: string, keys: Record<string, string>) =>
       store.cloneConnection(from, connId, to, keys),
+    moveConnection: (from: string, connId: string, to: string) => store.moveConnection(String(from), String(connId), String(to)),
+    connectionActions: (clientId: string, connId: string) => gateway.actionsOf(String(clientId), String(connId)),
+    setConnectionActions: (clientId: string, connId: string, choice) => store.setConnectionActions(String(clientId), String(connId), choice),
+    setConnectionOff: (clientId: string, connId: string, off: boolean) => store.setConnectionOff(String(clientId), String(connId), off === true),
     updateSettings: (patch) => store.updateSettings(patch),
     scanApps: () => apps.scan(),
     runSetup: (req) => apps.setup(req),
@@ -557,7 +568,8 @@ function registerIpc(): void {
         err instanceof AppsError ||
         err instanceof HostConfigError ||
         err instanceof CatalogActionError ||
-        err instanceof OwnAppsError
+        err instanceof OwnAppsError ||
+        err instanceof UserFacingError
           ? err.message
           : "Something went wrong saving that. Try again, and if it keeps happening, restart Ringkeeper Connect.";
       log({ ev: "ipc_error", method, error: String(err).slice(0, 300) });

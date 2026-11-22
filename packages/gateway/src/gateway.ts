@@ -14,16 +14,18 @@ import {
   type Tool,
 } from "@modelcontextprotocol/sdk/types.js";
 import {
+  EVERY_CLIENT_ID,
   TOOL_PREFIX_SEPARATOR,
   connectionFingerprint,
   findClient,
   type ClientConfig,
+  type ConnectionConfig,
   type GatewayConfig,
 } from "./config.js";
 import { Upstream, type UpstreamEnv, type UpstreamStatus } from "./upstream.js";
 import { originalArguments, safeInputSchema } from "./schema-names.js";
 import { nullLogger, type Logger } from "./log.js";
-import { DEFAULT_GUARD, actionKind, type ActionKind, type Activity } from "./guard.js";
+import { DEFAULT_GUARD, actionKind, offersAction, type ActionKind, type Activity } from "./guard.js";
 import {
   META_CALL_TOOL,
   META_HELP,
@@ -79,8 +81,22 @@ export interface ConnectionStatus {
   status: UpstreamStatus;
   /** Plain-language problem, if any. */
   problem?: string;
+  /** All the actions it has (once it has started). */
   tools: number;
+  /** The ones the AI apps get, after the user's choice. */
+  offered: number;
 }
+
+/** One of a tool's actions, for choosing which ones the AI apps get. */
+export interface ActionInfo {
+  name: string;
+  /** What the tool says it does, shortened. */
+  description: string;
+  kind: ActionKind;
+}
+
+/** Stands for the tools every client gets, as their owner. */
+const EVERY_OWNER: ClientConfig = { id: EVERY_CLIENT_ID, name: "every client", connections: [] };
 
 export interface GatewayOptions {
   config: GatewayConfig;
@@ -209,8 +225,11 @@ export class Gateway {
   private syncUpstreams(): void {
     const next: Upstream[] = [];
     const keep = new Set<Upstream>();
-    for (const client of this.config.clients) {
+    const owners = [...this.config.clients, ...(this.config.everyClient?.length ? [{ ...EVERY_OWNER, connections: this.config.everyClient }] : [])];
+    for (const client of owners) {
       for (const conn of client.connections) {
+        // Turned off: kept in the app, but nothing runs.
+        if (conn.off) continue;
         const existing = this.upstreams.find(
           (u) =>
             u.owner.id === client.id &&
@@ -218,9 +237,9 @@ export class Gateway {
             connectionFingerprint(u.conn) === connectionFingerprint(conn),
         );
         if (existing) {
-          // Same settings: keep it running, but pick up renamed client/connection.
+          // Same settings: keep it running, but pick up renamed client/connection and the actions chosen.
           Object.assign(existing.owner, { name: client.name });
-          Object.assign(existing.conn, { name: conn.name });
+          Object.assign(existing.conn, { name: conn.name, actions: conn.actions });
           keep.add(existing);
           next.push(existing);
         } else {
@@ -245,7 +264,7 @@ export class Gateway {
   }
 
   private prewarmActive(): void {
-    for (const u of this.upstreams) if (u.owner.id === this.activeClientId) void u.ensureStarted();
+    for (const u of this.activeUpstreams()) void u.ensureStarted();
   }
 
   // ---------- active client ----------
@@ -272,7 +291,7 @@ export class Gateway {
   }
 
   private onUpstreamChanged(u: Upstream): void {
-    if (u.owner.id === this.activeClientId) this.notifyToolsChanged(`upstream:${u.conn.id}`);
+    if (u.owner.id === this.activeClientId || u.owner.id === EVERY_CLIENT_ID) this.notifyToolsChanged(`upstream:${u.conn.id}`);
     this.opts.onStatusChanged?.();
   }
 
@@ -305,7 +324,7 @@ export class Gateway {
   /** Park idle connections of other clients and forget abandoned host sessions. */
   sweep(now = Date.now()): void {
     for (const u of this.upstreams) {
-      if (u.owner.id !== this.activeClientId && u.status === "ready" && now - u.lastUsed > this.timings.upstreamIdleMs) {
+      if (u.owner.id !== this.activeClientId && u.owner.id !== EVERY_CLIENT_ID && u.status === "ready" && now - u.lastUsed > this.timings.upstreamIdleMs) {
         void u.park().then(() => this.opts.onStatusChanged?.());
       }
     }
@@ -325,7 +344,30 @@ export class Gateway {
       status: u.status,
       problem: u.status === "error" || u.status === "needs_key" || u.status === "needs_signin" ? u.error : undefined,
       tools: u.tools.length,
+      offered: u.tools.filter((t) => offersAction(u.conn.actions, t)).length,
     }));
+  }
+
+  /**
+   * All of a tool's actions, for choosing which ones the AI apps get. Starts the tool if it
+   * isn't running (any client's; an unused one is stopped again later).
+   */
+  async actionsOf(clientId: string, connectionId: string, waitMs = 30_000): Promise<ActionInfo[]> {
+    const u = this.upstreams.find((x) => x.owner.id === clientId && x.conn.id === connectionId);
+    if (!u) {
+      const conn = this.connectionConfig(clientId, connectionId);
+      throw new UserFacingError(conn?.off ? `${conn.name} is turned off. Turn it on first.` : "That tool no longer exists. Close this window and open it again.");
+    }
+    await u.whenSettled(waitMs);
+    if (u.status !== "ready") {
+      throw new UserFacingError(u.error ?? `${u.conn.name} hasn't started yet, so its actions aren't known. Try again in a moment.`);
+    }
+    return u.tools.map((t) => ({ name: t.name, description: shorten(t.description ?? "", 240), kind: actionKind(t) }));
+  }
+
+  private connectionConfig(clientId: string, connectionId: string): ConnectionConfig | undefined {
+    const list = clientId === EVERY_CLIENT_ID ? (this.config.everyClient ?? []) : (this.config.clients.find((c) => c.id === clientId)?.connections ?? []);
+    return list.find((c) => c.id === connectionId);
   }
 
   // ---------- tools ----------
@@ -343,8 +385,10 @@ export class Gateway {
     return [...metaTools(this.clientNames), ...(await this.activeClientTools())];
   }
 
+  /** The active client's connections, then the ones every client gets. None while there's no client. */
   private activeUpstreams(): Upstream[] {
-    return this.upstreams.filter((u) => u.owner.id === this.activeClientId);
+    if (!this.activeClientId) return [];
+    return [...this.upstreams.filter((u) => u.owner.id === this.activeClientId), ...this.upstreams.filter((u) => u.owner.id === EVERY_CLIENT_ID)];
   }
 
   /** The active client's tools, prefixed and labelled, as a dynamic-mode host sees them. */
@@ -357,6 +401,7 @@ export class Gateway {
     for (const u of mine) {
       if (u.status !== "ready") continue;
       for (const t of u.tools) {
+        if (!offersAction(u.conn.actions, t)) continue;
         const exposed = this.exposeTool(client, u, t, withClientArg);
         if (exposed.name.length > MAX_TOOL_NAME) {
           this.log({ ev: "tool_name_too_long", tool: exposed.name });
@@ -385,7 +430,7 @@ export class Gateway {
     return {
       ...t,
       name: `${u.conn.id}${TOOL_PREFIX_SEPARATOR}${t.name}`,
-      description: `[${client.name}'s ${u.conn.name}, via Ringkeeper Connect] ${t.description ?? ""}`.trim(),
+      description: `[${u.owner.id === EVERY_CLIENT_ID ? `${u.conn.name}, for every client (now ${client.name})` : `${client.name}'s ${u.conn.name}`}, via Ringkeeper Connect] ${t.description ?? ""}`.trim(),
       inputSchema,
     };
   }
@@ -445,7 +490,7 @@ export class Gateway {
     if (tool.includes(TOOL_PREFIX_SEPARATOR)) return tool;
     const mine = this.activeUpstreams();
     await Promise.all(mine.map((u) => u.whenSettled(UPSTREAM_WAIT_MS)));
-    const matches = mine.filter((u) => u.tools.some((t) => t.name === tool));
+    const matches = mine.filter((u) => u.tools.some((t) => t.name === tool && offersAction(u.conn.actions, t)));
     return matches.length === 1 ? `${matches[0]!.conn.id}${TOOL_PREFIX_SEPARATOR}${tool}` : tool;
   }
 
@@ -497,9 +542,27 @@ export class Gateway {
       throw new UserFacingError(`${upstream.error} Nothing was run. Don't use another connector for ${active.name}'s data instead.`);
     }
 
+    if (!upstream) {
+      // Turned off by the user: say so, rather than "no such tool".
+      const off = [...active.connections, ...(this.config.everyClient ?? [])].find((c) => c.id === connId && c.off);
+      if (off) {
+        this.log({ ev: "refused_connection_off", tool: name, client: active.id });
+        throw new UserFacingError(
+          `${off.name} is turned off in Ringkeeper Connect, so ${name} wasn't run. Tell the user: they can turn it on in Ringkeeper Connect. Don't use another connector instead.`,
+        );
+      }
+    }
+    const hidden = upstream?.tools.find((t) => t.name === toolName && !offersAction(upstream.conn.actions, t));
+    if (upstream && hidden) {
+      this.log({ ev: "refused_action_not_offered", tool: name, client: active.id });
+      throw new UserFacingError(
+        `${name} isn't one of the actions chosen for ${upstream.conn.name} in Ringkeeper Connect, so it wasn't run. Tell the user: they can choose its actions in Ringkeeper Connect. Don't use another connector instead.`,
+      );
+    }
+
     if (!upstream || !upstream.tools.some((t) => t.name === toolName)) {
       // Don't start other clients' connections just to explain; their names are enough.
-      const elsewhere = this.upstreams.find((u) => u.owner.id !== active.id && u.conn.id === connId);
+      const elsewhere = this.upstreams.find((u) => u.owner.id !== active.id && u.owner.id !== EVERY_CLIENT_ID && u.conn.id === connId);
       this.log({ ev: "refused_not_in_active_client", tool: name, active: active.id, owner: elsewhere?.owner.id });
       if (elsewhere) {
         throw new UserFacingError(
@@ -513,9 +576,12 @@ export class Gateway {
 
     const tool = upstream.tools.find((t) => t.name === toolName)!;
     const kind = actionKind(tool);
+    const shared = upstream.owner.id === EVERY_CLIENT_ID;
+    // A tool for every client runs for the active client, so it's listed, and asked about, under that client.
+    const connLabel = shared ? `${upstream.conn.name} (for every client)` : upstream.conn.name;
     const note = (outcome: Activity["outcome"]): void => {
       try {
-        this.opts.onActivity?.({ at: Date.now(), clientId: active.id, connectionId: upstream.conn.id, connectionName: upstream.conn.name, tool: toolName, kind, app: hostLabel(from?.hostName), outcome });
+        this.opts.onActivity?.({ at: Date.now(), clientId: active.id, connectionId: upstream.conn.id, connectionName: connLabel, tool: toolName, kind, app: hostLabel(from?.hostName), outcome });
       } catch {
         // Keeping the list must never break a call.
       }
@@ -552,7 +618,7 @@ export class Gateway {
     if (guard === "ask_delete" && kind === "delete") {
       const ask = this.opts.upstreamEnv?.approve;
       const allowed = ask
-        ? await ask({ clientName: active.name, connectionName: upstream.conn.name, message: deleteQuestion(toolName, original) }).catch(() => false)
+        ? await ask({ clientName: active.name, connectionName: connLabel, message: deleteQuestion(toolName, original) }).catch(() => false)
         : false;
       if (!allowed) {
         this.log({ ev: "refused_delete_not_allowed", tool: name, client: active.id, asked: !!ask });
@@ -574,7 +640,7 @@ export class Gateway {
       throw err;
     }
     note(result.isError ? "failed" : "ran");
-    return labelResult(result, active, upstream.conn.name);
+    return labelResult(result, active, shared ? `${upstream.conn.name}, for every client` : upstream.conn.name);
   }
 
   private listClientsResult(): CallToolResult {
@@ -586,15 +652,23 @@ export class Gateway {
       const conns =
         c.connections
           .map((x) => {
+            if (x.off) return `${x.name}: turned off`;
             const u = this.upstreams.find((up) => up.owner.id === c.id && up.conn.id === x.id);
             return isActive && u ? `${x.name}: ${statusWord(u.status)}` : x.name;
           })
           .join(", ") || "no connections yet";
       return `${isActive ? "* " : "  "}${c.name} (${conns})${isActive ? " ← active" : ""}`;
     });
+    const every = (this.config.everyClient ?? []).map((x) => {
+      if (x.off) return `${x.name}: turned off`;
+      const u = this.upstreams.find((up) => up.owner.id === EVERY_CLIENT_ID && up.conn.id === x.id);
+      return u ? `${x.name}: ${statusWord(u.status)}` : x.name;
+    });
     const problems = this.activeProblems();
     return text(
-      `Clients in Ringkeeper Connect:\n${lines.join("\n")}\n\nSwitch with ringkeeper_use_client. Switching applies to every chat in this app.` +
+      `Clients in Ringkeeper Connect:\n${lines.join("\n")}` +
+        (every.length ? `\n\nFor every client (whichever is active): ${every.join(", ")}` : "") +
+        `\n\nSwitch with ringkeeper_use_client. Switching applies to every chat in this app.` +
         (problems.length ? `\n\n${problems.join("\n")}` : ""),
     );
   }
@@ -817,6 +891,11 @@ function labelResult(result: CallToolResult, client: ClientConfig, connName: str
     content: [label, ...(result.content ?? [])],
     _meta: { ...(result._meta ?? {}), "ringkeeper/client": client.id },
   };
+}
+
+function shorten(s: string, max: number): string {
+  const one = s.replace(/\s+/g, " ").trim();
+  return one.length > max ? `${one.slice(0, max - 1)}…` : one;
 }
 
 function text(t: string): CallToolResult {

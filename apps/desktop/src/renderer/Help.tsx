@@ -41,6 +41,10 @@ export function Help(props: { hosts: HostView[]; onClose: () => void }) {
               a client read-only. Everything else follows your AI app's own permission setting.
             </li>
             <li>"What AI apps did", on each client's page, lists what was run for that client and how it ended, never what was sent.</li>
+            <li>
+              "For every client", at the top of the list, holds tools that aren't a client's, like a browser helper or web search. They're set up
+              once and every client gets them. "More… &gt; Use for every client" on a client's tool moves it there.
+            </li>
           </ul>
         </details>
 
@@ -50,6 +54,11 @@ export function Help(props: { hosts: HostView[]; onClose: () => void }) {
             <li>
               <strong>Add a tool</strong> on a client's page: pick the service, then sign in or paste a key. Sign-in is offered wherever the service
               allows it, so there's no key to make.
+            </li>
+            <li>
+              <strong>More… &gt; Choose actions</strong> on a tool picks which of its actions the AI gets: all, only the ones that read, or a few
+              you choose. Some tools have hundreds; fewer make the AI quicker and better at picking. <strong>Turn off</strong> keeps a tool with
+              its keys but stops offering it.
             </li>
             <li>
               <strong>Bring in connections from apps</strong> moves tools already set up in your AI apps into a client, keys included. Tools other AI

@@ -70,6 +70,24 @@ export function actionKind(tool: Pick<Tool, "name" | "annotations">): ActionKind
 /** Changing words that are also things ("FetchCall", "list_deploy_logs"): they count only when they come first. */
 const NOUN_TOO = new Set(["call", "test", "label", "link", "book", "mark", "charge", "end", "open", "close", "deploy", "store", "share", "use", "switch", "boost", "post"]);
 
+/**
+ * Which of a tool's actions the AI apps get. Left out: all of them. "read": only the ones that
+ * only read. A list: only those, by the action's own name. Some tools bring hundreds of actions;
+ * fewer make the AI quicker and better at picking.
+ */
+export type ActionChoice = "read" | string[];
+
+export function isActionChoice(v: unknown): v is ActionChoice {
+  return v === "read" || (Array.isArray(v) && v.length > 0 && v.every((x) => typeof x === "string" && x.length > 0 && x.length <= 200));
+}
+
+/** Whether the AI apps get this action of a tool. */
+export function offersAction(choice: ActionChoice | undefined, tool: Pick<Tool, "name" | "annotations">): boolean {
+  if (choice === undefined) return true;
+  if (choice === "read") return actionKind(tool) === "read";
+  return choice.includes(tool.name);
+}
+
 /** One thing an AI app did, or tried to do, for a client. Never holds what was sent or returned. */
 export interface Activity {
   /** When, as milliseconds since 1970. */

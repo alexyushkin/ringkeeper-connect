@@ -1,11 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
-import { NOT_APPROVED, type CatalogService, type ClientView, type Result } from "../shared/api";
+import { EVERY_CLIENT_ID, NOT_APPROVED, type CatalogService, type ClientView, type Result } from "../shared/api";
 import { matchesWords } from "./search";
 import { OwnApps } from "./OwnApps";
 import { KeyTest } from "./KeyTest";
 
 type Run = <T>(p: Promise<Result<T>>) => Promise<{ value: T } | null>;
 const api = () => window.ringkeeper;
+
+/** "Acme's", or "your" for the tools every client gets (they use your own account, not a client's). */
+export function whose(client: { id: string; name: string }): string {
+  return client.id === EVERY_CLIENT_ID ? "your" : `${client.name}'s`;
+}
 
 /** Add a known service to a client: pick it, answer its few questions, sign in if it uses sign-in. */
 export function AddFromCatalog(props: { client: ClientView; run: Run; onAdvanced: () => void; onClose: () => void; initialToolId?: string }) {
@@ -58,7 +63,11 @@ export function AddFromCatalog(props: { client: ClientView; run: Run; onAdvanced
       {!service ? (
         <>
           <h2>Add a tool for {props.client.name}</h2>
-          <p className="muted small">Pick the service. You'll use {props.client.name}'s own account or keys.</p>
+          <p className="muted small">
+            {props.client.id === EVERY_CLIENT_ID
+              ? "Pick the service. Only add tools here that aren't a client's account, like a browser helper or web search: every client gets them."
+              : `Pick the service. You'll use ${props.client.name}'s own account or keys.`}
+          </p>
           {!services ? (
             <p className="muted">Loading…</p>
           ) : (
@@ -239,7 +248,7 @@ function ServiceForm(props: {
       }}
     >
       <h2>
-        Connect {client.name}'s {service.name}
+        Connect {whose(client)} {service.name}
       </h2>
       <ToolTags service={service} />
       {service.beta && (
@@ -347,7 +356,7 @@ function ServiceForm(props: {
       {usesSignIn && !unavailable && option.app === "meta" && (
         <ol className="steps sign-in-steps">
           <li>
-            Click Continue. Facebook opens in your browser: sign in with the profile that manages <strong>{client.name}'s</strong> ad accounts.
+            Click Continue. Facebook opens in your browser: sign in with the profile that manages <strong>{whose(client)}</strong> ad accounts.
           </li>
           <li>Allow access, then come back here.</li>
         </ol>
@@ -356,7 +365,7 @@ function ServiceForm(props: {
       {usesSignIn && !unavailable && option.app && option.app !== "meta" && (
         <ol className="steps sign-in-steps">
           <li>
-            Click Continue. {vendor} opens in your browser: choose <strong>{client.name}'s</strong> account there, or add it.
+            Click Continue. {vendor} opens in your browser: choose <strong>{whose(client)}</strong> account there, or add it.
           </li>
           <li>Allow what you ticked, then come back here.</li>
         </ol>
@@ -365,7 +374,7 @@ function ServiceForm(props: {
       {usesSignIn && !unavailable && !option.app && (
         <ol className="steps sign-in-steps">
           <li>
-            In your browser, sign in to {service.name} with <strong>{client.name}'s</strong> account.
+            In your browser, sign in to {service.name} with <strong>{whose(client)}</strong> account.
           </li>
           <li>Come back here and click Continue. {service.name} opens in your browser and asks you to allow access.</li>
         </ol>
@@ -420,7 +429,7 @@ export function SignIn(props: { client: ClientView; connectionId: string; name: 
           <p>{failed}</p>
           {canRetry && (
             <p className="muted small">
-              If the sign-in page showed an error: sign in to {props.name} in your browser with {props.client.name}'s account first, then try
+              If the sign-in page showed an error: sign in to {props.name} in your browser with {whose(props.client)} account first, then try
               again. You can also do it later with "Sign in" next to the connection.
             </p>
           )}
@@ -430,7 +439,7 @@ export function SignIn(props: { client: ClientView; connectionId: string; name: 
           <p>Your browser opened {props.name}. Allow access there, then come back here.</p>
           <p className="muted small">
             If the page shows an error, or you weren't signed in yet: sign in to {props.name} with{" "}
-            <strong>{props.client.name}'s</strong> account, then paste this link into the browser's address bar. Signed in to a
+            <strong>{whose(props.client)}</strong> account, then paste this link into the browser's address bar. Signed in to a
             different account? Sign out there first, or paste the link into a private window.
           </p>
           {link && (

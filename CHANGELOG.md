@@ -4,6 +4,20 @@ What's new in each version of Ringkeeper Connect, in plain words. A release's pa
 shows its section under "What's new". Versions before 0.2.0-beta.16 are described on their
 [release pages](https://github.com/alexyushkin/ringkeeper-connect/releases).
 
+## 0.2.5
+
+- **Choose which actions the AI gets from each tool.** "More… > Choose actions" on a tool: all of
+  them, only the ones that read, or a few you tick. Some tools bring hundreds of actions (Twilio
+  has over 200); fewer make the AI quicker and better at picking. An action left out isn't shown
+  to the AI and isn't run.
+- **Turn a tool off without removing it.** "More… > Turn off" keeps it with its keys and sign-in,
+  but AI apps don't get it until you click Turn on.
+- **Tools for every client.** "For every client", at the top of the client list, holds tools that
+  aren't a client's, like a browser helper or web search. Set them up once and every client gets
+  them, whichever one is active. "More… > Use for every client" moves a tool there from a client,
+  keys included, and offers to remove the same tool from your other clients. What each client
+  allows ("What the AI may do") applies to these tools too.
+
 ## 0.2.4
 
 - **Choose what the AI may do for each client.** On a client's page:

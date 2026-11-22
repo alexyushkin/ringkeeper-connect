@@ -7,8 +7,9 @@ import { KeyTest, keyExpiryWarning } from "./KeyTest";
 import { CLIENT_SEARCH_FROM, matchesWords } from "./search";
 import { Help } from "./Help";
 import { ClientSafety } from "./ClientSafety";
+import { ActionsDialog, MoreMenu, MoveToClientDialog, MoveToEveryDialog, actionsNote } from "./ToolActions";
 import { restoreBody } from "./restore-text";
-import { updateStatusText, type AppState, type CatalogService, type ClientView, type ConnectionInput, type ConnectionView, type HostView, type RingkeeperApi, type Result } from "../shared/api";
+import { EVERY_CLIENT_ID, updateStatusText, type AppState, type CatalogService, type ClientView, type ConnectionInput, type ConnectionView, type HostView, type RingkeeperApi, type Result } from "../shared/api";
 
 declare global {
   interface Window {
@@ -28,6 +29,7 @@ const STATUS: Record<string, { word: string; tone: "ok" | "muted" | "warn" | "ba
   needs_key: { word: "Needs a key", tone: "warn" },
   needs_signin: { word: "Needs sign-in", tone: "warn" },
   error: { word: "Not working", tone: "bad" },
+  off: { word: "Turned off", tone: "muted" },
 };
 
 export function App() {
@@ -55,7 +57,9 @@ export function App() {
   }, []);
 
   const clients = state?.clients ?? [];
-  const selected = clients.find((c) => c.id === selectedId) ?? clients.find((c) => c.active) ?? clients[0];
+  const every = state?.everyClient;
+  const selected =
+    (selectedId === EVERY_CLIENT_ID ? every : undefined) ?? clients.find((c) => c.id === selectedId) ?? clients.find((c) => c.active) ?? clients[0];
   // A search box once the list is long; a short list needs none.
   const searchable = clients.length >= CLIENT_SEARCH_FROM;
   const query = searchable ? clientQuery.trim() : "";
@@ -106,6 +110,16 @@ export function App() {
           <img src={logo} alt="" width={24} height={24} />
           Ringkeeper Connect
         </div>
+        {clients.length > 0 && every && (
+          <button
+            className={`client-item every-item ${selected?.id === EVERY_CLIENT_ID ? "selected" : ""}`}
+            title="Tools that aren't a client's, like a browser helper or web search. Every client gets them."
+            onClick={() => setSelectedId(EVERY_CLIENT_ID)}
+          >
+            <span className="client-name">For every client</span>
+            {every.connections.length > 0 && <span className="count">{every.connections.length}</span>}
+          </button>
+        )}
         <div className="sidebar-label">Clients</div>
         {searchable && (
           <input
@@ -239,6 +253,9 @@ export function App() {
             }
             onCopyConnection={(conn) => setDialog({ kind: "copy", client: selected, conn })}
             onRemoveConnection={(conn) => setDialog({ kind: "remove-connection", client: selected, conn })}
+            onChooseActions={(conn) => setDialog({ kind: "actions", client: selected, conn })}
+            onMoveToEvery={(conn) => setDialog({ kind: "move-every", client: selected, conn })}
+            onMoveToClient={(conn) => setDialog({ kind: "move-client", conn })}
           />
         )}
       </main>
@@ -287,6 +304,9 @@ function ClientPanel(props: {
   onEditConnection: (c: ConnectionView) => void;
   onCopyConnection: (c: ConnectionView) => void;
   onRemoveConnection: (c: ConnectionView) => void;
+  onChooseActions: (c: ConnectionView) => void;
+  onMoveToEvery: (c: ConnectionView) => void;
+  onMoveToClient: (c: ConnectionView) => void;
   onSignIn: (c: ConnectionView) => void;
   onBringIn: () => void;
   /** Tools picked in the wizard that still need a sign-in or key. */
@@ -295,6 +315,7 @@ function ClientPanel(props: {
   run: Run;
 }) {
   const { client } = props;
+  const isEvery = client.id === EVERY_CLIENT_ID;
   const [toolNames, setToolNames] = useState<Record<string, string>>({});
   useEffect(() => {
     if (!props.pendingTools.length) return;
@@ -305,6 +326,17 @@ function ClientPanel(props: {
   const pending = props.pendingTools.filter((id) => id in toolNames);
   return (
     <section>
+      {isEvery ? (
+        <header className="client-header">
+          <div>
+            <h1>For every client</h1>
+            <p className="muted">
+              Tools that aren't a client's, like a browser helper or web search. They're set up once, and every client gets them next to its
+              own tools, whichever one is active. Don't put a client's account here.
+            </p>
+          </div>
+        </header>
+      ) : (
       <header className="client-header">
         <div>
           <h1>{client.name}</h1>
@@ -326,6 +358,7 @@ function ClientPanel(props: {
           </button>
         </div>
       </header>
+      )}
 
       {pending.length > 0 && (
         <div className="notice info pending-tools">
@@ -347,11 +380,20 @@ function ClientPanel(props: {
       )}
 
       <div className="section-title">
-        <h2>Tools for {client.name}</h2>
+        <h2>{isEvery ? "Tools for every client" : `Tools for ${client.name}`}</h2>
         {client.connections.length > 0 && <button onClick={props.onAddConnection}>+ Add a tool</button>}
       </div>
 
-      {client.connections.length === 0 ? (
+      {client.connections.length === 0 && isEvery ? (
+        <div className="empty">
+          <p className="muted">
+            Nothing here yet. Add a tool, or use "More… &gt; Use for every client" on a tool that's in a client now (Playwright, say).
+          </p>
+          <div className="empty-actions">
+            <button onClick={props.onAddConnection}>Add one</button>
+          </div>
+        </div>
+      ) : client.connections.length === 0 ? (
         <div className="empty">
           <p className="muted">
             {client.name} has no tools yet. Bring in the ones you already use, or add one.
@@ -370,13 +412,16 @@ function ClientPanel(props: {
             const notSignedIn = conn.auth === "oauth" && !conn.signedIn;
             // Ringkeeper Connect's own tools (a Google or Microsoft account): its name and what the AI may do are edited in their own dialog.
             const builtIn = conn.kind === "local" && conn.command === "ringkeeper-tools";
-            const status = STATUS[conn.missingKeys.length ? "needs_key" : notSignedIn ? "needs_signin" : (s?.status ?? "idle")] ?? STATUS.idle!;
+            const status = STATUS[conn.off ? "off" : conn.missingKeys.length ? "needs_key" : notSignedIn ? "needs_signin" : (s?.status ?? "idle")] ?? STATUS.idle!;
             // Inside the app, say what to do here rather than repeating "in Ringkeeper Connect".
-            const problem = conn.missingKeys.length
-              ? `Add ${conn.missingKeys.join(" and ")} with Edit to use it.`
-              : notSignedIn || s?.status === "needs_signin"
-                ? `Sign in with ${client.name}'s account to use it.`
-                : s?.problem;
+            const problem = conn.off
+              ? "Kept with its keys, but AI apps don't get it."
+              : conn.missingKeys.length
+                ? `Add ${conn.missingKeys.join(" and ")} with Edit to use it.`
+                : notSignedIn || s?.status === "needs_signin"
+                  ? `Sign in with ${isEvery ? "your" : `${client.name}'s`} account to use it.`
+                  : s?.problem;
+            const chosen = actionsNote(conn, s);
             // A pasted key (a Meta access token) that stops working within a week, or already has.
             const expiring = keyExpiryWarning(conn);
             return (
@@ -386,28 +431,43 @@ function ClientPanel(props: {
                   <div className="connection-where" title={conn.kind === "remote" ? conn.url : undefined}>
                     {conn.kind === "remote" ? conn.url : builtIn ? "Built into Ringkeeper Connect" : "Program on this computer"}
                   </div>
+                  {chosen && <div className="connection-note">{chosen}</div>}
                   {problem && status.tone !== "ok" && <div className={`problem ${status.tone}`}>{problem}</div>}
                   {expiring && <div className="problem warn">{expiring}</div>}
                 </div>
                 <span className={`status ${status.tone}`}>{status.word}</span>
                 <div className="connection-actions">
-                  {conn.auth === "oauth" && (s?.status === "needs_signin" || !conn.signedIn) && (
-                    <button className="primary" onClick={() => props.onSignIn(conn)}>
-                      Sign in
+                  {conn.off ? (
+                    <button className="primary" onClick={() => void props.run(api.setConnectionOff(client.id, conn.id, false))}>
+                      Turn on
                     </button>
+                  ) : (
+                    conn.auth === "oauth" &&
+                    (s?.status === "needs_signin" || !conn.signedIn) && (
+                      <button className="primary" onClick={() => props.onSignIn(conn)}>
+                        Sign in
+                      </button>
+                    )
                   )}
                   <button onClick={() => props.onEditConnection(conn)}>Edit</button>
-                  {props.clients.length > 1 && <button onClick={() => props.onCopyConnection(conn)}>Copy to…</button>}
-                  <button className="danger-quiet" onClick={() => props.onRemoveConnection(conn)}>
-                    Remove
-                  </button>
+                  <MoreMenu
+                    label={`More for ${conn.name}`}
+                    items={[
+                      { label: "Choose actions…", onClick: () => props.onChooseActions(conn), hidden: !!conn.off },
+                      { label: "Turn off", onClick: () => void props.run(api.setConnectionOff(client.id, conn.id, true)), hidden: !!conn.off },
+                      { label: "Copy to…", onClick: () => props.onCopyConnection(conn), hidden: isEvery || props.clients.length < 2 },
+                      { label: "Use for every client…", onClick: () => props.onMoveToEvery(conn), hidden: isEvery },
+                      { label: "Move to one client…", onClick: () => props.onMoveToClient(conn), hidden: !isEvery || props.clients.length === 0 },
+                      { label: "Remove", onClick: () => props.onRemoveConnection(conn), danger: true },
+                    ]}
+                  />
                 </div>
               </li>
             );
           })}
         </ul>
       )}
-      <ClientSafety client={client} activityCount={props.activityCount} run={props.run} />
+      {!isEvery && <ClientSafety client={client} activityCount={props.activityCount} run={props.run} />}
     </section>
   );
 }
@@ -429,6 +489,9 @@ type DialogState =
   | { kind: "restore" }
   | { kind: "add"; client: ClientView; toolId?: string }
   | { kind: "signin"; client: ClientView; conn: ConnectionView }
+  | { kind: "actions"; client: ClientView; conn: ConnectionView }
+  | { kind: "move-every"; client: ClientView; conn: ConnectionView }
+  | { kind: "move-client"; conn: ConnectionView }
   | { kind: "own-apps" };
 
 function Dialogs(props: {
@@ -497,7 +560,7 @@ function Dialogs(props: {
     case "remove-connection":
       return (
         <Confirm
-          title={`Remove ${dialog.conn.name} from ${dialog.client.name}?`}
+          title={dialog.client.id === EVERY_CLIENT_ID ? `Remove ${dialog.conn.name}?` : `Remove ${dialog.conn.name} from ${dialog.client.name}?`}
           body="Its saved keys are deleted too. It can't be undone."
           confirm="Remove"
           danger
@@ -548,6 +611,12 @@ function Dialogs(props: {
       return <BuiltInDialog client={dialog.client} conn={dialog.conn} onClose={close} run={run} />;
     case "copy":
       return <CopyDialog from={dialog.client} conn={dialog.conn} clients={props.clients} onClose={close} run={run} />;
+    case "actions":
+      return <ActionsDialog client={dialog.client} conn={dialog.conn} onClose={close} run={run} />;
+    case "move-every":
+      return <MoveToEveryDialog client={dialog.client} conn={dialog.conn} clients={props.clients} onClose={close} run={run} />;
+    case "move-client":
+      return <MoveToClientDialog conn={dialog.conn} clients={props.clients} onClose={close} run={run} />;
   }
 }
 

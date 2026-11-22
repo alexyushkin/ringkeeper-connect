@@ -289,7 +289,7 @@ export class CatalogActions {
     /** When that new key stops working: a date, null when it doesn't, undefined when unknown. */
     keyExpires?: string | null,
   ): { needsSignIn: boolean } {
-    const client = this.deps.store.list().find((c) => c.id === clientId);
+    const client = this.deps.store.view(clientId);
     const conn = client?.connections.find((c) => c.id === connectionId);
     if (!client || !conn) throw new StoreError("That tool no longer exists.");
     if (conn.kind !== "local" || conn.command !== BUILTIN_COMMAND)
@@ -354,7 +354,7 @@ export class CatalogActions {
    * offered, with the catalog's permissions. Without one, says how to get one.
    */
   private adoptApp(clientId: string, connectionId: string): void {
-    const client = this.deps.store.list().find((c) => c.id === clientId);
+    const client = this.deps.store.view(clientId);
     const conn = client?.connections.find((c) => c.id === connectionId);
     if (!client || !conn || conn.kind !== "remote") return;
     const same = (u: string) => u.replace(/\/+$/, "").toLowerCase();
@@ -405,7 +405,7 @@ export class CatalogActions {
 
   async signIn(clientId: string, connectionId: string): Promise<void> {
     this.adoptApp(clientId, connectionId);
-    const client = this.deps.store.list().find((c) => c.id === clientId);
+    const client = this.deps.store.view(clientId);
     const conn = client?.connections.find((c) => c.id === connectionId);
     if (!client || !conn || conn.auth !== "oauth")
       throw new StoreError("That connection doesn't use sign-in.");

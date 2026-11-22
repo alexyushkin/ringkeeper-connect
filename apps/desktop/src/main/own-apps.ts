@@ -216,7 +216,7 @@ export class OwnApps {
   }
 
   private users(id: string): Array<{ clientId: string; connectionId: string; label: string }> {
-    return this.deps.store.list().flatMap((c) =>
+    return this.deps.store.listAll().flatMap((c) =>
       c.connections.filter((conn) => conn.oauthApp === id).map((conn) => ({ clientId: c.id, connectionId: conn.id, label: `${c.name} > ${conn.name}` })),
     );
   }

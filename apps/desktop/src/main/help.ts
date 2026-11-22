@@ -15,6 +15,8 @@ export interface HelpInput {
   /** The AI app asking, by the name people know. */
   host: string;
   clients: ClientView[];
+  /** The tools every client gets. */
+  everyClient?: ClientView;
   statuses: ConnectionStatus[];
   hosts: HostView[];
   version: string;
@@ -57,6 +59,7 @@ Ringkeeper Connect is a desktop app for agencies. It keeps each client's tools (
 - "Copy to…" on a tool puts it into another client too. Keys aren't copied: each client uses its own.
 - The active client's name shows in the tray (menu bar on a Mac): hover over the icon. A keyboard shortcut (Ctrl+Alt+Shift+K, or Cmd+Option+Shift+K on a Mac) opens the list of clients from anywhere to switch; it can be turned off in the sidebar. When an AI app switches the client itself, a notification says so.
 - "What the AI may do" on each client's page: "Ask me before it deletes anything" (the default) asks the user in a Ringkeeper Connect window before any tool deletes or removes something for that client; "Work freely" leaves everything to the AI app's own permission setting; "Look only" lets the AI read but not change, send or delete anything for that client. Ordinary changes are never asked about here: AI apps have their own permission settings for that. Whether a tool deletes is worked out from its name, so an unusually named one may not be caught.
+- "For every client" (top of the sidebar) holds tools that aren't a client's, like a browser helper or web search: they're set up once, and every client gets them next to its own. A client's account never goes there. "More… > Use for every client" on a client's tool moves it there, keys included.
 - "What AI apps did" on each client's page lists the last 200 actions: which tool, whether it looked, changed or deleted, which AI app asked, and how it ended (including ones that weren't run). It never shows what was sent or what came back.
 
 ## Adding a client's tools
@@ -65,6 +68,8 @@ Ringkeeper Connect is a desktop app for agencies. It keeps each client's tools (
 3. Choose how to connect. "Sign in with …" is offered wherever the service allows it: sign in with the client's account (not your own) in the browser that opens, then come back. Otherwise paste a key; the "where to find it" link under the field opens the right page of the service. Some tools have "Test connection" to check the key first.
 4. For Google, Microsoft 365 and Meta Ads, tick what the AI may do (for example read mail but not send it). Change it later with Edit on the tool.
 - A tool marked Beta works but hasn't been tried with a real account yet.
+- "More… > Choose actions" on a tool picks which of its actions the AI gets: all of them, only the ones that read, or a chosen few. Tools with hundreds of actions (Twilio has over 200) work better with fewer. An action left out isn't shown to the AI and isn't run.
+- "More… > Turn off" keeps a tool with its keys but stops offering it to the AI apps; "Turn on" brings it back.
 - Missing a service? Use "Request a tool" at the bottom of Add a tool, or "Something else" to add any connection by its web address or program.
 
 ## Bringing in tools you already use
@@ -102,6 +107,7 @@ ${RESTORE_POINTS.map((p) => `- ${p}`).join("\n")}
 
 function connectionStatus(statuses: ConnectionStatus[], clientId: string, conn: ConnectionView): { word: string; problem?: string } {
   const s = statuses.find((x) => x.clientId === clientId && x.connectionId === conn.id);
+  if (conn.off) return { word: "turned off" };
   if (conn.missingKeys.length) return { word: "needs a key", problem: s?.problem };
   if (conn.auth === "oauth" && conn.signedIn === false) return { word: "needs sign-in", problem: s?.problem };
   if (!s) return { word: "starts when needed" };
@@ -166,21 +172,25 @@ export function helpAnswer(input: HelpInput): string {
   );
   state.push(`- Ask AI apps to name the client on every action: ${input.settings.requireClientArg ? "on" : "off"}. Start when I log in: ${input.settings.startAtLogin ? "on" : "off"}.`);
   if (!input.clients.length) state.push("- No clients yet. Add one in the window's sidebar.");
-  for (const c of input.clients) {
-    const tools = c.connections.map((conn) => {
+  const describe = (c: ClientView) =>
+    c.connections.map((conn) => {
       const st = connectionStatus(input.statuses, c.id, conn);
       const svc = serviceOf(conn, services);
-      return `${conn.name}${svc && svc.name.toLowerCase() !== conn.name.toLowerCase() ? ` (${svc.name})` : ""}: ${st.word}${st.problem ? ` — ${st.problem}` : ""}`;
+      const chosen = conn.actions === "read" ? " (only actions that read)" : Array.isArray(conn.actions) ? ` (${conn.actions.length} chosen actions)` : "";
+      return `${conn.name}${svc && svc.name.toLowerCase() !== conn.name.toLowerCase() ? ` (${svc.name})` : ""}: ${st.word}${chosen}${st.problem ? ` — ${st.problem}` : ""}`;
     });
+  for (const c of input.clients) {
+    const tools = describe(c);
     state.push(`- Client ${c.name}${c.active ? " (active)" : ""}: ${tools.length ? tools.join("; ") : "no tools yet"}.`);
   }
+  if (input.everyClient?.connections.length) state.push(`- For every client: ${describe(input.everyClient).join("; ")}.`);
   out.push(state.join("\n"));
 
   // Advice for the services the question names, then for tools that need attention.
   const named = servicesNamed(input.question, services);
-  const troubled = input.clients.flatMap((c) =>
+  const troubled = [...input.clients, ...(input.everyClient ? [input.everyClient] : [])].flatMap((c) =>
     c.connections
-      .filter((conn) => connectionStatus(input.statuses, c.id, conn).word !== "working" && connectionStatus(input.statuses, c.id, conn).word !== "starts when needed")
+      .filter((conn) => !["working", "starts when needed", "turned off"].includes(connectionStatus(input.statuses, c.id, conn).word))
       .map((conn) => serviceOf(conn, services))
       .filter((s): s is CatalogService => !!s),
   );
