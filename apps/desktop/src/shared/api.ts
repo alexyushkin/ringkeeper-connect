@@ -170,12 +170,20 @@ export const META_APPS = "https://developers.facebook.com/apps";
 export const KEY_EXPIRES_SETTING = "RINGKEEPER_KEY_EXPIRES";
 /** The https page Meta sends a sign-in back to, which hands it on to this computer (yushkin.us: public/ringkeeper-connect/oauth/callback). */
 export const META_RETURN_PAGE = "https://yushkin.us/ringkeeper-connect/oauth/callback";
-export const OWN_APP_LINKS = [...GOOGLE_CONSOLE_LINKS, ENTRA_APP_REGISTRATIONS, META_APPS];
+/** HubSpot's page on making an MCP connector (its "app" for the HubSpot MCP server). */
+export const HUBSPOT_MCP_DOCS = "https://developers.hubspot.com/docs/apps/developer-platform/build-apps/integrate-with-the-remote-hubspot-mcp-server";
+/** Asana's developer console, where an "MCP app" is made. */
+export const ASANA_MY_APPS = "https://app.asana.com/0/my-apps";
+export const OWN_APP_LINKS = [...GOOGLE_CONSOLE_LINKS, ENTRA_APP_REGISTRATIONS, META_APPS, HUBSPOT_MCP_DOCS, ASANA_MY_APPS];
 
-/** One of the user's own Google, Microsoft or Meta apps, as the window sees it: never its secret. */
+/** The vendors "Your own apps" takes apps from. */
+export type OwnAppVendor = "google" | "microsoft" | "meta" | "hubspot" | "asana";
+export const VENDOR_LABEL: Record<OwnAppVendor, string> = { google: "Google", microsoft: "Microsoft", meta: "Meta", hubspot: "HubSpot", asana: "Asana" };
+
+/** One of the user's own apps, as the window sees it: never its secret. */
 export interface OwnAppView {
   id: string;
-  vendor: "google" | "microsoft" | "meta";
+  vendor: OwnAppVendor;
   name: string;
   clientId: string;
   /** Microsoft: the directory it signs in to ("common" for any account). */
@@ -186,7 +194,7 @@ export interface OwnAppView {
 
 export interface OwnAppInput {
   /** On an add: whose app it is. */
-  vendor?: "google" | "microsoft" | "meta";
+  vendor?: OwnAppVendor;
   name?: string;
   clientId?: string;
   /** Google and Meta. Left empty on an edit: keep the saved one. */

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { EVERY_CLIENT_ID, NOT_APPROVED, type CatalogService, type ClientView, type Result } from "../shared/api";
+import { EVERY_CLIENT_ID, NOT_APPROVED, VENDOR_LABEL, type CatalogService, type ClientView, type OwnAppVendor, type Result } from "../shared/api";
 import { matchesWords } from "./search";
 import { OwnApps } from "./OwnApps";
 import { KeyTest } from "./KeyTest";
@@ -18,7 +18,7 @@ export function AddFromCatalog(props: { client: ClientView; run: Run; onAdvanced
   const [service, setService] = useState<CatalogService | null>(null);
   const [signing, setSigning] = useState<{ connectionId: string; name: string } | null>(null);
   // "Your own Google (or Microsoft) apps", opened from that account's form; back to the form after.
-  const [managingApps, setManagingApps] = useState<"google" | "microsoft" | "meta" | null>(null);
+  const [managingApps, setManagingApps] = useState<OwnAppVendor | null>(null);
 
   async function reloadServices() {
     const r = await props.run(api().catalogServices());
@@ -195,7 +195,7 @@ function ServiceForm(props: {
   onClose: () => void;
   onNeedsSignIn: (connectionId: string, name: string) => void;
   /** Opens "Your own Google apps" or "Your own Microsoft apps". */
-  onOwnApps: (vendor: "google" | "microsoft" | "meta") => void;
+  onOwnApps: (vendor: OwnAppVendor) => void;
 }) {
   const { service, client } = props;
   const options = useMemo(() => [...service.options].sort((a, b) => Number(!!b.recommended) - Number(!!a.recommended)), [service]);
@@ -209,7 +209,9 @@ function ServiceForm(props: {
   const usesSignIn = option.auth === "oauth";
   // Needs a registered app (Google, Microsoft, Meta) this build doesn't have and the user hasn't added.
   const unavailable = !!option.unavailable;
-  const vendor = option.app === "microsoft" ? "Microsoft" : option.app === "meta" ? "Meta" : "Google";
+  const vendor = option.app ? VENDOR_LABEL[option.app] : "Google";
+  // HubSpot and Asana: always through an app of the user's own, with nothing to tick.
+  const ownMcpApp = option.app === "hubspot" || option.app === "asana";
   // What the AI may do (a Google account): one tick box each, some ticked to begin with.
   const [access, setAccess] = useState<Record<string, Set<string>>>({});
   const ticked = access[option.id] ?? new Set((option.access ?? []).filter((a) => a.default).map((a) => a.id));
@@ -225,7 +227,7 @@ function ServiceForm(props: {
   const appChoices = option.signInApps ?? [];
   const [appId, setAppId] = useState<string | undefined>(undefined);
   const chosenApp = appChoices.find((a) => a.id === appId)?.id ?? appChoices[0]?.id;
-  const ownAppsVendor = option.app === "google" || option.app === "microsoft" || option.app === "meta" ? option.app : undefined;
+  const ownAppsVendor: OwnAppVendor | undefined = option.app && option.app in VENDOR_LABEL ? option.app : undefined;
 
   async function submit() {
     setBusy(true);
@@ -340,7 +342,12 @@ function ServiceForm(props: {
       {unavailable && option.app === "meta" && (
         <div className="notice info">Signing in to {service.name} goes through a Meta app of your own. Set one up first, or choose "Use an access token" above.</div>
       )}
-      {unavailable && option.app !== "meta" && (
+      {unavailable && ownMcpApp && (
+        <div className="notice info">
+          Signing in to {service.name} goes through a {vendor} app of your own. Set one up first: it's free, takes a few minutes, and the steps are there.
+        </div>
+      )}
+      {unavailable && option.app !== "meta" && !ownMcpApp && (
         <div className="notice info">
           Signing in to {service.name} needs Ringkeeper Connect's own {vendor} sign-in, which isn't in this version yet.{" "}
           {ownAppsVendor ? `You can sign in through your own ${vendor} app instead.` : "It's coming in an update."}
@@ -362,7 +369,16 @@ function ServiceForm(props: {
         </ol>
       )}
 
-      {usesSignIn && !unavailable && option.app && option.app !== "meta" && (
+      {usesSignIn && !unavailable && ownMcpApp && (
+        <ol className="steps sign-in-steps">
+          <li>
+            Click Continue. {vendor} opens in your browser: sign in with <strong>{whose(client)}</strong> account.
+          </li>
+          <li>Allow access, then come back here.</li>
+        </ol>
+      )}
+
+      {usesSignIn && !unavailable && option.app && option.app !== "meta" && !ownMcpApp && (
         <ol className="steps sign-in-steps">
           <li>
             Click Continue. {vendor} opens in your browser: choose <strong>{whose(client)}</strong> account there, or add it.

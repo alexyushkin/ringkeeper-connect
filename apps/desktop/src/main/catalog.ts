@@ -223,7 +223,9 @@ export class CatalogActions {
             ? `That ${vendorName(vendor)} app isn't set up anymore. Choose another one.`
             : vendor === "meta"
               ? 'Meta Ads signs in through your own Meta app. Set one up under "Your own apps" first.'
-              : `Signing in needs Ringkeeper Connect's own ${vendorName(vendor)} sign-in, which isn't in this version yet.`,
+              : vendor === "hubspot" || vendor === "asana"
+                ? `${vendorName(vendor)} signs in through your own ${vendorName(vendor)} app. Set one up under "Your own apps" first.`
+                : `Signing in needs Ringkeeper Connect's own ${vendorName(vendor)} sign-in, which isn't in this version yet.`,
         );
       input = { ...input, oauthApp: chosen };
     }
@@ -494,6 +496,8 @@ export class CatalogActions {
       } else
         await signIn({
           serverUrl: conn.url,
+          // A service that takes Ringkeeper Connect's app-ID page instead of registrations (Vercel).
+          ...(!app && this.usesAppIdPage(conn.url) ? { appIdPage: true } : {}),
           label: `${conn.name} for ${client.name}`,
           store: this.deps.oauthStore,
           key: oauthKey(clientId, connectionId),
@@ -522,6 +526,20 @@ export class CatalogActions {
     const ask = signedIn && feedbackServiceFor(signedIn, settings.toolFeedback);
     if (ask) this.deps.store.updateSettings({ feedbackAsk: { clientId, connectionId, serviceId: ask.id } });
     this.deps.onChange();
+  }
+
+  /** Whether the catalog says this address signs in with the app-ID page. */
+  private usesAppIdPage(url: string): boolean {
+    const same = (a: string) => {
+      try {
+        const x = new URL(a);
+        const y = new URL(url);
+        return x.origin === y.origin && x.pathname.replace(/\/+$/, "") === y.pathname.replace(/\/+$/, "");
+      } catch {
+        return false;
+      }
+    };
+    return catalog.services.some((s) => s.options.some((o) => o.kind === "remote" && o.appIdPage && same(o.url)));
   }
 
   cancelSignIn(): void {

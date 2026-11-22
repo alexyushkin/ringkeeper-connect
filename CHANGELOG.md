@@ -4,6 +4,14 @@ What's new in each version of Ringkeeper Connect, in plain words. A release's pa
 shows its section under "What's new". Versions before 0.2.0-beta.16 are described on their
 [release pages](https://github.com/alexyushkin/ringkeeper-connect/releases).
 
+## 0.2.9
+
+- **HubSpot and Asana.** Both sign in through an app of your own, made in their developer
+  consoles in a few minutes ("Your own apps" has the steps). One app works for all your clients.
+- **Vercel**, with the newer sign-in method: Ringkeeper Connect's app ID is a page on yushkin.us,
+  so there's nothing to set up. Tools that move to this method later work the same way.
+- 81 tools in Add a tool.
+
 ## 0.2.8
 
 - **Details for support.** A tool that isn't working has "Details for support…" under its

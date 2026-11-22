@@ -21,7 +21,7 @@ import {
   type RegisteredApp,
   type SecretStore,
 } from "@ringkeeper/gateway";
-import { GOOGLE_TOKEN_ENDPOINT, META_GRAPH, MICROSOFT_LOGIN, googleApp, metaApp, microsoftApp } from "./registered-apps.js";
+import { GOOGLE_TOKEN_ENDPOINT, META_GRAPH, MICROSOFT_LOGIN, googleApp, mcpServerApp, metaApp, microsoftApp } from "./registered-apps.js";
 
 export class OwnAppsError extends Error {}
 
@@ -49,18 +49,28 @@ export interface OwnAppInput {
 }
 
 const MOST_APPS = 20;
-const LABEL: Record<OwnAppVendor, string> = { google: "Google", microsoft: "Microsoft", meta: "Meta" };
+const LABEL: Record<OwnAppVendor, string> = { google: "Google", microsoft: "Microsoft", meta: "Meta", hubspot: "HubSpot", asana: "Asana" };
 /** The own apps that have a secret (Microsoft's are public clients). */
 const hasSecret = (vendor: OwnAppVendor) => vendor !== "microsoft";
 
 function vendorOf(value: string | undefined): OwnAppVendor {
   if (value === undefined || value === "google") return "google";
-  if (value === "microsoft" || value === "meta") return value;
-  throw new OwnAppsError("Ringkeeper Connect can use your own Google, Microsoft or Meta app only.");
+  if (value === "microsoft" || value === "meta" || value === "hubspot" || value === "asana") return value;
+  throw new OwnAppsError("Ringkeeper Connect can use your own Google, Microsoft, Meta, HubSpot or Asana app only.");
 }
 
 function cleanClientId(vendor: OwnAppVendor, value: string): string {
   const id = value.trim();
+  if (vendor === "hubspot") {
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
+      throw new OwnAppsError("That isn't a HubSpot client ID: it looks like 1a2b3c4d-1234-5678-9abc-1a2b3c4d5e6f. Copy it from the MCP connector's details page.");
+    }
+    return id.toLowerCase();
+  }
+  if (vendor === "asana") {
+    if (!/^\d{6,24}$/.test(id)) throw new OwnAppsError("That isn't an Asana client ID: it's a long number. Copy it from the app's OAuth page in Asana's developer console.");
+    return id;
+  }
   if (vendor === "meta") {
     if (!/^\d{5,20}$/.test(id)) throw new OwnAppsError("That isn't a Meta App ID: it's a long number. Copy it from App settings > Basic on Meta for Developers.");
     return id;
@@ -82,6 +92,11 @@ function cleanSecret(value: string, vendor: OwnAppVendor = "google"): string {
   if (vendor === "meta") {
     if (!secret) throw new OwnAppsError("Paste the App secret too: App settings > Basic, then Show next to App secret.");
     if (!/^[0-9a-f]{32}$/i.test(secret)) throw new OwnAppsError("That isn't a Meta App secret: it's 32 letters and digits. Click Show next to App secret in App settings > Basic, and copy it.");
+    return secret;
+  }
+  if (vendor === "hubspot" || vendor === "asana") {
+    if (!secret) throw new OwnAppsError(`Paste the client secret too: ${vendor === "hubspot" ? "it's on the MCP connector's details page" : "it's on the app's OAuth page"}.`);
+    if (secret.length > 500) throw new OwnAppsError("That's too long to be a client secret.");
     return secret;
   }
   if (!secret) throw new OwnAppsError("Paste the client secret too. Google shows it when you create the client (and under Clients > the client).");
@@ -246,7 +261,9 @@ export class OwnApps {
       apps[r.id] =
         r.vendor === "meta"
           ? metaApp(r.id, r.clientId, secret, this.deps.meta?.graph, this.deps.meta?.dialog)
-          : { ...googleApp(r.id, r.clientId, secret), ...this.deps.endpoints };
+          : r.vendor === "hubspot" || r.vendor === "asana"
+            ? mcpServerApp(r.vendor, r.id, r.clientId, secret)
+            : { ...googleApp(r.id, r.clientId, secret), ...this.deps.endpoints };
     }
   }
 
@@ -259,6 +276,8 @@ export class OwnApps {
   }
 
   private check(vendor: OwnAppVendor, clientId: string, secretOrTenant: string): Promise<void> {
+    // HubSpot and Asana have no way to check an app without a sign-in: the first sign-in shows any problem.
+    if (vendor === "hubspot" || vendor === "asana") return Promise.resolve();
     if (vendor === "meta") return checkMetaApp(clientId, secretOrTenant, this.deps.fetchFn, this.deps.meta?.graph);
     return vendor === "microsoft"
       ? checkMicrosoftApp(clientId, secretOrTenant, this.deps.fetchFn, this.deps.microsoftLogin)

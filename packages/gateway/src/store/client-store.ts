@@ -97,7 +97,7 @@ export interface Settings {
 }
 
 export interface OwnAppRecord {
-  /** "google:<slug>", "microsoft:<slug>" or "meta:<slug>": what a connection's oauthApp names. */
+  /** "<vendor>:<slug>" ("google:agency", "hubspot:acme"…): what a connection's oauthApp names. */
   id: string;
   vendor: OwnAppVendor;
   name: string;
@@ -106,12 +106,12 @@ export interface OwnAppRecord {
   tenant?: string;
 }
 
-export type OwnAppVendor = "google" | "microsoft" | "meta";
+export type OwnAppVendor = "google" | "microsoft" | "meta" | "hubspot" | "asana";
 
 /** "Google", "Microsoft" or "Meta", from an app id ("google", "microsoft:agency"…), for messages. */
 export function vendorName(appId: string): string {
   const vendor = appId.split(":")[0];
-  return vendor === "microsoft" ? "Microsoft" : vendor === "meta" ? "Meta" : "Google";
+  return vendor === "microsoft" ? "Microsoft" : vendor === "meta" ? "Meta" : vendor === "hubspot" ? "HubSpot" : vendor === "asana" ? "Asana" : "Google";
 }
 
 /** Where an own app's client secret is kept. "~" never appears in a client's id, so removing a client can't touch it. */

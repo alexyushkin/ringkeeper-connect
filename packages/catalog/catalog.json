@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "checked": "2026-11-20",
+  "checked": "2026-11-22",
   "services": [
     {
       "id": "n8n",
@@ -539,6 +539,29 @@
       ]
     },
     {
+      "id": "vercel",
+      "name": "Vercel",
+      "group": "Developers",
+      "description": "Look at the client's Vercel projects and deployments, read their build logs, and search Vercel's docs.",
+      "beta": true,
+      "notes": [
+        "Sign in with the client's Vercel account, or with yours if it's a member of their team. Works on every Vercel plan.",
+        "Vercel's page asking you to allow access names yushkin.us: that's where Ringkeeper Connect's app ID is kept."
+      ],
+      "options": [
+        {
+          "id": "oauth",
+          "label": "Sign in with Vercel",
+          "recommended": true,
+          "kind": "remote",
+          "auth": "oauth",
+          "appIdPage": true,
+          "url": "https://mcp.vercel.com",
+          "fields": []
+        }
+      ]
+    },
+    {
       "id": "github",
       "name": "GitHub",
       "group": "Developers",
@@ -839,6 +862,30 @@
           "kind": "remote",
           "auth": "oauth",
           "url": "https://services.leadconnectorhq.com/mcp/anthropic/v2",
+          "fields": []
+        }
+      ]
+    },
+    {
+      "id": "hubspot",
+      "name": "HubSpot",
+      "group": "CRM and sales",
+      "description": "Work with the client's HubSpot CRM: contacts, companies, deals, tickets and more.",
+      "beta": true,
+      "notes": [
+        "HubSpot signs in through a HubSpot MCP connector of your own (free, a few minutes in a HubSpot developer account). Set it up under \"Your own apps\".",
+        "The client's HubSpot admin has to connect first, before other users of their account can.",
+        "A few of HubSpot's tools (website pages and blog posts) only work in Claude, ChatGPT and Gemini."
+      ],
+      "options": [
+        {
+          "id": "oauth",
+          "label": "Sign in with HubSpot",
+          "recommended": true,
+          "kind": "remote",
+          "auth": "oauth",
+          "app": "hubspot",
+          "url": "https://mcp.hubspot.com",
           "fields": []
         }
       ]
@@ -1219,6 +1266,29 @@
               }
             }
           ]
+        }
+      ]
+    },
+    {
+      "id": "asana",
+      "name": "Asana",
+      "group": "Work and projects",
+      "description": "Find, create and update the client's Asana tasks and projects.",
+      "beta": true,
+      "notes": [
+        "Asana signs in through an Asana MCP app of your own (free, a few minutes in Asana's developer console). Set it up under \"Your own apps\".",
+        "An Enterprise workspace's admin can block apps they don't know. If the client sees \"ask your admin\", their admin has to allow yours."
+      ],
+      "options": [
+        {
+          "id": "oauth",
+          "label": "Sign in with Asana",
+          "recommended": true,
+          "kind": "remote",
+          "auth": "oauth",
+          "app": "asana",
+          "url": "https://mcp.asana.com/v2/mcp",
+          "fields": []
         }
       ]
     },

@@ -33,6 +33,8 @@ interface OptionBase {
   signInApps?: Array<{ id: string; name: string }>;
   /** Sign in through Ringkeeper Connect's own registered app with this vendor (it doesn't let apps register themselves). */
   app?: RegisteredAppId;
+  /** Sign in with Ringkeeper Connect's app-ID page, the newer sign-in method (the service takes no registrations from apps it hasn't approved). */
+  appIdPage?: boolean;
   /** Permissions to ask for, space-separated (always, on top of any ticked below). */
   scope?: string;
   /** What the user can let the AI do, one tick box each; each adds its permissions to the sign-in. */
@@ -74,9 +76,11 @@ export interface RemoteOption extends OptionBase {
   headers?: Record<string, string>;
 }
 
-/** Vendors Ringkeeper Connect has registered apps with. */
-/** "meta" is always the user's own Meta app: Ringkeeper Connect has none (its secret would ship in every copy). */
-export const REGISTERED_APPS = ["google", "microsoft", "meta"] as const;
+/** Vendors Ringkeeper Connect has registered apps with, or whose tools sign in through the user's own app. */
+/** "meta", "hubspot" and "asana" are always the user's own app: Ringkeeper Connect has none (a secret would ship in every copy). */
+export const REGISTERED_APPS = ["google", "microsoft", "meta", "hubspot", "asana"] as const;
+/** The vendors whose tools only ever sign in through the user's own app. */
+export const OWN_APP_ONLY: readonly RegisteredAppId[] = ["meta", "hubspot", "asana"];
 export type RegisteredAppId = (typeof REGISTERED_APPS)[number];
 
 export interface LocalOption extends OptionBase {
@@ -151,6 +155,7 @@ export function validateCatalog(c: Catalog): string[] {
       for (const t of templates) for (const id of refs(t)) if (!fieldIds.has(id)) problems.push(`${s.id}/${o.id}: {{${id}}} has no field`);
       if (o.kind === "remote" && !o.url.includes("{{") && !o.url.startsWith("https://")) problems.push(`${s.id}/${o.id}: address must be https`);
       if (o.app && (o.auth !== "oauth" || !(REGISTERED_APPS as readonly string[]).includes(o.app))) problems.push(`${s.id}/${o.id}: registered app needs sign-in and a known app`);
+      if (o.appIdPage && (o.kind !== "remote" || o.auth !== "oauth" || o.app)) problems.push(`${s.id}/${o.id}: the app-ID page is for a web sign-in without a registered app`);
       // A program can't register itself with a vendor: its sign-in is always through our app.
       if (o.kind === "local" && o.auth === "oauth" && !o.app) problems.push(`${s.id}/${o.id}: a program's sign-in needs a registered app`);
       if (o.access) {

@@ -1,5 +1,17 @@
 import { useEffect, useState } from "react";
-import { ENTRA_APP_REGISTRATIONS, GOOGLE_APIS, GOOGLE_CONSOLE, META_APPS, META_RETURN_PAGE, MICROSOFT_RETURN_ADDRESS, type OwnAppView, type Result } from "../shared/api";
+import {
+  ASANA_MY_APPS,
+  ENTRA_APP_REGISTRATIONS,
+  GOOGLE_APIS,
+  GOOGLE_CONSOLE,
+  HUBSPOT_MCP_DOCS,
+  META_APPS,
+  META_RETURN_PAGE,
+  MICROSOFT_RETURN_ADDRESS,
+  VENDOR_LABEL,
+  type OwnAppView,
+  type Result,
+} from "../shared/api";
 
 type Run = <T>(p: Promise<Result<T>>) => Promise<{ value: T } | null>;
 type Vendor = OwnAppView["vendor"];
@@ -9,7 +21,9 @@ const api = () => window.ringkeeper;
 const ACCOUNT_CAP = 100;
 const HOMEPAGE = "https://yushkin.us/ringkeeper-connect";
 const PRIVACY = "https://yushkin.us/ringkeeper-connect/privacy";
-const LABEL: Record<Vendor, string> = { google: "Google", microsoft: "Microsoft", meta: "Meta" };
+const LABEL: Record<Vendor, string> = VENDOR_LABEL;
+/** HubSpot and Asana: apps for their own MCP servers, which sign in through the https page and aren't checked before the first sign-in. */
+const mcpVendor = (v: Vendor) => v === "hubspot" || v === "asana";
 /** What every Microsoft sign-in asks for, before what's ticked. */
 const MICROSOFT_ALWAYS = ["openid", "profile", "email", "offline_access", "User.Read"];
 
@@ -22,10 +36,10 @@ const MICROSOFT_ALWAYS = ["openid", "profile", "email", "offline_access", "User.
 export function OwnApps(props: { run: Run; onDone: () => void; doneLabel?: string; vendor?: Vendor }) {
   const [apps, setApps] = useState<OwnAppView[] | null>(null);
   const [editing, setEditing] = useState<{ vendor: Vendor; app?: OwnAppView } | null>(null);
-  const [scopes, setScopes] = useState<Record<Vendor, string[]>>({ google: [], microsoft: [], meta: [] });
+  const [scopes, setScopes] = useState<Record<Vendor, string[]>>({ google: [], microsoft: [], meta: [], hubspot: [], asana: [] });
   // Shown here, where the user is looking.
   const [error, setError] = useState<string | null>(null);
-  const vendors: Vendor[] = props.vendor ? [props.vendor] : ["google", "microsoft", "meta"];
+  const vendors: Vendor[] = props.vendor ? [props.vendor] : ["google", "microsoft", "meta", "hubspot", "asana"];
 
   async function reload() {
     const r = await api().listOwnApps();
@@ -50,6 +64,8 @@ export function OwnApps(props: { run: Run; onDone: () => void; doneLabel?: strin
           google: google.length ? ["openid", "https://www.googleapis.com/auth/userinfo.email", ...new Set(google)] : [],
           microsoft: microsoft.length ? [...new Set([...MICROSOFT_ALWAYS, ...microsoft])] : [],
           meta,
+          hubspot: [],
+          asana: [],
         });
       });
   }, []);
@@ -95,6 +111,19 @@ export function OwnApps(props: { run: Run; onDone: () => void; doneLabel?: strin
         <p className="muted small">
           Meta Ads signs in through a Meta app of your own: Meta lets only the AI apps it approved sign in to its ads server directly.
         </p>
+      )}
+      {props.vendor && mcpVendor(props.vendor) ? (
+        <p className="muted small">
+          {LABEL[props.vendor]} signs in through an app of your own: its server only lets in apps made in its developer console. One app works for all your
+          clients' accounts.
+        </p>
+      ) : (
+        !props.vendor && (
+          <p className="muted small">
+            HubSpot and Asana sign in through an app of your own too: their servers only let in apps made in their developer consoles. One app works for all
+            your clients' accounts.
+          </p>
+        )
       )}
       {error && (
         <div className="notice bad" role="alert">
@@ -160,6 +189,7 @@ function AppForm(props: { vendor: Vendor; app?: OwnAppView; scopes: string[]; ru
   const editing = props.app;
   const microsoft = props.vendor === "microsoft";
   const meta = props.vendor === "meta";
+  const mcp = mcpVendor(props.vendor);
   const label = LABEL[props.vendor];
   const [name, setName] = useState(editing?.name ?? "");
   const [clientId, setClientId] = useState(editing?.clientId ?? "");
@@ -191,6 +221,10 @@ function AppForm(props: { vendor: Vendor; app?: OwnAppView; scopes: string[]; ru
       {!editing &&
         (microsoft ? (
           <MicrosoftSteps scopes={props.scopes} run={props.run} />
+        ) : props.vendor === "hubspot" ? (
+          <HubSpotSteps run={props.run} />
+        ) : props.vendor === "asana" ? (
+          <AsanaSteps run={props.run} />
         ) : meta ? (
           <MetaSteps scopes={props.scopes} run={props.run} />
         ) : (
@@ -205,7 +239,7 @@ function AppForm(props: { vendor: Vendor; app?: OwnAppView; scopes: string[]; ru
         <input
           value={clientId}
           autoComplete="off"
-          placeholder={microsoft ? "1a2b3c4d-…" : meta ? "1234567890123456" : "…apps.googleusercontent.com"}
+          placeholder={microsoft || props.vendor === "hubspot" ? "1a2b3c4d-…" : meta || props.vendor === "asana" ? "1234567890123456" : "…apps.googleusercontent.com"}
           disabled={inUse}
           onChange={(e) => setClientId(e.target.value)}
         />
@@ -224,7 +258,10 @@ function AppForm(props: { vendor: Vendor; app?: OwnAppView; scopes: string[]; ru
         <label className="field">
           <span>{meta ? "App secret" : "Client secret"}</span>
           <input type="password" value={secret} autoComplete="off" placeholder={editing ? "Leave empty to keep the saved one" : ""} onChange={(e) => setSecret(e.target.value)} />
-          <span className="hint">Kept encrypted on this computer. Ringkeeper Connect checks both with {label} before saving.</span>
+          <span className="hint">
+            Kept encrypted on this computer.{" "}
+            {mcp ? `${label} has no way to check them before a sign-in: the first sign-in does.` : `Ringkeeper Connect checks both with ${label} before saving.`}
+          </span>
         </label>
       )}
       {error && (
@@ -237,7 +274,7 @@ function AppForm(props: { vendor: Vendor; app?: OwnAppView; scopes: string[]; ru
           Back
         </button>
         <button type="submit" className="primary" disabled={busy || !name.trim() || !clientId.trim() || (needsSecret && !secret.trim())}>
-          {busy ? `Checking with ${label}…` : "Save"}
+          {busy ? (mcp ? "Saving…" : `Checking with ${label}…`) : "Save"}
         </button>
       </div>
     </form>
@@ -348,6 +385,58 @@ function MicrosoftSteps(props: { scopes: string[]; run: Run }) {
         A client's IT admin may have to approve your app once before their accounts can sign in (Microsoft says "Need admin approval"). Personal Microsoft accounts sign in
         straight away.
       </div>
+    </details>
+  );
+}
+
+/** How to make a HubSpot MCP connector (HubSpot's app for its MCP server), and what to expect of it. */
+function HubSpotSteps(props: { run: Run }) {
+  return (
+    <details className="own-app-steps">
+      <summary>How to create one (about 5 minutes, free)</summary>
+      <ol className="steps">
+        <li>
+          Sign in to HubSpot with your own account (a free developer account works) and open <strong>Development</strong>, then{" "}
+          <strong>MCP Connectors</strong>. HubSpot's steps:{" "}
+          <button type="button" className="link inline" onClick={() => void props.run(api().openLink(HUBSPOT_MCP_DOCS))}>
+            Integrate with the HubSpot MCP server ↗
+          </button>
+        </li>
+        <li>
+          Click Create MCP connector. Name it after your agency. As its Redirect URL, paste <Copyable text={META_RETURN_PAGE} />. That page hands the sign-in
+          straight back to this computer and keeps nothing.
+        </li>
+        <li>Create it, then copy the Client ID and the Client secret from its details page and paste both below.</li>
+      </ol>
+      <div className="notice info small">
+        Each client's HubSpot admin has to connect first, before other users of that account can. HubSpot works out what the AI may do from the user who signs in.
+      </div>
+    </details>
+  );
+}
+
+/** How to make an Asana MCP app, and what to expect of it. */
+function AsanaSteps(props: { run: Run }) {
+  return (
+    <details className="own-app-steps">
+      <summary>How to create one (about 5 minutes, free)</summary>
+      <ol className="steps">
+        <li>
+          Open{" "}
+          <button type="button" className="link inline" onClick={() => void props.run(api().openLink(ASANA_MY_APPS))}>
+            My apps in Asana's developer console ↗
+          </button>{" "}
+          signed in with your own Asana account, and click Create new app. Name it after your agency and choose the app type <strong>MCP app</strong>.
+        </li>
+        <li>
+          Open OAuth and add <Copyable text={META_RETURN_PAGE} /> as a redirect URL. That page hands the sign-in straight back to this computer and keeps nothing.
+        </li>
+        <li>
+          Open Manage distribution and choose <strong>Any workspace</strong>, so your clients' workspaces can use it (with none chosen, nobody can sign in).
+        </li>
+        <li>Back on OAuth, copy the Client ID and the Client secret, and paste both below.</li>
+      </ol>
+      <div className="notice info small">An Enterprise workspace's admin can block apps they don't know: if a client sees "ask your admin", their admin has to allow yours.</div>
     </details>
   );
 }

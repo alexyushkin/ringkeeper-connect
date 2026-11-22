@@ -44,6 +44,15 @@ export function signInEndsAt(state: OAuthState | undefined): number | undefined 
   return lasts > SHORT_SIGN_IN_MS ? state.obtainedAt + lasts : undefined;
 }
 
+/**
+ * Ringkeeper Connect's app-ID page (an OAuth client ID metadata document, the newer sign-in
+ * method): services that support it take this address as the app's ID instead of registering
+ * it (Vercel). Hosted on yushkin.us: public/ringkeeper-connect/oauth/client.json.
+ */
+export const APP_ID_PAGE = "https://yushkin.us/ringkeeper-connect/oauth/client.json";
+/** The https page a sign-in can come back to, which hands it on to this computer (yushkin.us: public/ringkeeper-connect/oauth/callback). */
+export const RETURN_PAGE = "https://yushkin.us/ringkeeper-connect/oauth/callback";
+
 /** Starts the message for a service that only lets apps it approved sign in: trying again can't help. */
 export const NOT_APPROVED = "only lets apps it has approved sign in";
 
@@ -77,6 +86,8 @@ export interface RegisteredApp {
   tokenByGet?: boolean;
   /** Meta: swap the short sign-in for one lasting about 60 days (Meta gives no way to renew it). */
   longLivedExchange?: boolean;
+  /** Asana: send no permissions at all (it refuses any it's sent, even the ones it lists). */
+  noScope?: boolean;
 }
 
 function appClient(app: RegisteredApp): OAuthClientInformationMixed {
@@ -152,13 +163,20 @@ class InteractiveProvider implements OAuthClientProvider {
   verifier = "";
   client?: OAuthClientInformationMixed;
   tokensSaved?: OAuthTokens;
-  readonly expectedState = randomBytes(16).toString("base64url");
+  readonly expectedState: string;
 
   constructor(
     readonly redirectUrl: string,
     private readonly open: (url: URL) => void,
     readonly app?: RegisteredApp,
-  ) {}
+    /** The app-ID page, for a service that takes it instead of a registration. */
+    readonly clientMetadataUrl?: string,
+    /** Through an https page: this computer's port goes at the front of the state ("<port>.<random>"). */
+    port?: string,
+  ) {
+    const random = randomBytes(16).toString("base64url");
+    this.expectedState = port ? `${port}.${random}` : random;
+  }
 
   get clientMetadata(): OAuthClientMetadata {
     return metadata(this.redirectUrl);
@@ -181,6 +199,7 @@ class InteractiveProvider implements OAuthClientProvider {
   }
   redirectToAuthorization(url: URL): void {
     for (const [k, v] of Object.entries(this.app?.authParams ?? {})) url.searchParams.set(k, v);
+    if (this.app?.noScope) url.searchParams.delete("scope");
     this.open(url);
   }
   saveCodeVerifier(v: string): void {
@@ -209,6 +228,11 @@ export interface SignInOptions {
   app?: RegisteredApp;
   /** The permissions to ask for, space-separated (otherwise the server's own list). */
   scope?: string;
+  /**
+   * Use Ringkeeper Connect's app-ID page (the newer sign-in method) where the service supports
+   * it, instead of registering (Vercel). The sign-in then comes back through the https page.
+   */
+  appIdPage?: boolean;
 }
 
 /**
@@ -266,7 +290,16 @@ export async function signIn(opts: SignInOptions): Promise<void> {
   let provider: InteractiveProvider | undefined;
   const back = await catchRedirect(opts.label, () => provider?.expectedState, opts.timeoutMs, opts.signal);
   const codeArrived = back.codeArrived;
-  provider = new InteractiveProvider(back.redirectUrl, (u) => opts.openBrowser(u.toString()), opts.app);
+  // Through the https page when the service wants an exact, fixed return address: an app-ID page
+  // lists it, and own apps (HubSpot, Asana) register it once.
+  const returnPage = opts.app?.returnPage ?? (opts.appIdPage ? RETURN_PAGE : undefined);
+  provider = new InteractiveProvider(
+    returnPage ?? back.redirectUrl,
+    (u) => opts.openBrowser(u.toString()),
+    opts.app,
+    opts.appIdPage && !opts.app ? APP_ID_PAGE : undefined,
+    returnPage ? new URL(back.redirectUrl).port : undefined,
+  );
 
   try {
     let first: string;
