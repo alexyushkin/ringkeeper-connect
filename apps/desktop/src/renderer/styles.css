@@ -1279,3 +1279,17 @@ p.muted {
   white-space: pre;
   overflow: auto;
 }
+
+/* Setup: send a brought-in helper to "For every client". */
+.every-choice {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 4px 0 0 26px;
+  font-size: 13px;
+}
+.every-choice input[type="checkbox"] {
+  width: auto;
+  flex: none;
+  margin: 0;
+}

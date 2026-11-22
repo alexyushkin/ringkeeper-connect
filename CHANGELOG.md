@@ -4,6 +4,13 @@ What's new in each version of Ringkeeper Connect, in plain words. A release's pa
 shows its section under "What's new". Versions before 0.2.0-beta.16 are described on their
 [release pages](https://github.com/alexyushkin/ringkeeper-connect/releases).
 
+## 0.2.11
+
+- **Bring helpers in straight to "For every client".** When bringing in tools your AI apps
+  already use, each one can go to "For every client" instead of the client: it's suggested for
+  browser helpers like Playwright, and you choose. A connection found in an AI app later can go
+  there too.
+
 ## 0.2.10
 
 - **Tried tools first.** In "Add a tool", each group lists the tools already tried with a real
