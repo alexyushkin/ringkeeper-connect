@@ -83,6 +83,10 @@ export interface Settings {
    * or web connectors) that still need a sign-in or key, per client.
    */
   pendingTools: Array<{ clientId: string; toolId: string }>;
+  /** A tool was just signed in to for the first time: the window asks "Did it work?" until it's answered. */
+  feedbackAsk?: { clientId: string; connectionId: string; serviceId: string };
+  /** The answer per service in Add a tool, so each is asked about once: worked, had a problem, or no thanks. */
+  toolFeedback?: Record<string, "worked" | "problem" | "skipped">;
   /**
    * The user's own registered apps (a Google app in their own Google Cloud project, or a
    * Microsoft app in their own Entra directory), for agencies past the 100 accounts Google

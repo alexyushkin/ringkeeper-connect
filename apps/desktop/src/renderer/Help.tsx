@@ -66,6 +66,10 @@ export function Help(props: { hosts: HostView[]; onClose: () => void }) {
               its keys but stops offering it.
             </li>
             <li>
+              After the first sign-in to a tool, "Did it work?" asks how it went. Either answer opens an email you read and choose to send:
+              nothing is sent by itself, and your client's name and keys aren't in it.
+            </li>
+            <li>
               <strong>Bring in connections from apps</strong> moves tools already set up in your AI apps into a client, keys included. Tools other AI
               apps use (Windsurf, Gemini CLI and others) are copied; those apps aren't changed. An AI app's own helpers, like the one Codex adds
               for its browser and screen control, are left where they are: they aren't a client's tool and only work inside that app.

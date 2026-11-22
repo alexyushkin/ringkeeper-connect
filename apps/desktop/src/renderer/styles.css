@@ -1248,3 +1248,12 @@ p.muted {
 .copy-list label {
   text-align: left;
 }
+
+/* "Did it work?" after a first sign-in. */
+.banner-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+}

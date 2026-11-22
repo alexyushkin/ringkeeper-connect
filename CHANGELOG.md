@@ -4,6 +4,14 @@ What's new in each version of Ringkeeper Connect, in plain words. A release's pa
 shows its section under "What's new". Versions before 0.2.0-beta.16 are described on their
 [release pages](https://github.com/alexyushkin/ringkeeper-connect/releases).
 
+## 0.2.7
+
+- **"Did it work?" after the first sign-in to a tool.** Once you've tried it, one click on
+  "Worked" or "Had a problem" opens an email with the tool's name, its status and the version,
+  for you to read and send if you want to. Nothing is sent by itself, and your client's name and
+  keys aren't in it. "No thanks" stops asking about that tool. Your answers help confirm the tools
+  still marked Beta.
+
 ## 0.2.6
 
 - **Move to another computer.** "Move to another computer" in the sidebar saves every client,
