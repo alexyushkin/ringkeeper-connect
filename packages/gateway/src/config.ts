@@ -1,6 +1,12 @@
-import type { ClientGuard } from "./guard.js";
+import type { ActionChoice, ClientGuard } from "./guard.js";
 // What the gateway runs on: every client and connection with secrets already
 // filled in. Built in memory from the ClientStore; never written to disk.
+
+/**
+ * The owner of the tools every client gets (a browser helper, web search): not a client of its
+ * own. "~" never appears in a client's id, so it can't clash with one, or with its saved keys.
+ */
+export const EVERY_CLIENT_ID = "~every";
 
 interface ConnectionBase {
   /** Stable id, used as the tool prefix: `${id}__${toolName}`. */
@@ -9,6 +15,10 @@ interface ConnectionBase {
   name: string;
   /** Keys the user hasn't filled in yet; the connection isn't started until they do. */
   missingKeys?: string[];
+  /** Which of its actions the AI apps get (see guard.ts). Left out: all. */
+  actions?: ActionChoice;
+  /** Turned off by the user: kept with its keys, but not started and not offered. */
+  off?: boolean;
 }
 
 /** A program on this computer, talked to over stdin/stdout. */
@@ -65,6 +75,8 @@ export interface GatewayOptionsConfig {
 
 export interface GatewayConfig {
   clients: ClientConfig[];
+  /** Tools every client gets, next to its own. The active client's rules (what the AI may do) apply to them. */
+  everyClient?: ConnectionConfig[];
   options: GatewayOptionsConfig;
 }
 

@@ -1069,3 +1069,131 @@ p.muted {
 .activity-how.bad {
   color: var(--bad, #c53030);
 }
+
+/* "For every client": above the clients, set apart from them. */
+.every-item {
+  margin: 4px 0 2px;
+  border-style: dashed;
+}
+.every-item .count {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+/* A tool whose actions were narrowed. */
+.connection-note {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 4px;
+}
+
+/* "More…" on a tool. */
+.more-menu {
+  position: relative;
+}
+.more-menu .menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 20;
+  min-width: 200px;
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 6px 24px rgba(8, 17, 39, 0.18);
+}
+.more-menu .menu button {
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: none;
+  padding: 7px 10px;
+  border-radius: 6px;
+}
+.more-menu .menu button:hover,
+.more-menu .menu button:focus-visible {
+  background: var(--accent-soft);
+}
+
+/* Choosing a tool's actions. */
+.action-picker {
+  margin-top: 8px;
+}
+.action-picker-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 6px;
+}
+.action-picker-bar input[type="search"] {
+  flex: 1 1 200px;
+}
+.action-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 320px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.action-list li {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+}
+.action-list li:last-child {
+  border-bottom: none;
+}
+.action-list label {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  text-align: left;
+}
+.action-list input[type="checkbox"] {
+  width: auto;
+  flex: none;
+  margin: 2px 0 0;
+}
+.action-text {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+  min-width: 0;
+}
+.action-name {
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 12px;
+  word-break: break-all;
+}
+.action-desc {
+  flex-basis: 100%;
+}
+.action-kind {
+  font-size: 11px;
+  border-radius: 999px;
+  padding: 0 7px;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.action-kind.read {
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+.action-kind.delete {
+  color: var(--bad);
+  background: transparent;
+  border: 1px solid var(--bad);
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}

@@ -2,9 +2,9 @@
 // any secret values; secrets go to the SecretStore and are referenced by key.
 import fs from "node:fs";
 import { readJson, writeJsonAtomic } from "../runtime.js";
-import type { ConnectionConfig, GatewayConfig } from "../config.js";
+import { EVERY_CLIENT_ID, type ConnectionConfig, type GatewayConfig } from "../config.js";
 import { DEFAULT_DYNAMIC_HOSTS } from "../meta-tools.js";
-import { DEFAULT_GUARD, isClientGuard, type ClientGuard } from "../guard.js";
+import { DEFAULT_GUARD, isActionChoice, isClientGuard, type ActionChoice, type ClientGuard } from "../guard.js";
 import type { SecretStore } from "./secrets.js";
 import type { OAuthState, OAuthStateStore } from "../oauth.js";
 
@@ -16,6 +16,10 @@ export type StoredValue = { value: string } | { secret: string };
 interface StoredBase {
   id: string;
   name: string;
+  /** Which of its actions the AI apps get. Left out: all of them. */
+  actions?: ActionChoice;
+  /** Turned off: kept with its keys, not offered to the AI apps. */
+  off?: true;
 }
 export interface StoredLocalConnection extends StoredBase {
   kind: "local";
@@ -103,7 +107,17 @@ interface StoreFile {
   version: 1;
   activeClientId: string | null;
   clients: StoredClient[];
+  /** Tools every client gets (id EVERY_CLIENT_ID). Not a client: never active, never in the list. */
+  everyClient?: StoredClient;
   settings: Settings;
+}
+
+/** The name the tools for every client go by in messages ("Add a tool for every client"). */
+export const EVERY_CLIENT_NAME = "every client";
+
+/** The choice and switch a connection keeps through an edit. */
+function kept(c: StoredConnection): { actions?: ActionChoice; off?: true } {
+  return { ...(c.actions ? { actions: Array.isArray(c.actions) ? [...c.actions] : c.actions } : {}), ...(c.off ? { off: true as const } : {}) };
 }
 
 export const DEFAULT_SETTINGS: Settings = { requireClientArg: true, dynamicHosts: [...DEFAULT_DYNAMIC_HOSTS], setupDone: false, startAtLogin: true, bringInOffered: false, pendingTools: [] };
@@ -142,6 +156,8 @@ export type ConnectionView =
       signedIn?: boolean;
       fields: FieldView[];
       missingKeys: string[];
+      actions?: ActionChoice;
+      off?: boolean;
     }
   | {
       kind: "remote";
@@ -156,6 +172,10 @@ export type ConnectionView =
       signedIn?: boolean;
       fields: FieldView[];
       missingKeys: string[];
+      /** Which of its actions the AI apps get. Left out: all of them. */
+      actions?: ActionChoice;
+      /** Turned off by the user. */
+      off?: boolean;
     };
 
 export interface ClientView {
@@ -269,17 +289,40 @@ export class ClientStore {
   }
 
   list(): ClientView[] {
-    return this.data.clients.map((c) => ({
+    return this.data.clients.map((c) => this.viewClient(c));
+  }
+
+  /** The tools every client gets, shaped like a client so the same screens and actions work on them. */
+  everyClient(): ClientView {
+    return this.viewClient(this.data.everyClient ?? { id: EVERY_CLIENT_ID, name: EVERY_CLIENT_NAME, connections: [] });
+  }
+
+  /** The clients and, last, the tools for every client: everything that holds connections. */
+  listAll(): ClientView[] {
+    return [...this.list(), this.everyClient()];
+  }
+
+  /** One client, or the tools for every client, by id. */
+  view(id: string): ClientView | undefined {
+    return this.listAll().find((c) => c.id === id);
+  }
+
+  private viewClient(c: StoredClient): ClientView {
+    return {
       id: c.id,
       name: c.name,
       active: c.id === this.data.activeClientId,
       connections: c.connections.map((conn) => this.viewConnection(conn)),
       guard: isClientGuard(c.guard) ? c.guard : DEFAULT_GUARD,
-    }));
+    };
+  }
+
+  private owners(): StoredClient[] {
+    return this.data.everyClient ? [...this.data.clients, this.data.everyClient] : this.data.clients;
   }
 
   private oauthKeyFor(conn: StoredConnection): string {
-    const owner = this.data.clients.find((c) => c.connections.includes(conn));
+    const owner = this.owners().find((c) => c.connections.includes(conn));
     return oauthKey(owner?.id ?? "", conn.id);
   }
 
@@ -299,6 +342,7 @@ export class ClientStore {
           ...appOf(conn),
           fields,
           missingKeys,
+          ...kept(conn),
         }
       : {
           kind: "remote",
@@ -310,6 +354,7 @@ export class ClientStore {
           ...appOf(conn),
           fields,
           missingKeys,
+          ...kept(conn),
         };
   }
 
@@ -319,62 +364,56 @@ export class ClientStore {
    * being started.
    */
   toGatewayConfig(): GatewayConfig {
+    const every = this.data.everyClient?.connections ?? [];
     return {
       options: { requireClientArg: this.data.settings.requireClientArg, dynamicHosts: [...this.data.settings.dynamicHosts] },
       clients: this.data.clients.map((c) => ({
         id: c.id,
         name: c.name,
         guard: isClientGuard(c.guard) ? c.guard : DEFAULT_GUARD,
-        connections: c.connections.map((conn): ConnectionConfig => {
-          const missing: string[] = [];
-          const resolved: Record<string, string> = {};
-          for (const [name, v] of Object.entries(fieldsOf(conn))) {
-            if ("value" in v) resolved[name] = v.value;
-            else {
-              const s = this.secrets.get(v.secret);
-              if (s === undefined) missing.push(name);
-              else resolved[name] = s;
-            }
-          }
-          const base = { id: conn.id, name: conn.name, ...(missing.length ? { missingKeys: missing } : {}) };
-          return conn.kind === "local"
-            ? {
-                ...base,
-                kind: "local",
-                command: conn.command,
-                args: [...conn.args],
-                env: resolved,
-                ...(conn.auth === "oauth"
-                  ? {
-                      oauth: { key: oauthKey(c.id, conn.id), ...(conn.oauthApp ? { app: conn.oauthApp } : {}), ...(conn.scope ? { scope: conn.scope } : {}) },
-                      needsSignIn: !this.secrets.has(oauthKey(c.id, conn.id)),
-                    }
-                  : {}),
-              }
-            : {
-                ...base,
-                kind: "remote",
-                url: conn.url,
-                ...(conn.transport ? { transport: conn.transport } : {}),
-                ...(conn.auth === "oauth"
-                  ? {
-                      oauth: { key: oauthKey(c.id, conn.id), ...(conn.oauthApp ? { app: conn.oauthApp } : {}), ...(conn.scope ? { scope: conn.scope } : {}) },
-                      needsSignIn: !this.secrets.has(oauthKey(c.id, conn.id)),
-                    }
-                  : {}),
-                headers: resolved,
-              };
-        }),
+        connections: c.connections.map((conn) => this.gatewayConnection(c.id, conn)),
       })),
+      ...(every.length ? { everyClient: every.map((conn) => this.gatewayConnection(EVERY_CLIENT_ID, conn)) } : {}),
     };
+  }
+
+  private gatewayConnection(ownerId: string, conn: StoredConnection): ConnectionConfig {
+    const missing: string[] = [];
+    const resolved: Record<string, string> = {};
+    for (const [name, v] of Object.entries(fieldsOf(conn))) {
+      if ("value" in v) resolved[name] = v.value;
+      else {
+        const s = this.secrets.get(v.secret);
+        if (s === undefined) missing.push(name);
+        else resolved[name] = s;
+      }
+    }
+    const base = { id: conn.id, name: conn.name, ...(missing.length ? { missingKeys: missing } : {}), ...kept(conn) };
+    const oauth =
+      conn.auth === "oauth"
+        ? {
+            oauth: { key: oauthKey(ownerId, conn.id), ...(conn.oauthApp ? { app: conn.oauthApp } : {}), ...(conn.scope ? { scope: conn.scope } : {}) },
+            needsSignIn: !this.secrets.has(oauthKey(ownerId, conn.id)),
+          }
+        : {};
+    return conn.kind === "local"
+      ? { ...base, kind: "local", command: conn.command, args: [...conn.args], env: resolved, ...oauth }
+      : { ...base, kind: "remote", url: conn.url, ...(conn.transport ? { transport: conn.transport } : {}), ...oauth, headers: resolved };
   }
 
   // ---------- clients ----------
 
   private client(id: string): StoredClient {
+    if (id === EVERY_CLIENT_ID) return (this.data.everyClient ??= { id: EVERY_CLIENT_ID, name: EVERY_CLIENT_NAME, connections: [] });
     const c = this.data.clients.find((x) => x.id === id);
     if (!c) throw new StoreError("That client no longer exists. Close this window and open it again.");
     return c;
+  }
+
+  /** A client, not the tools for every client. */
+  private realClient(id: string): StoredClient {
+    if (id === EVERY_CLIENT_ID) throw new StoreError("That's only possible for a client, not for the tools every client gets.");
+    return this.client(id);
   }
 
   private checkClientName(name: string, exceptId?: string): string {
@@ -398,14 +437,14 @@ export class ClientStore {
 
   /** Renaming keeps the id, so tool names and saved keys stay stable. */
   renameClient(id: string, name: string): void {
-    const c = this.client(id);
+    const c = this.realClient(id);
     c.name = this.checkClientName(name, id);
     this.commit();
   }
 
   /** How much the AI may do for this client: work freely, ask before deleting, or look only. */
   setClientGuard(id: string, guard: ClientGuard): void {
-    const c = this.client(id);
+    const c = this.realClient(id);
     if (!isClientGuard(guard)) throw new StoreError("Choose one of the three options.");
     if ((c.guard ?? DEFAULT_GUARD) === guard) return;
     c.guard = guard;
@@ -413,7 +452,7 @@ export class ClientStore {
   }
 
   removeClient(id: string): void {
-    this.client(id);
+    this.realClient(id);
     this.data.clients = this.data.clients.filter((c) => c.id !== id);
     this.secrets.deletePrefix(`${id}/`);
     if (this.data.activeClientId === id) this.data.activeClientId = this.data.clients[0]?.id ?? null;
@@ -421,7 +460,7 @@ export class ClientStore {
   }
 
   setActiveClient(id: string): void {
-    this.client(id);
+    this.realClient(id);
     if (this.data.activeClientId === id) return;
     this.data.activeClientId = id;
     this.commit();
@@ -433,6 +472,15 @@ export class ClientStore {
   }
 
   // ---------- connections ----------
+
+  /**
+   * Ids a new connection of this owner can't have. The AI apps see a client's tools and the
+   * tools for every client together, by connection id, so those two never share one.
+   */
+  private takenConnectionIds(owner: StoredClient): Set<string> {
+    const others = owner.id === EVERY_CLIENT_ID ? this.data.clients : this.data.everyClient ? [this.data.everyClient] : [];
+    return new Set([owner, ...others].flatMap((c) => c.connections.map((x) => x.id)));
+  }
 
   private secretKey(clientId: string, connId: string, field: string): string {
     return `${clientId}/${connId}/${field}`;
@@ -498,7 +546,7 @@ export class ClientStore {
   addConnection(clientId: string, input: ConnectionInput): ConnectionView {
     const client = this.client(clientId);
     const name = this.validateConnection(input, client);
-    const id = uniqueId(slug(name, "connection"), new Set(client.connections.map((c) => c.id)));
+    const id = uniqueId(slug(name, "connection"), this.takenConnectionIds(client));
     const fields = this.storeFields(clientId, id, input.fields);
     const conn: StoredConnection =
       input.kind === "local"
@@ -549,9 +597,10 @@ export class ClientStore {
     ) {
       this.secrets.delete(oauthKey(clientId, connId));
     }
-    client.connections[idx] = conn;
+    // What the AI gets from it, and whether it's on, stay as they were.
+    client.connections[idx] = { ...conn, ...kept(prev) };
     this.commit();
-    return this.viewConnection(conn);
+    return this.viewConnection(client.connections[idx]!);
   }
 
   removeConnection(clientId: string, connId: string): void {
@@ -581,6 +630,81 @@ export class ClientStore {
       src.kind === "local"
         ? { kind: "local", name, command: src.command, args: [...src.args], ...(src.auth ? { auth: src.auth } : {}), ...appOf(src), fields }
         : { kind: "remote", name, url: src.url, ...(src.transport ? { transport: src.transport } : {}), ...(src.auth ? { auth: src.auth } : {}), ...appOf(src), fields };
-    return this.addConnection(to.id, input);
+    const added = this.addConnection(to.id, input);
+    // The same actions are offered for the copy (it's the same kind of tool), and it starts on.
+    if (src.actions) this.setConnectionActions(to.id, added.id, src.actions);
+    return this.view(to.id)!.connections.find((c) => c.id === added.id)!;
+  }
+
+  private connection(owner: StoredClient, connId: string): StoredConnection {
+    const conn = owner.connections.find((c) => c.id === connId);
+    if (!conn) throw new StoreError("That tool no longer exists. Close this window and open it again.");
+    return conn;
+  }
+
+  /** Which of a tool's actions the AI apps get: "all", "read" (only the ones that read), or the chosen ones by name. */
+  setConnectionActions(clientId: string, connId: string, choice: "all" | ActionChoice): ConnectionView {
+    const conn = this.connection(this.client(clientId), connId);
+    if (choice === "all") delete conn.actions;
+    else if (Array.isArray(choice)) {
+      const names = [...new Set(choice.map((n) => String(n).trim()).filter(Boolean))];
+      if (!names.length) throw new StoreError(`Choose at least one action, or turn ${conn.name} off instead.`);
+      if (!isActionChoice(names) || names.length > 5000) throw new StoreError("That list of actions doesn't look right. Close this window and try again.");
+      conn.actions = names;
+    } else if (choice === "read") conn.actions = "read";
+    else throw new StoreError("Choose one of the three options.");
+    this.commit();
+    return this.viewConnection(conn);
+  }
+
+  /** Turn a tool off (kept with its keys, not offered to the AI apps) or on again. */
+  setConnectionOff(clientId: string, connId: string, off: boolean): ConnectionView {
+    const conn = this.connection(this.client(clientId), connId);
+    if (!!conn.off === off) return this.viewConnection(conn);
+    if (off) conn.off = true;
+    else delete conn.off;
+    this.commit();
+    return this.viewConnection(conn);
+  }
+
+  /**
+   * Move a tool, keys and sign-in included, to another client or to the tools for every client
+   * (EVERY_CLIENT_ID), or back. Its id may change so it never clashes with the tools it's shown
+   * next to; the AI apps get the new list straight away.
+   */
+  moveConnection(fromId: string, connId: string, toId: string): ConnectionView {
+    const from = this.client(fromId);
+    const to = this.client(toId);
+    if (from.id === to.id) throw new StoreError("It's already there.");
+    const src = this.connection(from, connId);
+    if (to.connections.some((c) => c.name.toLowerCase() === src.name.toLowerCase())) {
+      throw new StoreError(
+        to.id === EVERY_CLIENT_ID
+          ? `There's already a tool called "${src.name}" for every client. Rename one of them first.`
+          : `${to.name} already has a tool called "${src.name}". Rename one of them first.`,
+      );
+    }
+    const others = to.id === EVERY_CLIENT_ID ? this.data.clients : this.data.everyClient ? [this.data.everyClient] : [];
+    const taken = new Set([to, ...others].flatMap((c) => c.connections.filter((x) => x !== src).map((x) => x.id)));
+    const id = uniqueId(src.id, taken);
+    // Keys and the sign-in go with it, under the new owner.
+    const fields: Record<string, StoredValue> = {};
+    for (const [name, v] of Object.entries(fieldsOf(src))) {
+      if ("value" in v) fields[name] = { value: v.value };
+      else {
+        const key = this.secretKey(to.id, id, name);
+        const value = this.secrets.get(v.secret);
+        if (value !== undefined) this.secrets.set(key, value);
+        fields[name] = { secret: key };
+      }
+    }
+    const signIn = this.secrets.get(oauthKey(from.id, src.id));
+    if (signIn !== undefined) this.secrets.set(oauthKey(to.id, id), signIn);
+    const moved: StoredConnection = src.kind === "local" ? { ...src, id, env: fields } : { ...src, id, headers: fields };
+    to.connections.push(moved);
+    from.connections = from.connections.filter((c) => c !== src);
+    this.secrets.deletePrefix(`${from.id}/${src.id}/`);
+    this.commit();
+    return this.viewConnection(moved);
   }
 }

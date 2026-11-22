@@ -48,7 +48,7 @@ export class SignInFinder {
 
   private keyless() {
     return this.deps.store
-      .list()
+      .listAll()
       .flatMap((cl) => cl.connections.map((c) => ({ clientId: cl.id, conn: c })))
       .filter((x) => x.conn.kind === "remote" && !x.conn.auth && x.conn.fields.length === 0);
   }

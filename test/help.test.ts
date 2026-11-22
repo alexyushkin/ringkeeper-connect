@@ -54,7 +54,7 @@ function input(question: string, extra: Partial<HelpInput> = {}): HelpInput {
     question,
     host: "Claude Desktop",
     clients,
-    statuses: [{ clientId: "acme", connectionId: "n8n", status: "error", problem: "Couldn't reach n8n for Acme. Check the key in Acme > n8n.", tools: 0 }],
+    statuses: [{ clientId: "acme", connectionId: "n8n", status: "error", problem: "Couldn't reach n8n for Acme. Check the key in Acme > n8n.", tools: 0, offered: 0 }],
     hosts,
     version: "0.2.0",
     update: { status: "up-to-date", checkedAt: "2026-11-20T09:00:00Z" },

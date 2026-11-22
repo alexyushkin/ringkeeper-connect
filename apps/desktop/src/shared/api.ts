@@ -1,12 +1,15 @@
 // The contract between the window and the main process. Secret values only
 // ever travel window → main (when the user types a key), never back.
 import type { ClientView, ConnectionInput, ConnectionView, Settings } from "@ringkeeper/gateway/store";
-import type { Activity, ClientGuard, ConnectionStatus } from "@ringkeeper/gateway";
+import type { ActionChoice, ActionInfo, Activity, ClientGuard, ConnectionStatus } from "@ringkeeper/gateway";
 import type { CatalogService } from "@ringkeeper/catalog";
 
 export type { CatalogService };
 
-export type { Activity, ClientGuard, ClientView, ConnectionInput, ConnectionView, Settings, ConnectionStatus };
+export type { ActionChoice, ActionInfo, Activity, ClientGuard, ClientView, ConnectionInput, ConnectionView, Settings, ConnectionStatus };
+
+/** The tools every client gets are kept under this id (same as EVERY_CLIENT_ID in the gateway). */
+export const EVERY_CLIENT_ID = "~every";
 
 export type HostId = "claude-desktop" | "cursor" | "claude-code" | "vscode" | "kiro" | "antigravity" | "codex";
 
@@ -47,6 +50,8 @@ export interface FoundConnection {
 
 export interface AppState {
   clients: ClientView[];
+  /** The tools every client gets, shaped like a client (id EVERY_CLIENT_ID). */
+  everyClient: ClientView;
   statuses: ConnectionStatus[];
   settings: Settings;
   hosts: HostView[];
@@ -233,6 +238,14 @@ export interface RingkeeperApi {
   updateConnection(clientId: string, connectionId: string, input: ConnectionInput): Promise<Result<ConnectionView>>;
   removeConnection(clientId: string, connectionId: string): Promise<Result>;
   cloneConnection(fromClientId: string, connectionId: string, toClientId: string, keys: Record<string, string>): Promise<Result<ConnectionView>>;
+  /** Move a tool, keys included, to another client or to the tools for every client (EVERY_CLIENT_ID), or back. */
+  moveConnection(fromClientId: string, connectionId: string, toClientId: string): Promise<Result<ConnectionView>>;
+  /** All of a tool's actions (starts it if needed), for choosing which the AI apps get. */
+  connectionActions(clientId: string, connectionId: string): Promise<Result<ActionInfo[]>>;
+  /** Which actions the AI apps get: all, only the ones that read, or the chosen ones. */
+  setConnectionActions(clientId: string, connectionId: string, choice: "all" | ActionChoice): Promise<Result<ConnectionView>>;
+  /** Turn a tool off (kept with its keys) or on again. */
+  setConnectionOff(clientId: string, connectionId: string, off: boolean): Promise<Result<ConnectionView>>;
   updateSettings(patch: Partial<Settings>): Promise<Result>;
   scanApps(): Promise<Result<ImportScan>>;
   runSetup(request: SetupRequest): Promise<Result<SetupOutcome>>;
