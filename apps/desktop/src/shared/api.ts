@@ -305,6 +305,12 @@ export interface RingkeeperApi {
   openLink(url: string): Promise<Result>;
   /** "Did it work?" after a first sign-in: "worked" or "problem" open an email to send (or not); "skipped" just stops asking. */
   answerToolFeedback(answer: "worked" | "problem" | "skipped"): Promise<Result>;
+  /** A tool's details for someone helping: version, status and its last log lines, with keys and the client's name taken out. */
+  supportDetails(clientId: string, connectionId: string): Promise<Result<string>>;
+  /** Put text on the clipboard. */
+  copyText(text: string): Promise<Result>;
+  /** Open an email to the developer with a tool's details for support, for the person to send (or not). */
+  emailSupport(clientId: string, connectionId: string): Promise<Result>;
   /** Stop suggesting a picked tool for a client. */
   dismissPendingTool(clientId: string, toolId: string): Promise<Result>;
   /** Opens an email (or the contact page) to ask for a tool that isn't in the catalog. */

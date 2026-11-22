@@ -27,6 +27,23 @@ export interface OAuthStateStore {
 
 export class SignInError extends Error {}
 
+/** A sign-in that lasts less than this is renewed or redone as a matter of course: not worth a warning ahead. */
+const SHORT_SIGN_IN_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * When a saved sign-in ends and has to be done again, where the service said so: the refresh
+ * token's own lifetime, or, with no refresh token, the access token's. Undefined when it isn't
+ * known, or when it's short-lived by design (renewed or redone within a day).
+ */
+export function signInEndsAt(state: OAuthState | undefined): number | undefined {
+  const t = state?.tokens as (OAuthTokens & { refresh_token_expires_in?: unknown }) | undefined;
+  if (!t || typeof state?.obtainedAt !== "number") return undefined;
+  const seconds = t.refresh_token ? t.refresh_token_expires_in : t.expires_in;
+  if (typeof seconds !== "number" || !Number.isFinite(seconds) || seconds <= 0) return undefined;
+  const lasts = seconds * 1000;
+  return lasts > SHORT_SIGN_IN_MS ? state.obtainedAt + lasts : undefined;
+}
+
 /** Starts the message for a service that only lets apps it approved sign in: trying again can't help. */
 export const NOT_APPROVED = "only lets apps it has approved sign in";
 

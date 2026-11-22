@@ -6,7 +6,7 @@ import { EVERY_CLIENT_ID, type ConnectionConfig, type GatewayConfig } from "../c
 import { DEFAULT_DYNAMIC_HOSTS } from "../meta-tools.js";
 import { DEFAULT_GUARD, isActionChoice, isClientGuard, type ActionChoice, type ClientGuard } from "../guard.js";
 import type { SecretStore } from "./secrets.js";
-import type { OAuthState, OAuthStateStore } from "../oauth.js";
+import { signInEndsAt, type OAuthState, type OAuthStateStore } from "../oauth.js";
 import type { CopyClient, CopyConnection, CopyField, CopyPayload } from "./copy.js";
 
 // ---------- stored shapes ----------
@@ -197,6 +197,7 @@ export type ConnectionView =
       actions?: ActionChoice;
       off?: boolean;
       copiedFrom?: string;
+      signInEndsAt?: number;
     }
   | {
       kind: "remote";
@@ -217,6 +218,8 @@ export type ConnectionView =
       off?: boolean;
       /** Copied from this client's tools and not checked yet: not offered until it's saved. */
       copiedFrom?: string;
+      /** When the saved sign-in has to be done again (ms), where the service said so and it lasts more than a day. */
+      signInEndsAt?: number;
     };
 
 export interface ClientView {
@@ -373,6 +376,18 @@ export class ClientStore {
     return oauthKey(owner?.id ?? "", conn.id);
   }
 
+  /** When a connection's saved sign-in ends, where that's known (see signInEndsAt). Never fails a view. */
+  private signInEnds(conn: StoredConnection): { signInEndsAt?: number } {
+    if (conn.auth !== "oauth") return {};
+    try {
+      const raw = this.secrets.get(this.oauthKeyFor(conn));
+      const at = raw ? signInEndsAt(JSON.parse(raw) as OAuthState) : undefined;
+      return at ? { signInEndsAt: at } : {};
+    } catch {
+      return {};
+    }
+  }
+
   private viewConnection(conn: StoredConnection): ConnectionView {
     const fields: FieldView[] = Object.entries(fieldsOf(conn)).map(([name, v]) =>
       "secret" in v ? { name, secret: true, isSet: this.secrets.has(v.secret) } : { name, secret: false, value: v.value, isSet: true },
@@ -390,6 +405,7 @@ export class ClientStore {
           fields,
           missingKeys,
           ...kept(conn),
+          ...this.signInEnds(conn),
         }
       : {
           kind: "remote",
@@ -402,6 +418,7 @@ export class ClientStore {
           fields,
           missingKeys,
           ...kept(conn),
+          ...this.signInEnds(conn),
         };
   }
 

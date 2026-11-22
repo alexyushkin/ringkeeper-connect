@@ -3,7 +3,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import { basename, dirname, join } from "node:path";
-import { BrowserWindow, Menu, Notification, Tray, app, dialog, globalShortcut, ipcMain, nativeImage, nativeTheme, safeStorage, shell } from "electron";
+import { BrowserWindow, Menu, Notification, Tray, app, clipboard, dialog, globalShortcut, ipcMain, nativeImage, nativeTheme, safeStorage, shell } from "electron";
 import { ActivityLog } from "./activity.js";
 import {
   APP_DIR_NAME,
@@ -36,7 +36,8 @@ import { HostConfigError } from "@ringkeeper/hostconfig";
 import { IPC, type ApiMethod, type AppState, type HostView, type Result } from "../shared/api.js";
 import { AppsError, AppsService, bridgeLaunch, bundledRuntimes } from "./apps.js";
 import { bridgeHome } from "./bridge-copy.js";
-import { CatalogActionError, CatalogActions, feedbackMailto } from "./catalog.js";
+import { CatalogActionError, CatalogActions, FEEDBACK_EMAIL, feedbackMailto } from "./catalog.js";
+import { supportDetails, toolLogLines } from "./support.js";
 import { serviceOf } from "./help.js";
 import { catalog } from "@ringkeeper/catalog";
 import { Updates } from "./updates.js";
@@ -580,6 +581,15 @@ function registerIpc(): void {
     requestTool: (searched: string) => catalogActions.requestTool(searched),
     dismissPendingTool: (clientId: string, toolId: string) => dropPendingTool(clientId, toolId),
     answerToolFeedback: (answer: string) => answerToolFeedback(answer),
+    supportDetails: (clientId: string, connId: string) => supportText(String(clientId), String(connId)),
+    copyText: (text: string) => clipboard.writeText(String(text ?? "").slice(0, 100_000)),
+    emailSupport: (clientId: string, connId: string) => {
+      const text = supportText(String(clientId), String(connId));
+      const conn = store.view(String(clientId))?.connections.find((c) => c.id === String(connId));
+      // Mail apps cut off long links: the newest lines are the ones kept.
+      const body = `What happened: \r\n\r\n${text.length > 1800 ? `…${text.slice(-1800)}` : text}`.replace(/\r?\n/g, "\r\n");
+      void shell.openExternal(`mailto:${FEEDBACK_EMAIL}?subject=${encodeURIComponent(`Ringkeeper Connect: help with ${conn?.name ?? "a tool"}`)}&body=${encodeURIComponent(body)}`);
+    },
     restartToUpdate: () => updates?.restartToUpdate(),
     checkForUpdates: () => updates?.check(true),
   };
@@ -609,6 +619,59 @@ function registerIpc(): void {
   });
 }
 
+// ---------- details for support ----------
+
+function systemText(): string {
+  return `${process.platform === "darwin" ? "Mac" : process.platform === "win32" ? "Windows" : process.platform} ${os.release()} (${process.arch})`;
+}
+
+/** "Copy details for support" on a tool: shown to the person first; keys, tokens and the client's name taken out. */
+function supportText(clientId: string, connId: string): string {
+  const client = store.view(clientId);
+  const conn = client?.connections.find((c) => c.id === connId);
+  if (!client || !conn) throw new UserFacingError("That tool no longer exists. Close this window and open it again.");
+  const home = os.homedir();
+  const at = (p: string) => (home ? p.split(home).join("~") : p);
+  const s = gateway.connectionStatuses().find((x) => x.clientId === clientId && x.connectionId === connId);
+  const status = conn.off
+    ? "turned off"
+    : conn.copiedFrom
+      ? "copied from another client, not checked yet"
+      : conn.missingKeys.length
+        ? `needs ${conn.missingKeys.join(" and ")}`
+        : s
+          ? `${STATUS_WORDS[s.status] ?? s.status}${s.problem ? `: ${s.problem}` : ""}`
+          : "starts when needed";
+  const secretNames = conn.fields.filter((f) => f.secret).map((f) => `${f.name} ${f.isSet ? "saved" : "missing"}`);
+  const plainNames = conn.fields.filter((f) => !f.secret).map((f) => f.name);
+  const keys = [...secretNames, ...(plainNames.length ? [`other settings: ${plainNames.join(", ")}`] : [])].join("; ") || "none";
+  let host = "";
+  if (conn.kind === "remote") {
+    try {
+      host = new URL(conn.url).host;
+    } catch {
+      host = "an address that doesn't read right";
+    }
+  }
+  const how = conn.kind === "remote" ? `web address on ${host}${conn.transport === "sse" ? " (older kind)" : ""}` : `program on this computer: ${at([conn.command, ...conn.args].join(" "))}`;
+  const signIn =
+    conn.auth === "oauth"
+      ? `${conn.signedIn ? "signed in" : "not signed in"}${conn.oauthApp ? (conn.oauthApp.includes(":") ? ", through their own app" : ", through Ringkeeper Connect's app") : ""}${conn.signInEndsAt ? `, ends ${new Date(conn.signInEndsAt).toISOString().slice(0, 10)}` : ""}`
+      : undefined;
+  // The tool's own saved values, to be sure none shows (the log already leaves them out).
+  const config = clientId === EVERY_CLIENT_ID ? store.toGatewayConfig().everyClient : store.toGatewayConfig().clients.find((c) => c.id === clientId)?.connections;
+  const running = config?.find((c) => c.id === connId);
+  const secrets = running ? Object.values(running.kind === "remote" ? (running.headers ?? {}) : (running.env ?? {})) : [];
+  return supportDetails({
+    version: app.getVersion(),
+    system: systemText(),
+    clientName: clientId === EVERY_CLIENT_ID ? "" : client.name,
+    tool: { name: conn.name, service: serviceOf(conn, catalog.services)?.name, how, status, keys, ...(signIn ? { signIn } : {}) },
+    lines: toolLogLines(files.log, clientId, connId).map((l) => ({ ...l, ...(l.text ? { text: at(l.text) } : {}) })),
+    secrets,
+  });
+}
+
 // ---------- "Did it work?" after a first sign-in ----------
 
 /**
@@ -628,7 +691,7 @@ function answerToolFeedback(answer: string): void {
   const s = gateway.connectionStatuses().find((x) => x.clientId === client.id && x.connectionId === conn.id);
   const status = s ? `${STATUS_WORDS[s.status] ?? s.status}${s.problem ? `: ${s.problem}` : ""}` : "starts when needed";
   const how = `${conn.kind === "remote" ? "web address" : "program on this computer"}, signed in${conn.oauthApp ? (conn.oauthApp.includes(":") ? " through their own app" : " through Ringkeeper Connect's app") : ""}`;
-  const system = `${process.platform === "darwin" ? "Mac" : process.platform === "win32" ? "Windows" : process.platform} ${os.release()} (${process.arch})`;
+  const system = systemText();
   void shell.openExternal(
     feedbackMailto({ worked: result === "worked", service, how, status, clientName: client.name, version: app.getVersion(), system }),
   );

@@ -4,6 +4,18 @@ What's new in each version of Ringkeeper Connect, in plain words. A release's pa
 shows its section under "What's new". Versions before 0.2.0-beta.16 are described on their
 [release pages](https://github.com/alexyushkin/ringkeeper-connect/releases).
 
+## 0.2.8
+
+- **Details for support.** A tool that isn't working has "Details for support…" under its
+  problem (and every tool has it in its More menu). It shows the version, how the tool connects,
+  its status and its last log lines, with keys, sign-ins and your client's name taken out. Copy
+  it, or open an email to the developer that you read and choose to send.
+- **A warning before a sign-in runs out.** Where a service sets an end to a sign-in (some do,
+  after weeks or months), the tool says so a week ahead and shows under "Needs attention", so you
+  can sign in again before it stops working.
+- **"Try it" after setup.** The last setup screen gives a sentence to paste into your AI app
+  ("Which tools do I have for Acme in Ringkeeper Connect?"), so you can see it working.
+
 ## 0.2.7
 
 - **"Did it work?" after the first sign-in to a tool.** Once you've tried it, one click on
