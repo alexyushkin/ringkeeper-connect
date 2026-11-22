@@ -14,6 +14,7 @@ const api: RingkeeperApi = {
   setClientPinned: call("setClientPinned") as RingkeeperApi["setClientPinned"],
   setClientArchived: call("setClientArchived") as RingkeeperApi["setClientArchived"],
   saveCopy: call("saveCopy") as RingkeeperApi["saveCopy"],
+  sendToRingkeeper: call("sendToRingkeeper") as RingkeeperApi["sendToRingkeeper"],
   chooseCopy: call("chooseCopy") as RingkeeperApi["chooseCopy"],
   previewCopy: call("previewCopy") as RingkeeperApi["previewCopy"],
   importCopy: call("importCopy") as RingkeeperApi["importCopy"],

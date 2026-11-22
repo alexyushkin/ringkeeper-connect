@@ -137,6 +137,18 @@ export function Help(props: { hosts: HostView[]; onClose: () => void }) {
         </details>
 
         <details>
+          <summary>Moving to Ringkeeper, the full app</summary>
+          <ul>
+            <li>
+              "Send to Ringkeeper" in the sidebar hands Ringkeeper, on this computer, every client with its tools and keys, and the tools for every
+              client. Ringkeeper shows what came on its Home and asks before bringing it in. Nothing here changes.
+            </li>
+            <li>There's no file and no password: it's locked so only that Ringkeeper can open it. Open Ringkeeper once first, so it's ready.</li>
+            <li>Sign-ins (Google, Microsoft and others) don&apos;t move: sign in to those again in Ringkeeper.</li>
+          </ul>
+        </details>
+
+        <details>
           <summary>Updates and uninstalling</summary>
           <ul>
             <li>Updates download by themselves and install the next time Ringkeeper Connect restarts. Your AI apps keep working through them.</li>

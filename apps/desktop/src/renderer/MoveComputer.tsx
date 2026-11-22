@@ -48,6 +48,48 @@ export function MoveComputerDialog(props: { start?: "save" | "bring-in"; hasClie
   );
 }
 
+/** Send everything to the full Ringkeeper app on this computer: no file, no password. */
+export function SendToRingkeeperDialog(props: { clients: number; onClose: () => void; onHint: (t: string) => void }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function send() {
+    setBusy(true);
+    setError(null);
+    const r = await api.sendToRingkeeper();
+    setBusy(false);
+    if (!r.ok) return setError(r.error);
+    props.onHint(
+      `Sent ${r.value.clients === 1 ? "1 client" : `${r.value.clients} clients`} to Ringkeeper. Open Ringkeeper: it shows them on Home, with "Bring them in". Your clients stay here too.`,
+    );
+    props.onClose();
+  }
+
+  return (
+    <Modal title="Send to Ringkeeper" onClose={props.onClose}>
+      <p className="small">
+        Ringkeeper is the full app: tasks, approvals before changes, undo and more. This hands it every client here ({props.clients}), with their
+        tools, keys and the tools for every client. It's locked so only the Ringkeeper on this computer can open it, and Ringkeeper asks before
+        bringing anything in. Nothing here changes.
+      </p>
+      <p className="muted small">Sign-ins made here (Google, Microsoft and others) don&apos;t move: you sign in to those again in Ringkeeper.</p>
+      {error && (
+        <div className="notice bad" role="alert">
+          {error}
+        </div>
+      )}
+      <div className="modal-actions">
+        <button type="button" onClick={props.onClose}>
+          Cancel
+        </button>
+        <button className="primary" disabled={busy} onClick={() => void send()}>
+          {busy ? "Sending…" : "Send to Ringkeeper"}
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
 function SaveCopy(props: { onClose: () => void; onHint: (t: string) => void }) {
   const [password, setPassword] = useState("");
   const [repeat, setRepeat] = useState("");

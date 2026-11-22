@@ -98,6 +98,7 @@ Ringkeeper Connect is a desktop app for agencies. It keeps each client's tools (
 
 ## Moving to another computer
 - "Move to another computer" (sidebar) > "Save a copy of my clients" saves every client, with its tools, keys and sign-ins, the tools for every client and the user's own apps, into one file locked with a password the user chooses (at least 8 characters). Without that password the file can't be opened, and nobody can recover a forgotten one.
+- "Send to Ringkeeper" (sidebar) hands Ringkeeper, the full app on this computer, every client with its tools and keys, and the tools for every client. No file and no password: it's locked so only that Ringkeeper can open it, and Ringkeeper shows what came on its Home and asks before bringing it in. Nothing in Ringkeeper Connect changes. Sign-ins don't move: the user signs in to those again in Ringkeeper. Ringkeeper must have been opened once first.
 - On the new computer, install Ringkeeper Connect, then "Move to another computer" > "Bring in clients from a copy" (or "Bring in clients from another computer" on the first screen): pick the file, type the password, and tick the clients to bring in. Nothing already there is changed; a client whose name is taken comes in as "Acme 2".
 - The AI apps are connected on each computer separately ("Connect" next to each app). A tool that says it needs a sign-in afterwards needs one more sign-in. Delete the copy file afterwards: it holds the clients' keys.
 

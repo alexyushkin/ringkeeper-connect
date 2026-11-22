@@ -26,6 +26,9 @@ import {
   isCopyFile,
   openCopy,
   sealCopy,
+  HandoverError,
+  ringkeeperFolder,
+  sendToRingkeeper,
   type CopyPayload,
   type Cipher,
   type LaunchInfo,
@@ -566,6 +569,7 @@ function registerIpc(): void {
       return r;
     },
     saveCopy: (password: string, repeat: string) => saveCopy(String(password ?? ""), String(repeat ?? "")),
+    sendToRingkeeper: () => sendToRingkeeperApp(),
     chooseCopy: () => chooseCopy(),
     previewCopy: (password: string) => previewCopy(String(password ?? "")),
     importCopy: (chosen) => importCopy(chosen),
@@ -610,7 +614,8 @@ function registerIpc(): void {
         err instanceof CatalogActionError ||
         err instanceof OwnAppsError ||
         err instanceof UserFacingError ||
-        err instanceof CopyError
+        err instanceof CopyError ||
+        err instanceof HandoverError
           ? err.message
           : "Something went wrong saving that. Try again, and if it keeps happening, restart Ringkeeper Connect.";
       log({ ev: "ipc_error", method, error: String(err).slice(0, 300) });
@@ -740,6 +745,16 @@ async function saveCopy(password: string, repeat: string): Promise<{ file: strin
   }
   log({ ev: "copy_saved", clients: store.list().length });
   return { file: basename(picked.filePath) };
+}
+
+/** Hand every client, tool, key and sign-in to the full Ringkeeper app on this computer, locked
+ * so only it can open them. Ringkeeper shows them and brings them in with one click. */
+function sendToRingkeeperApp(): { file: string; clients: number } {
+  const folder = ringkeeperFolder(process.platform, process.env, app.getPath("home"));
+  const payload = store.exportCopy();
+  const file = sendToRingkeeper(payload, folder);
+  log({ ev: "sent_to_ringkeeper", clients: payload.clients.length, every: payload.everyClient.length });
+  return { file, clients: payload.clients.length };
 }
 
 /** Pick a copy to bring in. Null when the user cancels. */
