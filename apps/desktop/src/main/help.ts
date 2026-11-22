@@ -73,6 +73,7 @@ Ringkeeper Connect is a desktop app for agencies. It keeps each client's tools (
 - After the first sign-in to a tool, the window asks "Did it work?". "Worked" or "Had a problem" opens an email with the tool's name, its status and the version (never the client's name or keys) that the user reads and chooses to send; nothing is sent by itself. "No thanks" stops asking about that tool.
 - "More… > Choose actions" on a tool picks which of its actions the AI gets: all of them, only the ones that read, or a chosen few. Tools with hundreds of actions (Twilio has over 200) work better with fewer. An action left out isn't shown to the AI and isn't run.
 - "More… > Turn off" keeps a tool with its keys but stops offering it to the AI apps; "Turn on" brings it back.
+- A sign-in the service set to end (some do, after weeks or months) shows "This sign-in ends on …" on the tool a week before, and the tool appears under "Needs attention": click Sign in before then.
 - Missing a service? Use "Request a tool" at the bottom of Add a tool, or "Something else" to add any connection by its web address or program.
 
 ## Bringing in tools you already use
@@ -87,6 +88,7 @@ Ringkeeper Connect is a desktop app for agencies. It keeps each client's tools (
 - Codex: ChatGPT uses Ringkeeper Connect only in Codex, not in regular ChatGPT chats. Apps that only run in the cloud (ChatGPT or Claude on the web, Replit) can't reach Ringkeeper Connect on this computer.
 
 ## When something isn't working
+- "Details for support…" (under a tool that isn't working, or in its More menu) shows the version, how the tool connects, its status and its last log lines, with keys, sign-ins and the client's name taken out, to copy or to email to the developer. The user reads it first and chooses to send it.
 - A tool that isn't working says why and how to fix it, right under its name in the window. "Needs a key": open Edit on the tool and paste the key. "Needs sign-in": click Sign in on the tool. "Not working": follow the message; it usually names the key or setting to check.
 - An AI app that doesn't see the client's tools: check it's connected in the sidebar, then restart it completely. If its entry went missing, click Fix next to it.
 - An AI app that was open during setup may save its old settings later and drop the entry; it's put back straight away. If that keeps happening, quit the app completely and open it again.

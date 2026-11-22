@@ -64,7 +64,7 @@ export function Setup(props: { clients: ClientView[]; hosts: HostView[]; run: Ru
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  if (outcome) return <SetupDone outcome={outcome} hosts={props.hosts} tools={tools} onDone={props.onDone} />;
+  if (outcome) return <SetupDone outcome={outcome} hosts={props.hosts} clients={props.clients} tools={tools} onDone={props.onDone} />;
   if (!scan) return <div className="setup"><p className="muted">Looking for your AI apps…</p></div>;
 
   const installed = scan.hosts.filter((h) => h.status !== "not_installed");
@@ -398,8 +398,16 @@ function ListTools(props: { query: string; onQuery: (q: string) => void; placeho
   );
 }
 
-function SetupDone(props: { outcome: SetupOutcome; hosts: HostView[]; tools: CatalogService[]; onDone: () => void }) {
+/** The sentence "Try it" offers to paste into an AI app after setup. */
+export function tryItSentence(clientName: string): string {
+  return `Which tools do I have for ${clientName} in Ringkeeper Connect?`;
+}
+
+function SetupDone(props: { outcome: SetupOutcome; hosts: HostView[]; clients: ClientView[]; tools: CatalogService[]; onDone: () => void }) {
   const { outcome } = props;
+  const [copied, setCopied] = useState(false);
+  const active = props.clients.find((c) => c.active);
+  const sentence = active ? tryItSentence(active.name) : null;
   // Live: each app turns to Connected when it actually contacts Ringkeeper.
   const apps = props.hosts.filter((h) => ["added", "connected", "not_seeing", "missing"].includes(h.status));
   const allConnected = apps.length > 0 && apps.every((h) => h.status === "connected");
@@ -436,6 +444,20 @@ function SetupDone(props: { outcome: SetupOutcome; hosts: HostView[]; tools: Cat
             })}
           </ul>
           <p className="muted small">This updates by itself as each app starts using Ringkeeper Connect.</p>
+        </>
+      )}
+      {sentence && active && apps.length > 0 && (
+        <>
+          <h2>Try it</h2>
+          <p>Once an app above says Connected, start a new chat in it and paste this:</p>
+          <div className="try-it">
+            <code>{sentence}</code>
+            <button onClick={() => void window.ringkeeper.copyText(sentence).then((r) => setCopied(r.ok))}>{copied ? "Copied" : "Copy"}</button>
+          </div>
+          <p className="muted small">
+            It should list {active.name}'s tools. If it doesn't, the app isn't using Ringkeeper Connect yet: "Show me how to check" next to it in
+            the sidebar walks you through it.
+          </p>
         </>
       )}
       {outcome.overlaps.length > 0 && (

@@ -54,6 +54,9 @@ const api: RingkeeperApi = {
   requestTool: call("requestTool") as RingkeeperApi["requestTool"],
   dismissPendingTool: call("dismissPendingTool") as RingkeeperApi["dismissPendingTool"],
   answerToolFeedback: call("answerToolFeedback") as RingkeeperApi["answerToolFeedback"],
+  supportDetails: call("supportDetails") as RingkeeperApi["supportDetails"],
+  copyText: call("copyText") as RingkeeperApi["copyText"],
+  emailSupport: call("emailSupport") as RingkeeperApi["emailSupport"],
   restartToUpdate: call("restartToUpdate") as RingkeeperApi["restartToUpdate"],
   checkForUpdates: call("checkForUpdates") as RingkeeperApi["checkForUpdates"],
   onSignInLink: (listener) => {

@@ -1,7 +1,7 @@
 // The client list with dozens of clients: pinned ones on top, the recently used, everything
 // else A to Z, and archived ones out of the way; and the one list of tools that need
 // something before they work. Pure, so it's tested without the window.
-import { keyExpiryWarning } from "../shared/key-expiry";
+import { keyExpiryWarning, signInEndWarning } from "../shared/key-expiry";
 import type { ClientView, ConnectionStatus, ConnectionView } from "../shared/api";
 import { CLIENT_SEARCH_FROM, matchesWords } from "./search";
 
@@ -69,12 +69,14 @@ export function needsAttention(clients: ClientView[], every: ClientView | undefi
       if (conn.off) continue;
       const s = statuses.find((x) => x.clientId === client.id && x.connectionId === conn.id);
       const expiring = keyExpiryWarning(conn, now);
+      const ending = signInEndWarning(conn, now);
       if (conn.copiedFrom) out.push({ client, conn, problem: copiedNote(client, conn), fix: "check" });
       else if (conn.missingKeys.length) out.push({ client, conn, problem: `Add ${conn.missingKeys.join(" and ")} with Edit to use it.`, fix: "edit" });
       else if ((conn.auth === "oauth" && !conn.signedIn) || s?.status === "needs_signin") {
         out.push({ client, conn, problem: `Sign in with ${ownerWords(client, everyId)} account to use it.`, fix: "signin" });
       } else if (s?.status === "error") out.push({ client, conn, problem: s.problem ?? "It isn't working. Open Edit to check its settings.", fix: "edit" });
       else if (expiring) out.push({ client, conn, problem: expiring, fix: "edit" });
+      else if (ending) out.push({ client, conn, problem: ending, fix: "signin" });
     }
   }
   return out;

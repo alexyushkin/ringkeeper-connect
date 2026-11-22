@@ -11,6 +11,8 @@ import { ActionsDialog, MoreMenu, MoveToClientDialog, MoveToEveryDialog, actions
 import { restoreBody } from "./restore-text";
 import { clientGroups, copiedNote, needsAttention, type Attention } from "./client-list";
 import { MoveComputerDialog } from "./MoveComputer";
+import { SupportDialog } from "./SupportDialog";
+import { signInEndWarning } from "../shared/key-expiry";
 import { EVERY_CLIENT_ID, updateStatusText, type AppState, type CatalogService, type ClientView, type ConnectionInput, type ConnectionView, type HostView, type RingkeeperApi, type Result } from "../shared/api";
 
 declare global {
@@ -316,6 +318,7 @@ export function App() {
             onChooseActions={(conn) => setDialog({ kind: "actions", client: selected, conn })}
             onMoveToEvery={(conn) => setDialog({ kind: "move-every", client: selected, conn })}
             onMoveToClient={(conn) => setDialog({ kind: "move-client", conn })}
+            onSupport={(conn) => setDialog({ kind: "support", client: selected, conn })}
           />
         )}
       </main>
@@ -443,6 +446,7 @@ function ClientPanel(props: {
   onChooseActions: (c: ConnectionView) => void;
   onMoveToEvery: (c: ConnectionView) => void;
   onMoveToClient: (c: ConnectionView) => void;
+  onSupport: (c: ConnectionView) => void;
   onSignIn: (c: ConnectionView) => void;
   onBringIn: () => void;
   /** Tools picked in the wizard that still need a sign-in or key. */
@@ -577,6 +581,8 @@ function ClientPanel(props: {
             const chosen = actionsNote(conn, s);
             // A pasted key (a Meta access token) that stops working within a week, or already has.
             const expiring = keyExpiryWarning(conn);
+            // A sign-in the service set to end within a week, or that has.
+            const ending = signInEndWarning(conn);
             return (
               <li key={conn.id} className="connection">
                 <div className="connection-main">
@@ -587,6 +593,12 @@ function ClientPanel(props: {
                   {chosen && <div className="connection-note">{chosen}</div>}
                   {problem && status.tone !== "ok" && <div className={`problem ${status.tone}`}>{problem}</div>}
                   {expiring && <div className="problem warn">{expiring}</div>}
+                  {ending && !conn.off && <div className="problem warn">{ending}</div>}
+                  {status.tone === "bad" && (
+                    <button className="link small left" onClick={() => props.onSupport(conn)}>
+                      Details for support…
+                    </button>
+                  )}
                 </div>
                 <span className={`status ${status.tone}`}>{status.word}</span>
                 <div className="connection-actions">
@@ -600,7 +612,7 @@ function ClientPanel(props: {
                     </button>
                   ) : (
                     conn.auth === "oauth" &&
-                    (s?.status === "needs_signin" || !conn.signedIn) && (
+                    (s?.status === "needs_signin" || !conn.signedIn || !!ending) && (
                       <button className="primary" onClick={() => props.onSignIn(conn)}>
                         Sign in
                       </button>
@@ -615,6 +627,7 @@ function ClientPanel(props: {
                       { label: "Copy to…", onClick: () => props.onCopyConnection(conn), hidden: isEvery || props.clients.length < 2 },
                       { label: "Use for every client…", onClick: () => props.onMoveToEvery(conn), hidden: isEvery },
                       { label: "Move to one client…", onClick: () => props.onMoveToClient(conn), hidden: !isEvery || props.clients.length === 0 },
+                      { label: "Details for support…", onClick: () => props.onSupport(conn) },
                       { label: "Remove", onClick: () => props.onRemoveConnection(conn), danger: true },
                     ]}
                   />
@@ -650,6 +663,7 @@ type DialogState =
   | { kind: "actions"; client: ClientView; conn: ConnectionView }
   | { kind: "move-every"; client: ClientView; conn: ConnectionView }
   | { kind: "move-client"; conn: ConnectionView }
+  | { kind: "support"; client: ClientView; conn: ConnectionView }
   | { kind: "own-apps" };
 
 function Dialogs(props: {
@@ -775,6 +789,8 @@ function Dialogs(props: {
       return <MoveToEveryDialog client={dialog.client} conn={dialog.conn} clients={props.clients} onClose={close} run={run} />;
     case "move-client":
       return <MoveToClientDialog conn={dialog.conn} clients={props.clients} onClose={close} run={run} />;
+    case "support":
+      return <SupportDialog client={dialog.client} conn={dialog.conn} onClose={close} />;
   }
 }
 

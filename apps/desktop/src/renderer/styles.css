@@ -1257,3 +1257,25 @@ p.muted {
   gap: 8px;
   flex: none;
 }
+
+/* "Try it" after setup, and "Details for support". */
+.try-it {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 8px 0;
+}
+.try-it code {
+  background: var(--accent-soft);
+  border-radius: 6px;
+  padding: 8px 10px;
+  user-select: all;
+}
+.support-text {
+  width: 100%;
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 12px;
+  white-space: pre;
+  overflow: auto;
+}

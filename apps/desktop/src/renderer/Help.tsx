@@ -154,6 +154,11 @@ export function Help(props: { hosts: HostView[]; onClose: () => void }) {
               keys), so "Why isn't Acme's n8n working?" or "How do I add Globex's Airtable?" gets a real answer.
             </li>
             <li>A tool marked "Not working" says why and how to fix it, right under its name.</li>
+            <li>
+              "Details for support…" on a tool shows what someone helping needs (its status and last log lines, without keys or your client's
+              name), to copy, or to email to the developer for you to send.
+            </li>
+            <li>A sign-in that a service set to end shows a warning on the tool a week before, so you can sign in again in time.</li>
             <li>"Show me how to check" next to an AI app walks you through checking that it uses Ringkeeper Connect.</li>
             <li>Missing a service? Use "Request a tool" at the bottom of "Add a tool".</li>
           </ul>
