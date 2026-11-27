@@ -112,8 +112,19 @@ export class Updates {
     });
   }
 
-  /** Restart now and install the downloaded update. */
+  /**
+   * Restart now and install the downloaded update. Installing takes a minute or two on
+   * Windows, so the installer shows its progress (not silent) and opens the app again
+   * when it's done; a silent install left nothing on screen for that time, and looked
+   * as if the app had closed for good.
+   */
   restartToUpdate(): void {
-    if (this.ready) this.updater.quitAndInstall(true, true);
+    if (!this.ready) return;
+    this.deps.log({ ev: "update_restart", version: this.ready });
+    this.deps.notify(
+      `Installing Ringkeeper Connect ${this.ready}`,
+      "It opens again by itself when it's done, in a minute or two. Your clients and connections stay as they are.",
+    );
+    this.updater.quitAndInstall(false, true);
   }
 }

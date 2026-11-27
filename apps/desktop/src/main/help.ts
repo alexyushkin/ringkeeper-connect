@@ -111,7 +111,7 @@ ${RESTORE_POINTS.map((p) => `- ${p}`).join("\n")}
 - It's in the sidebar ("Restore original settings…"). Restart the AI apps afterwards; "Connect" next to each app connects it again later.
 
 ## Updates and uninstalling
-- Updates download by themselves and install when Ringkeeper Connect restarts ("Restart now" on the banner, or quitting it). "Check for updates" next to the version in the sidebar checks now. AI apps keep working through updates.
+- Updates download by themselves and install when Ringkeeper Connect restarts: "Restart to update" next to the version in the sidebar, "Restart now" on the banner, or quitting it. After "Restart", the installer shows its progress and Ringkeeper Connect opens again by itself in a minute or two; after quitting, it stays closed until you open it. "Check for updates" next to the version checks now. AI apps keep working through updates.
 - Uninstalling runs Restore first, so the AI apps go back to how they were. Clients and keys stay on this computer, so reinstalling brings them back.
 - "Start when I log in" (sidebar) keeps it running in the background so AI apps can always reach the clients.
 
