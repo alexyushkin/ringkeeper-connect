@@ -282,6 +282,8 @@ describe("bringing connections in", () => {
       ["https://ai.todoist.net/mcp", "todoist"],
       ["https://mcp.vapi.ai/mcp", "vapi"],
     ] as const) expect(detectService("x", { url })?.id, url).toBe(id);
+    // Namecheap has only community programs, run with npx.
+    expect(detectService("domains", { command: "npx", args: ["-y", "namecheap-api-mcp"] })?.id).toBe("namecheap");
     // Words that only look like one of them.
     expect(detectService("toolkit", { command: "node", args: ["toolkit.js"] })).toBeUndefined();
     expect(detectService("totally-mine", { command: "node" })).toBeUndefined();
