@@ -4,6 +4,16 @@ What's new in each version of Ringkeeper Connect, in plain words. A release's pa
 shows its section under "What's new". Versions before 0.2.0-beta.16 are described on their
 [release pages](https://github.com/alexyushkin/ringkeeper-connect/releases).
 
+## 0.2.13
+
+- **Namecheap.** "Add a tool" has Namecheap under Websites: the AI can see the client's domains
+  and change their DNS records, nameservers, email forwarding and domain lock. Namecheap has no
+  connection of its own, so this one is made by the community, and its tile says so. It can't
+  buy, renew or transfer anything. Namecheap turns on API access only for accounts with 20
+  domains, a $50 balance or $50 spent in the last 2 years, and it only answers a computer whose
+  internet address is on the account's allowed list. A Namecheap tool found in your AI apps is
+  now recognised when you bring it in.
+
 ## 0.2.12
 
 - **Send to Ringkeeper.** If you also use Ringkeeper, the full app, "Send to Ringkeeper" in the
