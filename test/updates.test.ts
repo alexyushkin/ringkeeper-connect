@@ -21,10 +21,13 @@ function fakeUpdater(next: (u: FakeUpdater) => void) {
     next(u);
     return {};
   };
-  u.quitAndInstall = () => void u.installed++;
+  u.quitAndInstall = (isSilent?: boolean, isForceRunAfter?: boolean) => {
+    u.installed++;
+    u.installArgs = [isSilent, isForceRunAfter];
+  };
   return u;
 }
-type FakeUpdater = EventEmitter & Updater & { checks: number; installed: number };
+type FakeUpdater = EventEmitter & Updater & { checks: number; installed: number; installArgs?: [boolean | undefined, boolean | undefined] };
 
 function setup(next: (u: FakeUpdater) => void) {
   const notes: string[] = [];
@@ -105,6 +108,16 @@ describe("checking for updates", () => {
     expect(t.updater.checks).toBe(1);
     t.updates.restartToUpdate();
     expect(t.updater.installed).toBe(1);
+    // The installer shows its progress (not silent) and opens the app again; the person is told first.
+    expect(t.updater.installArgs).toEqual([false, true]);
+    expect(t.notes.at(-1)).toBe("Installing Ringkeeper Connect 0.2.0-beta.18");
+  });
+
+  it("restarting with nothing downloaded does nothing", () => {
+    const t = setup(() => {});
+    t.updates.restartToUpdate();
+    expect(t.updater.installed).toBe(0);
+    expect(t.notes).toEqual([]);
   });
 
   it("puts a failure in plain words", () => {

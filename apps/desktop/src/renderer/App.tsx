@@ -256,6 +256,14 @@ export function App() {
               </button>
             </>
           )}
+          {state.updateReady && (
+            <>
+              {" · "}
+              <button className="link small" onClick={() => void run(api.restartToUpdate())}>
+                Restart to update
+              </button>
+            </>
+          )}
           {updateStatusText(state.update) && <div className={`update-status${state.update?.status === "failed" ? " warn" : ""}`}>{updateStatusText(state.update)}</div>}
         </div>
       </aside>
@@ -280,7 +288,7 @@ export function App() {
         )}
         {state.updateReady && (
           <div className="banner info" role="status">
-            <span>Version {state.updateReady} is ready. It installs the next time Ringkeeper Connect restarts.</span>
+            <span>Version {state.updateReady} is ready. Restart now to install it: Ringkeeper Connect opens again by itself in a minute or two.</span>
             <button className="link" onClick={() => void run(api.restartToUpdate())}>
               Restart now
             </button>
