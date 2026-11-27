@@ -4,6 +4,17 @@ What's new in each version of Ringkeeper Connect, in plain words. A release's pa
 shows its section under "What's new". Versions before 0.2.0-beta.16 are described on their
 [release pages](https://github.com/alexyushkin/ringkeeper-connect/releases).
 
+## 0.2.14
+
+- **Updating shows its progress and opens the app again.** Installing an update takes a minute
+  or two on Windows, and until now nothing was on screen meanwhile, so it looked as if Ringkeeper
+  Connect had closed for good. Now "Restart" shows the installer's progress and opens Ringkeeper
+  Connect again when it's done. This works from the next update after this one: this update
+  still installs the old, silent way.
+- **"Restart to update" next to the version.** When an update is ready, it's in the sidebar
+  beside "Check for updates", so a long list of clients doesn't have to be scrolled up to the
+  banner.
+
 ## 0.2.13
 
 - **Namecheap.** "Add a tool" has Namecheap under Websites: the AI can see the client's domains
