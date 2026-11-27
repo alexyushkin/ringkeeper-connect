@@ -18,7 +18,7 @@ describe("the catalog data", () => {
         "mollie", "paddle", "gocardless", "meta_ads", "pipeboard", "google", "microsoft",
         "tiktok_ads", "ahrefs", "semrush", "brevo", "kit", "mailerlite", "buffer", "intercom", "typeform", "jotform", "tally", "fireflies",
         "hootsuite", "metricool", "customerio", "similarweb", "dataforseo", "instantly", "lemlist", "hunter", "granola", "otter", "todoist", "vapi",
-        "vercel", "hubspot", "asana",
+        "vercel", "hubspot", "asana", "namecheap",
       ].sort(),
     );
     // Google and Microsoft only as our own tools, signed in through our own apps: no servers of theirs.
@@ -263,6 +263,29 @@ describe("turning answers into a connection", () => {
       args: ["elevenlabs-mcp==0.12.2"],
       fields: [{ name: "ELEVENLABS_API_KEY", value: "sk_123", secret: true }],
     });
+  });
+
+  it("Namecheap: runs the community program, pinned, with only the key kept secret and the address checked", () => {
+    const conn = buildConnection("namecheap", "key", { NAMECHEAP_API_USER: "acme-dns", NAMECHEAP_API_KEY: "the-secret-key", NAMECHEAP_CLIENT_IP: " 203.0.113.7 " });
+    expect(conn).toEqual({
+      kind: "local",
+      name: "Namecheap",
+      command: "npx",
+      args: ["-y", "namecheap-api-mcp@1.0.1"],
+      fields: [
+        { name: "NAMECHEAP_API_USER", value: "acme-dns", secret: false },
+        { name: "NAMECHEAP_API_KEY", value: "the-secret-key", secret: true },
+        { name: "NAMECHEAP_CLIENT_IP", value: "203.0.113.7", secret: false },
+      ],
+    });
+    expect(JSON.stringify(conn.kind === "local" && conn.args)).not.toContain("the-secret-key");
+    // Namecheap takes only the short kind of address (IPv4), and each part is at most 255.
+    for (const ip of ["2001:db8::1", "203.0.113", "256.1.1.1", "203.0.113.7/32"]) {
+      expect(() => buildConnection("namecheap", "key", { NAMECHEAP_API_USER: "u", NAMECHEAP_API_KEY: "k", NAMECHEAP_CLIENT_IP: ip }), ip).toThrow(CatalogInputError);
+    }
+    const s = findService("namecheap")!;
+    expect(s).toMatchObject({ group: "Websites", beta: true, tags: ["Made by the community"] });
+    expect(s.notes!.join(" ")).toMatch(/can't buy, renew or transfer/);
   });
 
   it("Twilio: runs Twilio's own program, pinned; only the IDs are in its arguments, the secret is kept secret", () => {

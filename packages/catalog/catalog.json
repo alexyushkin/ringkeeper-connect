@@ -1140,6 +1140,77 @@
       ]
     },
     {
+      "id": "namecheap",
+      "name": "Namecheap",
+      "group": "Websites",
+      "description": "See the client's domains and change their DNS records, nameservers, email forwarding and domain lock.",
+      "beta": true,
+      "tags": [
+        "Made by the community"
+      ],
+      "notes": [
+        "Namecheap has no connection of its own. This one is made by the community (namecheap-api-mcp, MIT licence), and it can't buy, renew or transfer anything.",
+        "Namecheap turns on API access only for accounts with 20 domains, $50 in the balance, or $50 spent in the last 2 years.",
+        "Namecheap only answers this computer if its internet address is on the account's allowed list. If the address changes, add the new one there.",
+        "Changing DNS records replaces the whole list. Ask the AI to read the records first and keep the ones you don't change.",
+        "It works for domains registered at Namecheap that use its standard DNS, not PremiumDNS or FreeDNS."
+      ],
+      "options": [
+        {
+          "id": "key",
+          "label": "Use an API key",
+          "recommended": true,
+          "kind": "local",
+          "command": "npx",
+          "args": [
+            "-y",
+            "namecheap-api-mcp@1.0.1"
+          ],
+          "env": {
+            "NAMECHEAP_API_USER": "{{NAMECHEAP_API_USER}}",
+            "NAMECHEAP_API_KEY": "{{NAMECHEAP_API_KEY}}",
+            "NAMECHEAP_CLIENT_IP": "{{NAMECHEAP_CLIENT_IP}}"
+          },
+          "fields": [
+            {
+              "id": "NAMECHEAP_API_USER",
+              "label": "Namecheap username",
+              "required": true,
+              "help": "The username the client signs in to Namecheap with.",
+              "where": {
+                "label": "Open Namecheap",
+                "url": "https://www.namecheap.com/myaccount/login/"
+              }
+            },
+            {
+              "id": "NAMECHEAP_API_KEY",
+              "label": "API key",
+              "secret": true,
+              "required": true,
+              "help": "In the client's Namecheap account: Profile > Tools > Namecheap API Access > Manage. Turn it on, then copy the API key.",
+              "where": {
+                "label": "Open Namecheap API access",
+                "url": "https://ap.www.namecheap.com/settings/tools/apiaccess/"
+              }
+            },
+            {
+              "id": "NAMECHEAP_CLIENT_IP",
+              "label": "This computer's internet address",
+              "required": true,
+              "placeholder": "203.0.113.7",
+              "pattern": "^((25[0-5]|2[0-4][0-9]|1?[0-9]?[0-9])[.]){3}(25[0-5]|2[0-4][0-9]|1?[0-9]?[0-9])$",
+              "patternHint": "Use four numbers separated by dots, like 203.0.113.7. Namecheap doesn't take the longer kind of address.",
+              "help": "Search \"what is my IP\" on this computer to see it. On the same Namecheap page, under Whitelisted IPs, choose Edit > Add IP and add it there too.",
+              "where": {
+                "label": "Open Namecheap API access",
+                "url": "https://ap.www.namecheap.com/settings/tools/apiaccess/"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
       "id": "paypal",
       "name": "PayPal",
       "group": "Payments",

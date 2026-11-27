@@ -38,6 +38,7 @@ const SERVICES: Array<Service & { match: RegExp }> = [
   { id: "resend", label: "Resend", match: /resend/i },
   { id: "wordpress-com", label: "WordPress.com", match: /wordpress\.com|wpcom/i },
   { id: "wordpress", label: "WordPress", match: /wordpress|wp-json/i },
+  { id: "namecheap", label: "Namecheap", match: /namecheap/i },
   { id: "webflow", label: "Webflow", match: /webflow/i },
   { id: "wix", label: "Wix", match: /\bwix\b/i },
   { id: "trello", label: "Trello", match: /trello/i },
